@@ -85,7 +85,18 @@ bundle_speexdsp() { # <rust-target> <liblumora_ffi.a>
     [ -n "$speex" ] && break
   done
   [ -n "$speex" ] || die "libspeexdsp.a for $tgt not found (aec-rs-sys build output)"
-  libtool -static -o "$lib.tmp" "$lib" "$speex" && mv "$lib.tmp" "$lib"
+  # aec-rs-sys's CMake build also archives speexdsp's test programs (testecho.c.o, … each with
+  # its own main): keep only the library objects, or the app gets a duplicate _main.
+  local clean="$lib.speexdsp.a" members
+  cp "$speex" "$clean"
+  members="$(ar t "$clean" | grep -E '^test' || true)"
+  if [ -n "$members" ]; then
+    # shellcheck disable=SC2086
+    ar d "$clean" $members
+  fi
+  ar t "$clean" | grep -qE '^test' && die "speexdsp test objects still in $clean"
+  libtool -static -o "$lib.tmp" "$lib" "$clean" && mv "$lib.tmp" "$lib"
+  rm -f "$clean"
   echo "==> bundled $(basename "$speex") into $lib"
 }
 
