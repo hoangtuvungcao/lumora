@@ -1,0 +1,7 @@
+// Base configuration of the LumoraNotificationService app extension (all build configurations).
+// Generated.xcconfig (written by flutter) provides FLUTTER_BUILD_NAME/NUMBER, so the
+// extension's version always matches the app's – App Store Connect rejects mismatches.
+#include? "Generated.xcconfig"
+
+// CI only (signed IPA): manual signing for this extension, written by build.yml.
+#include? "LumoraSigning-LumoraNotificationService.generated.xcconfig"

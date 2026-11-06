@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="vi" data-page="dev-reference" data-title-en="SDK reference — Lumora" data-desc-en="Lumora Bot SDK reference: Python and JavaScript, events, error codes, changelog.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tham chiếu SDK — Lumora</title>
+<meta name="description" content="Tham chiếu Lumora Bot SDK: Python và JavaScript, sự kiện, mã lỗi, nhật ký thay đổi.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/reference/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Tham chiếu SDK — Lumora">
+<meta property="og:description" content="Tham chiếu Lumora Bot SDK: Python và JavaScript, sự kiện, mã lỗi, nhật ký thay đổi.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/reference/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tham chiếu SDK — Lumora">
+<meta name="twitter:description" content="Tham chiếu Lumora Bot SDK: Python và JavaScript, sự kiện, mã lỗi, nhật ký thay đổi.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/" aria-current="page"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#book-open"/></svg><span class="l-vi">Tài liệu tham chiếu</span><span class="l-en" lang="en">Reference</span></p>
+      <h1 class="hero__title"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></h1>
+      <p class="lead-p"><span class="l-vi">Bảng đối chiếu Python ↔ JavaScript, ngữ cảnh, sự kiện, mã lỗi và nhật ký thay đổi.</span><span class="l-en" lang="en">Python ↔ JavaScript map, the context, events, error codes and the changelog.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#sdks"><span class="l-vi">Hai SDK, một bộ tính năng</span><span class="l-en" lang="en">Two SDKs, one feature set</span></a></li><li><a href="#context"><span class="l-vi">Ngữ cảnh (ctx)</span><span class="l-en" lang="en">The context (ctx)</span></a></li><li><a href="#events"><span class="l-vi">Sự kiện</span><span class="l-en" lang="en">Events</span></a></li><li><a href="#errors"><span class="l-vi">Mã lỗi</span><span class="l-en" lang="en">Error codes</span></a></li><li><a href="#changelog"><span class="l-vi">Nhật ký thay đổi</span><span class="l-en" lang="en">Changelog</span></a></li></ul></nav>
+      <article class="prose prose--docs">
+<section class="doc-sec" id="sdks"><h2><span class="l-vi">Hai SDK, một bộ tính năng</span><span class="l-en" lang="en">Two SDKs, one feature set</span></h2>
+<div class="l-vi"><p>SDK Python và JavaScript có cùng tính năng, cùng quy tắc và cùng định dạng lưu trữ. Tên hàm theo thói quen của từng ngôn ngữ: <code>send_checklist</code> trong Python là <code>sendChecklist</code> trong JavaScript; tham số từ khóa của Python là đối tượng tùy chọn trong JavaScript; mọi hàm JavaScript làm việc với Lumora trả về <code>Promise</code>.</p>
+<ul>
+<li><a href="https://getlumora.pages.dev/developers/reference/python/">Tham chiếu SDK Python</a>: tạo tự động từ docstring của <code>lumora_bot.py</code>.</li>
+<li><a href="https://getlumora.pages.dev/developers/reference/js/">Tham chiếu SDK JavaScript</a>: tạo tự động từ JSDoc của <code>lumora-bot.mjs</code> (kiểu TypeScript trong <code>lumora-bot.d.ts</code>).</li>
+<li><a href="https://getlumora.pages.dev/developers/api/">Tài liệu JSON API</a>: mọi lệnh gọi được bằng <code>bot.call(...)</code>.</li>
+</ul></div>
+<div class="l-en" lang="en"><p>The Python and JavaScript SDKs have the same features, the same rules and the same storage format. Names follow each language: Python's <code>send_checklist</code> is <code>sendChecklist</code> in JavaScript; Python keyword arguments become an options object in JavaScript; every JavaScript method that talks to Lumora returns a <code>Promise</code>.</p>
+<ul>
+<li><a href="https://getlumora.pages.dev/developers/reference/python/">Python SDK reference</a>: generated from the docstrings in <code>lumora_bot.py</code>.</li>
+<li><a href="https://getlumora.pages.dev/developers/reference/js/">JavaScript SDK reference</a>: generated from the JSDoc in <code>lumora-bot.mjs</code> (TypeScript types in <code>lumora-bot.d.ts</code>).</li>
+<li><a href="https://getlumora.pages.dev/developers/api/">JSON API reference</a>: every command you can run with <code>bot.call(...)</code>.</li>
+</ul></div>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Python</th>
+<th>JavaScript</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Bot(token=…, data_dir=…, admins=[…])</code></td>
+<td><code>new Bot({ token, dataDir, admins })</code></td>
+</tr>
+<tr>
+<td><code>@bot.command("name", "desc", admin_only=True)</code></td>
+<td><code>bot.command("name", "desc", fn, { adminOnly: true })</code></td>
+</tr>
+<tr>
+<td><code>@bot.on_text(r"…")</code></td>
+<td><code>bot.onText(/…/, fn)</code></td>
+</tr>
+<tr>
+<td><code>@bot.on_message(kinds=["file"], chats="group")</code></td>
+<td><code>bot.onMessage({ kinds: ["file"], chats: "group" }, fn)</code></td>
+</tr>
+<tr>
+<td><code>@bot.on_callback(data="buy:*")</code></td>
+<td><code>bot.onCallback({ data: "buy:*" }, fn)</code></td>
+</tr>
+<tr>
+<td><code>@bot.on_file(extensions=["csv"])</code></td>
+<td><code>bot.onFile({ extensions: ["csv"] }, fn)</code></td>
+</tr>
+<tr>
+<td><code>@bot.middleware</code></td>
+<td><code>bot.use(fn)</code></td>
+</tr>
+<tr>
+<td><code>ctx.reply(text, buttons, reply=True, silent=True)</code></td>
+<td><code>ctx.reply(text, { buttons, reply: true, silent: true })</code></td>
+</tr>
+<tr>
+<td><code>bot.send_reminder(conv, title, timedelta(minutes=5), note="…")</code></td>
+<td><code>bot.sendReminder(conv, title, { inMs: 300000 }, { note: "…" })</code></td>
+</tr>
+<tr>
+<td><code>ctx.download(timeout=120)</code> (seconds)</td>
+<td><code>ctx.download({ timeoutMs: 120000 })</code></td>
+</tr>
+<tr>
+<td><code>ctx.is_group_admin</code> (property)</td>
+<td><code>await ctx.isGroupAdmin()</code></td>
+</tr>
+<tr>
+<td><code>bot.storage["k"] = v</code></td>
+<td><code>bot.storage.set("k", v)</code></td>
+</tr>
+<tr>
+<td><code>@bot.every(60)</code> / <code>@bot.daily("08:00")</code></td>
+<td><code>bot.every(60, fn)</code> / <code>bot.daily("08:00", fn)</code></td>
+</tr>
+<tr>
+<td><code>except LumoraError as e: e.code</code></td>
+<td><code>catch (e) { e.code }</code></td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="doc-sec" id="context"><h2><span class="l-vi">Ngữ cảnh (ctx)</span><span class="l-en" lang="en">The context (ctx)</span></h2>
+<div class="l-vi"><p>Mỗi hàm xử lý nhận một <code>ctx</code>. Trường không liên quan đến sự kiện thì rỗng hoặc <code>None</code>/<code>null</code>.</p></div>
+<div class="l-en" lang="en"><p>Every handler receives a <code>ctx</code>. Fields that don't apply to the event are empty or <code>None</code>/<code>null</code>.</p></div>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Python</th>
+<th>JavaScript</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ctx.kind</code></td>
+<td><code>ctx.kind</code></td>
+<td><code>command</code>, <code>message</code>, <code>callback</code>, <code>new_user</code>, <code>new_member</code>, <code>member_left</code>, <code>added_to_group</code>, <code>file</code>, <code>reminder_due</code>, <code>checklist</code>, <code>job</code></td>
+</tr>
+<tr>
+<td><code>ctx.conv</code></td>
+<td><code>ctx.conv</code></td>
+<td><code>d:&lt;peer&gt;</code> (direct chat) or <code>g:&lt;gid&gt;</code> (group)</td>
+</tr>
+<tr>
+<td><code>ctx.sender</code>, <code>ctx.sender_name</code></td>
+<td><code>ctx.sender</code>, <code>ctx.senderName</code></td>
+<td>who caused the event</td>
+</tr>
+<tr>
+<td><code>ctx.text</code>, <code>ctx.command</code>, <code>ctx.args</code>, <code>ctx.match</code></td>
+<td>same</td>
+<td>text, command without <code>/</code>, text after it, regex match</td>
+</tr>
+<tr>
+<td><code>ctx.data</code></td>
+<td><code>ctx.data</code></td>
+<td>button data (callbacks)</td>
+</tr>
+<tr>
+<td><code>ctx.msg_id</code>, <code>ctx.reply_to</code></td>
+<td><code>ctx.msgId</code>, <code>ctx.replyTo</code></td>
+<td>message id, quoted message id</td>
+</tr>
+<tr>
+<td><code>ctx.msg_kind</code>, <code>ctx.body</code></td>
+<td><code>ctx.msgKind</code>, <code>ctx.body</code></td>
+<td>message kind and body (<code>lat</code>/<code>lon</code>, <code>question</code>…)</td>
+</tr>
+<tr>
+<td><code>ctx.is_group</code>, <code>ctx.gid</code></td>
+<td><code>ctx.isGroup</code>, <code>ctx.gid</code></td>
+<td>group chat and its id</td>
+</tr>
+<tr>
+<td><code>ctx.file</code></td>
+<td><code>ctx.file</code></td>
+<td><code>{file_id, name, size, mime, preview, state, path}</code></td>
+</tr>
+<tr>
+<td><code>ctx.reminder</code></td>
+<td><code>ctx.reminder</code></td>
+<td><code>{title, note, at_ms, author, mine, late}</code></td>
+</tr>
+<tr>
+<td><code>ctx.checklist</code>, <code>ctx.changes</code></td>
+<td>same</td>
+<td><code>{msg_id, title, items, done, total}</code>, <code>[{item, text, done, by}]</code></td>
+</tr>
+<tr>
+<td><code>ctx.member</code></td>
+<td><code>ctx.member</code></td>
+<td><code>{peer, name, role}</code></td>
+</tr>
+<tr>
+<td><code>ctx.is_admin</code>, <code>ctx.has_role(r)</code>, <code>ctx.is_group_admin</code></td>
+<td><code>ctx.isAdmin</code>, <code>ctx.hasRole(r)</code>, <code>await ctx.isGroupAdmin()</code></td>
+<td>permissions</td>
+</tr>
+<tr>
+<td><code>ctx.reply</code>, <code>reply_file</code>, <code>reply_checklist</code>, <code>reply_reminder</code>, <code>reply_poll</code></td>
+<td><code>reply</code>, <code>replyFile</code>, <code>replyChecklist</code>, <code>replyReminder</code>, <code>replyPoll</code></td>
+<td>answer in the same chat</td>
+</tr>
+<tr>
+<td><code>ctx.edit</code>, <code>delete</code>, <code>pin</code>, <code>react</code>, <code>typing</code>, <code>download</code></td>
+<td>same</td>
+<td>act on the current message</td>
+</tr>
+<tr>
+<td><code>ctx.event</code></td>
+<td><code>ctx.event</code></td>
+<td>the raw event</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="doc-sec" id="events"><h2><span class="l-vi">Sự kiện</span><span class="l-en" lang="en">Events</span></h2>
+<div class="l-vi"><p>Hàm xử lý nào chạy khi nào. Cột cuối là sự kiện gốc của Lumora (nhận trực tiếp bằng <code>on_event</code> / <code>onEvent</code>).</p></div>
+<div class="l-en" lang="en"><p>Which handler runs when. The last column is the raw Lumora event (receive it directly with <code>on_event</code> / <code>onEvent</code>).</p></div>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Python</th>
+<th>JavaScript</th>
+<th>When</th>
+<th>Raw event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>command</code></td>
+<td><code>command</code></td>
+<td>a <code>/command</code> the bot handles</td>
+<td><code>message</code></td>
+</tr>
+<tr>
+<td><code>on_text</code></td>
+<td><code>onText</code></td>
+<td>a text message matching a regex</td>
+<td><code>message</code></td>
+</tr>
+<tr>
+<td><code>on_message</code></td>
+<td><code>onMessage</code></td>
+<td>any other message (filters: <code>kinds</code>, <code>chats</code>, <code>pattern</code>)</td>
+<td><code>message</code></td>
+</tr>
+<tr>
+<td><code>on_callback</code></td>
+<td><code>onCallback</code></td>
+<td>a button on the bot's message was pressed</td>
+<td><code>callback {conv, msg_conv, msg_id, from, data}</code></td>
+</tr>
+<tr>
+<td><code>on_new_user</code></td>
+<td><code>onNewUser</code></td>
+<td>someone opened a chat with the bot for the first time</td>
+<td><code>bot_user {peer, name}</code></td>
+</tr>
+<tr>
+<td><code>on_added_to_group</code></td>
+<td><code>onAddedToGroup</code></td>
+<td>a group admin added the bot</td>
+<td><code>group</code></td>
+</tr>
+<tr>
+<td><code>on_new_member</code></td>
+<td><code>onNewMember</code></td>
+<td>someone joined a group (bot has "Read all messages")</td>
+<td><code>group</code></td>
+</tr>
+<tr>
+<td><code>on_member_left</code></td>
+<td><code>onMemberLeft</code></td>
+<td>someone left or was removed (bot has "Read all messages")</td>
+<td><code>group</code></td>
+</tr>
+<tr>
+<td><code>on_file</code></td>
+<td><code>onFile</code></td>
+<td>a file was received (filter: <code>extensions</code>)</td>
+<td><code>message</code> (<code>kind: "file"</code>), then <code>file</code></td>
+</tr>
+<tr>
+<td><code>on_reminder_due</code></td>
+<td><code>onReminderDue</code></td>
+<td>a reminder in one of the bot's chats is due</td>
+<td><code>reminder_due {conv, msg_id, title, note, at_ms, author, mine, late}</code></td>
+</tr>
+<tr>
+<td><code>on_checklist</code></td>
+<td><code>onChecklist</code></td>
+<td>someone ticked/unticked items, or items were added</td>
+<td><code>message_update {conv, id, reactions.__checks | body}</code></td>
+</tr>
+<tr>
+<td><code>on_start</code></td>
+<td><code>onStart</code></td>
+<td>the bot is online (again after an automatic restart)</td>
+<td><code>ready</code></td>
+</tr>
+<tr>
+<td><code>on_error</code></td>
+<td><code>onError</code></td>
+<td>a handler raised an error</td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>every</code>, <code>daily</code>, <code>after</code></td>
+<td>same</td>
+<td>a scheduled job is due (<code>ctx.kind == "job"</code>)</td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>on_event(name)</code></td>
+<td><code>onEvent(name, fn)</code></td>
+<td>any raw event, <code>"*"</code> = all</td>
+<td><code>message_update</code>, <code>typing</code>, <code>mention</code>, <code>contact</code>, <code>file</code>, <code>presence</code>…</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="doc-sec" id="errors"><h2><span class="l-vi">Mã lỗi</span><span class="l-en" lang="en">Error codes</span></h2>
+<div class="l-vi"><p><code>LumoraError.code</code> ổn định giữa các phiên bản; <code>message</code> là câu dễ hiểu theo ngôn ngữ của bot; <code>detail</code> là nguyên nhân kỹ thuật. Bảng dưới là các mã bot hay gặp.</p></div>
+<div class="l-en" lang="en"><p><code>LumoraError.code</code> is stable across versions; <code>message</code> is a plain sentence in the bot's language; <code>detail</code> is the technical cause. These are the codes bots meet most often.</p></div>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>err.bot_cannot_start</code></td>
+<td>Bots can only message people who messaged them first.</td>
+</tr>
+<tr>
+<td><code>err.message_too_long</code></td>
+<td>Text over 64 KB.</td>
+</tr>
+<tr>
+<td><code>err.empty_message</code></td>
+<td>Empty text.</td>
+</tr>
+<tr>
+<td><code>err.slow_mode</code></td>
+<td>The group has slow mode on (<code>{s}</code> seconds left).</td>
+</tr>
+<tr>
+<td><code>err.admins_only_post</code></td>
+<td>Only admins may post in this group.</td>
+</tr>
+<tr>
+<td><code>err.admin_only</code>, <code>err.no_perm_remove</code></td>
+<td>The action needs a group admin.</td>
+</tr>
+<tr>
+<td><code>err.group_syncing</code></td>
+<td>In a group where the bot is in privacy mode: the action needs "Read all messages".</td>
+</tr>
+<tr>
+<td><code>err.group_not_found</code>, <code>err.not_member</code></td>
+<td>Unknown group, or the bot is not in it.</td>
+</tr>
+<tr>
+<td><code>err.message_not_found</code></td>
+<td>The message doesn't exist (any more).</td>
+</tr>
+<tr>
+<td><code>err.checklist_title</code>, <code>err.checklist_items</code>, <code>err.checklist_item_missing</code></td>
+<td>Bad checklist title, item count (1–100) or item id.</td>
+</tr>
+<tr>
+<td><code>err.checklist_owner_only</code>, <code>err.reminder_owner_only</code></td>
+<td>Only the sender may add items / cancel.</td>
+</tr>
+<tr>
+<td><code>err.reminder_title</code>, <code>err.reminder_past</code></td>
+<td>Missing title, or the time is not in the future.</td>
+</tr>
+<tr>
+<td><code>err.poll_options</code></td>
+<td>A poll needs 2–10 options.</td>
+</tr>
+<tr>
+<td><code>err.too_many_scheduled</code></td>
+<td>More than 500 scheduled messages.</td>
+</tr>
+<tr>
+<td><code>err.bad_location</code></td>
+<td>Latitude/longitude out of range.</td>
+</tr>
+<tr>
+<td><code>err.file_not_found</code>, <code>err.file_unreadable</code>, <code>err.disk_full</code></td>
+<td>File problems.</td>
+</tr>
+<tr>
+<td><code>err.own_button</code></td>
+<td>You can't press a button on your own message.</td>
+</tr>
+<tr>
+<td><code>err.bad_bot_token</code>, <code>err.bot_token_mismatch</code></td>
+<td>Wrong/revoked token, or a data folder of another bot.</td>
+</tr>
+<tr>
+<td><code>internal</code></td>
+<td>Unexpected failure; see <code>detail</code> and <code>runner.log</code>.</td>
+</tr>
+<tr>
+<td><code>sdk.timeout</code></td>
+<td>No answer in time (<code>LumoraTimeout</code>).</td>
+</tr>
+<tr>
+<td><code>sdk.runner_stopped</code>, <code>sdk.runner_failed</code>, <code>sdk.runner_missing</code></td>
+<td>Lumora Bot Runner stopped, could not start, or was not found (<code>RunnerStopped</code>).</td>
+</tr>
+<tr>
+<td><code>sdk.not_for_bots</code></td>
+<td>The command is not available to bots (<code>NotAllowedForBots</code>).</td>
+</tr>
+<tr>
+<td><code>sdk.bad_buttons</code></td>
+<td>More than 8×8 buttons, or text/data over 64 characters.</td>
+</tr>
+<tr>
+<td><code>sdk.preview_too_large</code></td>
+<td>A preview picture over 64 KB.</td>
+</tr>
+<tr>
+<td><code>sdk.download_failed</code>, <code>sdk.no_file</code></td>
+<td>A download failed or was cancelled; the message has no file.</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="doc-sec" id="changelog"><h2><span class="l-vi">Nhật ký thay đổi</span><span class="l-en" lang="en">Changelog</span></h2>
+<div class="l-vi"><p>Nhật ký thay đổi được viết bằng tiếng Anh.</p></div>
+<h3>1.1.0 (2026-11-05)</h3>
+<h4>Added</h4>
+<ul>
+<li><strong>Checklists:</strong> <code>send_checklist</code> / <code>sendChecklist</code>, <code>checklist_toggle</code>, <code>checklist_add</code>, <code>checklist()</code> and the
+  <code>on_checklist</code> / <code>onChecklist</code> handler with the list state and what changed.</li>
+<li><strong>Reminders:</strong> <code>send_reminder</code>, <code>reminder_cancel</code>, <code>reminders()</code> and the <code>on_reminder_due</code> / <code>onReminderDue</code> handler.</li>
+<li><strong>Silent messages:</strong> <code>silent=True</code> / <code>{ silent: true }</code> on every send (no sound or notification).</li>
+<li><strong>Files:</strong> <code>send_file(..., preview=..., thumb=...)</code> (custom preview shown before download), <code>on_file</code> / <code>onFile</code>
+  with an extensions filter, <code>ctx.file</code> (name, size, preview), <code>download_file()</code> / <code>ctx.download()</code>, <code>files()</code>,
+  <code>accept_file()</code>, <code>cancel_file()</code>. Received files go to <code>&lt;data_dir&gt;/downloads</code> by default.</li>
+<li><strong>More message types:</strong> polls, stickers, location and live location, contact cards, voice messages.</li>
+<li><strong>Message actions:</strong> edit, delete, pin, react, forward, mentions, reply-to, <code>typing</code>, <code>messages()</code>, <code>ctx.edit()</code> on callbacks.</li>
+<li><strong>Groups:</strong> <code>on_new_member</code>, <code>on_member_left</code>, <code>on_added_to_group</code>; admin actions <code>group_ban</code>, <code>group_unban</code>,
+  <code>group_remove</code>, <code>group_settings</code> / <code>set_slow_mode</code>, <code>group_purge_member</code>, <code>group_leave</code>; <code>group_info</code>, <code>group_access</code>,
+  <code>member_role</code>, <code>ctx.is_group_admin</code>, <code>search_groups</code>; <code>chats="private"|"group"</code> filters on commands and handlers;
+  <code>/cmd@otherbot</code> is ignored.</li>
+<li><strong>Handler filters:</strong> <code>on_text(regex)</code>, <code>on_message(pattern=, kinds=, chats=)</code>, <code>on_callback(data="buy:*")</code> or
+  <code>pattern=</code>, <code>on_event(name)</code> for raw events. Specific handlers win over catch-alls.</li>
+<li><strong>Middleware</strong> (<code>bot.middleware</code> / <code>bot.use</code>), <code>on_error</code>, <code>on_start</code>.</li>
+<li><strong>Jobs:</strong> <code>every(seconds)</code>, <code>daily("HH:MM")</code>, <code>after(seconds)</code>, <code>cancel(job)</code> for scheduled broadcasts and tasks.</li>
+<li><strong>Errors:</strong> <code>LumoraError</code> with <code>.code</code>, <code>.message</code>, <code>.detail</code>, <code>.cmd</code>; <code>LumoraTimeout</code>, <code>RunnerStopped</code>,
+  <code>NotAllowedForBots</code>.</li>
+<li><strong>Runtime:</strong> structured logging (JSON with <code>LUMORA_BOT_LOG_FORMAT=json</code>), Lumora Bot Runner log in
+  <code>&lt;data_dir&gt;/runner.log</code>, automatic restart of the runner, graceful shutdown on SIGTERM/Ctrl+C, events of one
+  conversation handled in order, a fair send queue (15 messages/s overall; per chat a burst of 5, then 1/s).</li>
+<li>Python: optional asyncio support (<code>async def</code> handlers, <code>bot.aio.*</code>, <code>bot.acall</code>). JavaScript: TypeScript
+  declarations (<code>lumora-bot.d.ts</code>).</li>
+<li>Packaging: <code>pyproject.toml</code> (<code>pip install lumora-bot</code>), <code>package.json</code> with <code>exports</code> and <code>types</code>.</li>
+</ul>
+<h4>Changed</h4>
+<ul>
+<li>Errors are <code>LumoraError</code> (a <code>RuntimeError</code> subclass in Python), so existing <code>except RuntimeError</code> code still works.
+  In JavaScript <code>err.message</code> is now the plain sentence; the technical cause is in <code>err.detail</code>.</li>
+<li>Callbacks from a group answer in that group (<code>ctx.conv</code> is the conversation of the message whose button was pressed).</li>
+<li>Commands bots must not use (remote control, recovery phrase, backups, passwords, calls) raise <code>NotAllowedForBots</code>
+  from <code>call()</code>.</li>
+</ul>
+<h4>Compatible</h4>
+<ul>
+<li>Bots written for 1.0 run unchanged: same constructor arguments, <code>command</code>, <code>on_message</code>, <code>on_callback</code>,
+  <code>on_new_user</code>, <code>send</code>, <code>broadcast</code>, <code>users</code>, <code>storage</code>, <code>roles</code>, <code>call</code>, <code>ctx.reply</code>, <code>ctx.send_file</code>.</li>
+</ul>
+<h3>1.0.0</h3>
+<ul>
+<li>First release: commands with a menu, inline buttons and callbacks, bot admins and roles, JSON storage,
+  paced broadcasts, BotFather tokens.</li>
+</ul>
+</section>
+
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

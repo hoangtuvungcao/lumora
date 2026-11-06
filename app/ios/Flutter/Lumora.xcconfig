@@ -1,0 +1,35 @@
+// Links the Lumora Rust core (static liblumora_ffi.a) into the Runner executable.
+// Build it first on a Mac:   app/tool/apple/build_core.sh ios
+// That script also writes LumoraCore.generated.xcconfig (exact flags for the
+// library it just built), which overrides the defaults below.
+//
+// Dart finds the core with DynamicLibrary.process() (app/lib/core/ffi_api.dart),
+// so nothing in the Runner references these symbols at link time. Hence:
+//   -force_load        load every object of the archive;
+//   -Wl,-u,_lumora_*   keep the C API alive through dead-code stripping;
+//   STRIP_STYLE        keep global symbols when archiving (flutter build ipa),
+//                      otherwise dlsym() cannot find them at run time.
+
+LUMORA_PROFILE = release
+LUMORA_CORE_TARGET = $(SRCROOT)/../../core/target
+LUMORA_FFI_LIB[sdk=iphoneos*] = $(LUMORA_CORE_TARGET)/aarch64-apple-ios/$(LUMORA_PROFILE)/liblumora_ffi.a
+LUMORA_FFI_LIB[sdk=iphonesimulator*] = $(LUMORA_CORE_TARGET)/apple-ios-sim/$(LUMORA_PROFILE)/liblumora_ffi.a
+
+// System libraries the Rust core needs (rustc --print native-static-libs).
+LUMORA_NATIVE_LIBS = -lc++ -liconv -lobjc -framework Security -framework CoreFoundation -framework Foundation -framework SystemConfiguration -framework AudioToolbox -framework CoreAudio -framework AVFAudio -framework AVFoundation
+LUMORA_KEEP_SYMBOLS = -Wl,-u,_lumora_start -Wl,-u,_lumora_needs_passphrase -Wl,-u,_lumora_request -Wl,-u,_lumora_next_event -Wl,-u,_lumora_frame -Wl,-u,_lumora_free -Wl,-u,_lumora_last_error -Wl,-u,_lumora_last_error_json -Wl,-u,_lumora_stop -Wl,-u,_lumora_push_camera_frame -Wl,-u,_lumora_push_camera_yuv -Wl,-u,_lumora_push_screen_frame -Wl,-u,_lumora_set_screen_display -Wl,-u,_lumora_clear_screen_frames -Wl,-u,_lumora_lan_candidate
+
+#include? "LumoraCore.generated.xcconfig"
+
+// Used by the Runner target: OTHER_LDFLAGS = $(inherited) $(LUMORA_LDFLAGS)
+LUMORA_LDFLAGS = -force_load "$(LUMORA_FFI_LIB)" $(LUMORA_KEEP_SYMBOLS) $(LUMORA_NATIVE_LIBS)
+STRIP_STYLE = non-global
+
+// Runner.entitlements: APNs environment (Debug.xcconfig switches to development).
+LUMORA_APS_ENVIRONMENT = production
+CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements
+
+// CI only (signed IPA): manual signing settings for the Runner target, written by
+// .github/workflows/build.yml when the iOS signing secrets exist. Kept out of the
+// Pods targets on purpose (they must not get a provisioning profile).
+#include? "LumoraSigning.generated.xcconfig"

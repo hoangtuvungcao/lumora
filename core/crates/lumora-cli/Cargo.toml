@@ -1,0 +1,19 @@
+[package]
+name = "lumora-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "lumorad"
+path = "src/main.rs"
+
+[dependencies]
+lumora-core = { path = "../lumora-core" }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+anyhow = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+media = ["lumora-core/media"]

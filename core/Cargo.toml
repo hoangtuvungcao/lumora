@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = ["crates/lumora-core", "crates/lumora-relay", "crates/lumora-ffi", "crates/lumora-cli", "crates/lumora-media", "crates/lumora-push", "crates/lumora-vpx-sys"]
+# fuzz harness: separate crate (nightly + sanitizers), never part of release builds
+exclude = ["fuzz"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Lumora-Proprietary"
+publish = false
+authors = ["Lumora Contributors"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+# one codegen unit: smaller, slightly faster binaries and less structure left for reversing
+codegen-units = 1
+# keep unwinding: lumora-ffi wraps every C entry point in catch_unwind so a panic can never
+# cross the FFI boundary into Dart/Swift (abort would kill the whole app instead)
+panic = "unwind"
+# no symbol table or debug info in shipped binaries (exported C symbols stay in dynsym)
+strip = "symbols"
+debug = false
+
+[profile.dev]
+opt-level = 1
+incremental = false
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2

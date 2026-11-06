@@ -1,0 +1,8 @@
+/* Privacy strings shown by iOS (English). Keep in sync with vi.lproj and Info.plist. */
+"CFBundleDisplayName" = "Lumora";
+"NSCameraUsageDescription" = "Lumora uses the camera so the other person can see you during video calls, and to scan the QR code when you link a device.";
+"NSMicrophoneUsageDescription" = "Lumora uses the microphone for calls and voice messages.";
+"NSLocalNetworkUsageDescription" = "Lumora connects directly to your contacts' devices on the same Wi-Fi, so messages, calls and files stay fast and never leave your network.";
+"NSPhotoLibraryUsageDescription" = "Lumora lets you choose photos and videos to send to your contacts.";
+"NSPhotoLibraryAddUsageDescription" = "Lumora saves photos and videos you receive to your library when you ask it to.";
+"NSLocationWhenInUseUsageDescription" = "Lumora shares your location only when you choose to send it to a contact.";

@@ -1,0 +1,50 @@
+# systemd unit for running the lumora-relay binary without Docker.
+#
+#   cargo build --release -p lumora-relay          # in core/ (or download a release binary)
+#   sudo install -m755 target/release/lumora-relay /usr/local/bin/
+#   sudo install -m644 lumora-relay.service /etc/systemd/system/
+#   sudo install -m644 lumora-relay.env.example /etc/default/lumora-relay   # then edit it
+#   sudo systemctl daemon-reload && sudo systemctl enable --now lumora-relay
+#   journalctl -u lumora-relay -f
+#
+# Put Caddy/nginx in front for TLS (set LUMORA_RELAY_TRUST_PROXY=true), or set
+# LUMORA_RELAY_TLS_CERT/KEY and listen on :443 directly.
+
+[Unit]
+Description=Lumora relay (WebSocket forwarder + STUN)
+Documentation=file:///usr/share/doc/lumora/relay.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/lumora-relay
+Environment=LUMORA_RELAY_MAILBOX_FILE=/var/lib/lumora-relay/mailbox.bin
+ExecStart=/usr/local/bin/lumora-relay
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+LimitNOFILE=65536
+
+DynamicUser=yes
+StateDirectory=lumora-relay
+# Needed only if you bind ports < 1024 (e.g. --listen 0.0.0.0:443 with native TLS).
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

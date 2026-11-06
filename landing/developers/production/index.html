@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="vi" data-page="dev-production" data-title-en="Production — Lumora" data-desc-en="Run a Lumora bot in production: limits, token security, systemd, Docker and Windows, troubleshooting.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vận hành — Lumora</title>
+<meta name="description" content="Vận hành bot Lumora: bảng giới hạn, bảo mật token, chạy 24/7 với systemd, Docker hoặc Windows, khắc phục sự cố.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/production/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Vận hành — Lumora">
+<meta property="og:description" content="Vận hành bot Lumora: bảng giới hạn, bảo mật token, chạy 24/7 với systemd, Docker hoặc Windows, khắc phục sự cố.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/production/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Vận hành — Lumora">
+<meta name="twitter:description" content="Vận hành bot Lumora: bảng giới hạn, bảo mật token, chạy 24/7 với systemd, Docker hoặc Windows, khắc phục sự cố.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/" aria-current="page"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#settings"/></svg><span class="l-vi">Chạy thật</span><span class="l-en" lang="en">Going live</span></p>
+      <h1 class="hero__title"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></h1>
+      <p class="lead-p"><span class="l-vi">Giới hạn, bảo mật token, chạy 24/7 (systemd, Docker, Windows), khắc phục sự cố và câu hỏi thường gặp.</span><span class="l-en" lang="en">Limits, token security, running 24/7 (systemd, Docker, Windows), troubleshooting and FAQ.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#limits"><span class="l-vi">Giới hạn</span><span class="l-en" lang="en">Limits</span></a></li><li><a href="#security"><span class="l-vi">Bảo mật</span><span class="l-en" lang="en">Security</span></a></li><li><a href="#deploy"><span class="l-vi">Chạy 24/7</span><span class="l-en" lang="en">Running 24/7</span></a></li><li><a href="#operations"><span class="l-vi">Cập nhật, sao lưu, theo dõi</span><span class="l-en" lang="en">Updates, backups, monitoring</span></a></li><li><a href="#troubleshooting"><span class="l-vi">Khắc phục sự cố</span><span class="l-en" lang="en">Troubleshooting</span></a></li><li><a href="#faq"><span class="l-vi">Câu hỏi thường gặp</span><span class="l-en" lang="en">FAQ</span></a></li></ul></nav>
+      <article class="prose prose--docs">
+<section class="doc-sec" id="limits"><h2><span class="l-vi">Giới hạn</span><span class="l-en" lang="en">Limits</span></h2>
+<div class="l-vi"><div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Mục</th>
+<th>Giới hạn</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tin nhắn chữ</td>
+<td>64 KB (UTF-8), dài hơn thì chia nhỏ</td>
+</tr>
+<tr>
+<td>Nút bấm</td>
+<td>8 hàng × 8 nút; chữ và dữ liệu mỗi nút ≤ 64 ký tự</td>
+</tr>
+<tr>
+<td>Tốc độ gửi (SDK tự giãn)</td>
+<td>15 tin/giây tổng; mỗi cuộc trò chuyện 5 tin liền rồi 1 tin/giây</td>
+</tr>
+<tr>
+<td>Ứng dụng người nhận</td>
+<td>nhận tối đa 20 tin/giây từ một người gửi; SDK luôn gửi chậm hơn mức này</td>
+</tr>
+<tr>
+<td>Xem trước tệp</td>
+<td>chữ ≤ 4 KB; ảnh JPEG/PNG/WebP ≤ 64 KB</td>
+</tr>
+<tr>
+<td>Tự tải tệp nhận được</td>
+<td>tin riêng ≤ 25 MB, nhóm ≤ 2 MB (lớn hơn: <code>download_file</code>)</td>
+</tr>
+<tr>
+<td>Tin nhắn thoại</td>
+<td>≤ 32 MB</td>
+</tr>
+<tr>
+<td>Danh sách việc</td>
+<td>1–100 mục, mỗi mục và tiêu đề ≤ 200 ký tự</td>
+</tr>
+<tr>
+<td>Nhắc hẹn</td>
+<td>tiêu đề ≤ 200, ghi chú ≤ 1.000 ký tự; trong vòng 10 năm; trễ quá 24 giờ thì bỏ qua</td>
+</tr>
+<tr>
+<td>Bình chọn</td>
+<td>2–10 lựa chọn (≤ 100 ký tự), câu hỏi ≤ 300 ký tự</td>
+</tr>
+<tr>
+<td>Tin hẹn giờ (<code>schedule_message</code>)</td>
+<td>≤ 500 tin đang chờ</td>
+</tr>
+<tr>
+<td>Vị trí trực tiếp</td>
+<td>≤ 8 giờ</td>
+</tr>
+<tr>
+<td>Giới thiệu bot (<code>about</code>)</td>
+<td>≤ 300 ký tự</td>
+</tr>
+<tr>
+<td>Số bot mỗi tài khoản</td>
+<td>20</td>
+</tr>
+<tr>
+<td>@tên của bot</td>
+<td>3–24 ký tự <code>a–z 0–9 _</code>, kết thúc bằng <code>bot</code></td>
+</tr>
+<tr>
+<td>Tài nguyên</td>
+<td>≈ 30 MB RAM mỗi bot, gần 0 % CPU khi rảnh</td>
+</tr>
+</tbody>
+</table></div>
+<p>Không có hạn mức hay phí chung: mỗi bot chạy trên máy của bạn.</p></div>
+<div class="l-en" lang="en"><div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>What</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text message</td>
+<td>64 KB (UTF-8); split longer text</td>
+</tr>
+<tr>
+<td>Buttons</td>
+<td>8 rows × 8 buttons; text and data ≤ 64 characters each</td>
+</tr>
+<tr>
+<td>Send pace (paced by the SDK)</td>
+<td>15 messages/s overall; per chat 5 in a row, then 1/s</td>
+</tr>
+<tr>
+<td>Receiving apps</td>
+<td>accept up to 20 messages/s from one sender; the SDK always stays below that</td>
+</tr>
+<tr>
+<td>File previews</td>
+<td>text ≤ 4 KB; JPEG/PNG/WebP picture ≤ 64 KB</td>
+</tr>
+<tr>
+<td>Automatic download of received files</td>
+<td>direct chats ≤ 25 MB, groups ≤ 2 MB (bigger: <code>download_file</code>)</td>
+</tr>
+<tr>
+<td>Voice messages</td>
+<td>≤ 32 MB</td>
+</tr>
+<tr>
+<td>Checklists</td>
+<td>1–100 items; items and title ≤ 200 characters</td>
+</tr>
+<tr>
+<td>Reminders</td>
+<td>title ≤ 200, note ≤ 1,000 characters; within 10 years; skipped when more than 24 h late</td>
+</tr>
+<tr>
+<td>Polls</td>
+<td>2–10 options (≤ 100 characters), question ≤ 300 characters</td>
+</tr>
+<tr>
+<td>Scheduled messages (<code>schedule_message</code>)</td>
+<td>≤ 500 pending</td>
+</tr>
+<tr>
+<td>Live location</td>
+<td>≤ 8 hours</td>
+</tr>
+<tr>
+<td>Bot description (<code>about</code>)</td>
+<td>≤ 300 characters</td>
+</tr>
+<tr>
+<td>Bots per account</td>
+<td>20</td>
+</tr>
+<tr>
+<td>Bot @username</td>
+<td>3–24 characters <code>a–z 0–9 _</code>, ending in <code>bot</code></td>
+</tr>
+<tr>
+<td>Resources</td>
+<td>≈ 30 MB RAM per bot, close to 0 % CPU when idle</td>
+</tr>
+</tbody>
+</table></div>
+<p>There is no central quota and no fee: each bot runs on your own computer.</p></div>
+</section>
+<section class="doc-sec" id="security"><h2><span class="l-vi">Bảo mật</span><span class="l-en" lang="en">Security</span></h2>
+<div class="l-vi"><ul>
+<li><strong>Token là chìa khóa của bot.</strong> Ai có token là điều khiển được bot. Đặt token trong biến môi trường <code>LUMORA_BOT_TOKEN</code> hoặc tệp môi trường chỉ chủ máy đọc được (<code>chmod 600</code>); đừng đưa vào mã nguồn, ảnh chụp màn hình hay kho mã công khai. SDK chuyển token cho Lumora Bot Runner qua biến môi trường, không qua dòng lệnh.</li>
+<li><strong>Lỡ lộ token:</strong> trong Lumora, gửi <code>/mybots</code> cho BotFather, chọn bot, bấm <strong>Thu hồi mã</strong>. Token cũ ngừng hoạt động ngay; bot nhận khóa mới nên hãy chạy token mới với <strong>thư mục dữ liệu mới</strong>. @tên của bot giữ nguyên.</li>
+<li><strong>Thư mục dữ liệu</strong> chứa danh tính, tin nhắn và <code>bot-storage.json</code> của bot. Chỉ cho tài khoản chạy bot đọc (<code>chmod 700</code>), sao lưu định kỳ, mỗi bot một thư mục và chỉ một tiến trình dùng nó.</li>
+<li><strong>Quản trị viên của bot:</strong> ghi đầy đủ <code>@tên·mã</code> (phần mã gắn với tài khoản nên không giả mạo được) hoặc mã người dùng.</li>
+<li><strong>Dữ liệu người dùng:</strong> tin nhắn được mã hóa đầu cuối giữa người dùng và bot, nhưng bot (và bạn) đọc được những gì gửi cho bot. Chỉ lưu thứ thật sự cần, không ghi nội dung tin nhắn vào log, cho người dùng cách hủy nhận tin.</li>
+<li><strong>Đầu vào không tin cậy:</strong> kiểm tra <code>ctx.args</code>, cỡ tệp và loại tệp; không bao giờ chạy tệp người khác gửi.</li>
+<li><strong>Lệnh dành cho con người:</strong> điều khiển máy từ xa, cụm từ khôi phục, sao lưu, mật khẩu và cuộc gọi bị SDK chặn (<code>NotAllowedForBots</code>).</li>
+<li>Chạy bot bằng một tài khoản hệ thống riêng, không dùng quyền quản trị (root/Administrator).</li>
+</ul></div>
+<div class="l-en" lang="en"><ul>
+<li><strong>The token is your bot's key.</strong> Whoever has it controls the bot. Keep it in the <code>LUMORA_BOT_TOKEN</code> environment variable or in an environment file only the owner can read (<code>chmod 600</code>); never put it in source code, screenshots or public repositories. The SDK hands the token to Lumora Bot Runner through the environment, never on the command line.</li>
+<li><strong>If the token leaks:</strong> in Lumora, send <code>/mybots</code> to BotFather, pick the bot and tap <strong>Revoke token</strong>. The old token stops working at once; the bot gets a new key, so run the new token with a <strong>new data folder</strong>. The bot's @username stays the same.</li>
+<li><strong>The data folder</strong> holds the bot's identity, messages and <code>bot-storage.json</code>. Make it readable only by the account running the bot (<code>chmod 700</code>), back it up, and use one folder per bot with only one process at a time.</li>
+<li><strong>Bot admins:</strong> use the full <code>@name·tag</code> (the tag is bound to the account, so it can't be faked) or the user id.</li>
+<li><strong>User data:</strong> messages are end-to-end encrypted between users and the bot, but the bot (and you) can read what is sent to it. Keep only what you need, don't log message content, and let people unsubscribe.</li>
+<li><strong>Untrusted input:</strong> check <code>ctx.args</code>, file sizes and file types; never execute files people send.</li>
+<li><strong>Things only people may do:</strong> remote control, the recovery phrase, backups, passwords and calls are blocked by the SDK (<code>NotAllowedForBots</code>).</li>
+<li>Run the bot under its own system account, never as root/Administrator.</li>
+</ul></div>
+</section>
+<section class="doc-sec" id="deploy"><h2><span class="l-vi">Chạy 24/7</span><span class="l-en" lang="en">Running 24/7</span></h2>
+<div class="l-vi"><p>Bot chạy khi máy chạy bot đang bật: một máy ở nhà hay ở cửa hàng, hoặc một máy chủ ảo nhỏ nhất đều đủ. SDK tự khởi động lại Lumora Bot Runner nếu nó dừng bất ngờ, và tắt êm khi nhận SIGTERM hoặc Ctrl+C (chờ các hàm xử lý đang chạy xong, lưu dữ liệu rồi mới thoát).</p>
+<h3>Linux: systemd</h3>
+<p>Đặt bot ở <code>/opt/lumora-bots/hoamai/</code>, Bot Runner ở <code>/opt/lumora-bots/bin/</code>, token trong <code>/etc/lumora-bots/hoamai.env</code> (<code>LUMORA_BOT_TOKEN=lumora_bot_...</code>, <code>chmod 600</code>):</p></div>
+<div class="l-en" lang="en"><p>A bot runs while its computer is on: an always-on computer at home or in a shop, or the smallest virtual server, is enough. The SDK restarts Lumora Bot Runner if it stops unexpectedly and shuts down cleanly on SIGTERM or Ctrl+C (running handlers finish, data is saved, then it exits).</p>
+<h3>Linux: systemd</h3>
+<p>Put the bot in <code>/opt/lumora-bots/hoamai/</code>, Bot Runner in <code>/opt/lumora-bots/bin/</code>, and the token in <code>/etc/lumora-bots/hoamai.env</code> (<code>LUMORA_BOT_TOKEN=lumora_bot_...</code>, <code>chmod 600</code>):</p></div>
+<pre class="code"><code data-lang="ini"># /etc/systemd/system/lumora-bot-hoamai.service
+[Unit]
+Description=Lumora bot @hoamai_bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=lumora-bot
+WorkingDirectory=/opt/lumora-bots/hoamai
+EnvironmentFile=/etc/lumora-bots/hoamai.env
+Environment=LUMORAD=/opt/lumora-bots/bin/lumora-bot-runner-linux-x86_64
+Environment=LUMORA_BOT_LOG_FORMAT=json
+ExecStart=/usr/bin/python3 bot.py
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/lumora-bots/hoamai
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+<pre class="code"><code data-lang="bash">sudo useradd --system --home /opt/lumora-bots --shell /usr/sbin/nologin lumora-bot
+sudo chown -R lumora-bot: /opt/lumora-bots/hoamai &amp;&amp; sudo chmod 700 /opt/lumora-bots/hoamai
+sudo systemctl daemon-reload &amp;&amp; sudo systemctl enable --now lumora-bot-hoamai
+journalctl -u lumora-bot-hoamai -f            # xem log / follow the logs</code></pre>
+<div class="l-vi"><p>Với bot JavaScript, đổi <code>ExecStart</code> thành <code>/usr/bin/node bot.mjs</code>.</p>
+<h3>Docker</h3>
+<p>Thư mục dữ liệu phải nằm trong một volume để không mất danh tính và dữ liệu khi tạo lại container:</p></div>
+<div class="l-en" lang="en"><p>For a JavaScript bot, set <code>ExecStart=/usr/bin/node bot.mjs</code>.</p>
+<h3>Docker</h3>
+<p>Keep the data folder in a volume so the identity and data survive re-creating the container:</p></div>
+<pre class="code"><code data-lang="dockerfile">FROM python:3.12-slim
+WORKDIR /bot
+COPY lumora-bot-runner-linux-x86_64 /usr/local/bin/lumorad
+RUN chmod +x /usr/local/bin/lumorad \
+ &amp;&amp; pip install --no-cache-dir https://getlumora.pages.dev/developers/packages/lumora_bot-1.1.0-py3-none-any.whl \
+ &amp;&amp; useradd --system --create-home bot &amp;&amp; mkdir -p /bot/data &amp;&amp; chown bot /bot/data
+COPY bot.py .
+USER bot
+ENV LUMORAD=/usr/local/bin/lumorad LUMORA_BOT_LOG_FORMAT=json
+VOLUME /bot/data
+STOPSIGNAL SIGTERM
+CMD [&quot;python&quot;, &quot;bot.py&quot;]</code></pre>
+<pre class="code"><code data-lang="bash"># bot.py dùng / uses: Bot(data_dir=&quot;data&quot;)
+docker build -t hoamai-bot .
+docker run -d --name hoamai --restart unless-stopped \
+  -e LUMORA_BOT_TOKEN -v hoamai-data:/bot/data hoamai-bot
+docker logs -f hoamai</code></pre>
+<div class="l-vi"><p>Bot JavaScript: dùng <code>FROM node:20-slim</code>, cài bằng <code>npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz</code> và <code>CMD ["node", "bot.mjs"]</code>. Muốn bot tìm thấy người dùng trong cùng mạng nội bộ, chạy container với <code>--network host</code> (Linux).</p>
+<h3>Windows</h3>
+<p>Cách đơn giản: <strong>Task Scheduler</strong> → Create Task → <em>Run whether user is logged on or not</em>, trigger <em>At startup</em>, action <code>python.exe</code> với đối số <code>bot.py</code> và thư mục bắt đầu là thư mục của bot. Đặt <code>LUMORA_BOT_TOKEN</code> và <code>LUMORAD</code> trong <em>System Properties → Environment Variables</em> của tài khoản chạy bot.</p>
+<p>Muốn chạy như một dịch vụ Windows, dùng một trình bao dịch vụ như NSSM:</p></div>
+<div class="l-en" lang="en"><p>JavaScript bots: use <code>FROM node:20-slim</code>, install with <code>npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz</code> and <code>CMD ["node", "bot.mjs"]</code>. For the bot to find users on the same local network, run the container with <code>--network host</code> (Linux).</p>
+<h3>Windows</h3>
+<p>The simple way: <strong>Task Scheduler</strong> → Create Task → <em>Run whether user is logged on or not</em>, trigger <em>At startup</em>, action <code>python.exe</code> with argument <code>bot.py</code> and "Start in" set to the bot's folder. Set <code>LUMORA_BOT_TOKEN</code> and <code>LUMORAD</code> under <em>System Properties → Environment Variables</em> for the account that runs the bot.</p>
+<p>To run it as a Windows service, use a service wrapper such as NSSM:</p></div>
+<pre class="code"><code data-lang="bat">nssm install HoaMaiBot &quot;C:\Python312\python.exe&quot; &quot;C:\bots\hoamai\bot.py&quot;
+nssm set HoaMaiBot AppDirectory C:\bots\hoamai
+nssm set HoaMaiBot AppEnvironmentExtra LUMORA_BOT_TOKEN=lumora_bot_... LUMORAD=C:\bots\lumora-bot-runner-windows-x86_64.exe
+nssm set HoaMaiBot AppStopMethodConsole 15000
+nssm start HoaMaiBot</code></pre>
+<div class="l-vi"><p>NSSM gửi Ctrl+C khi dừng dịch vụ nên bot vẫn tắt êm. Trên macOS, dùng <code>launchd</code> (một tệp <code>.plist</code> trong <code>~/Library/LaunchAgents</code> với <code>KeepAlive</code>).</p>
+<h3>Biến môi trường</h3></div>
+<div class="l-en" lang="en"><p>NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly. On macOS, use <code>launchd</code> (a <code>.plist</code> in <code>~/Library/LaunchAgents</code> with <code>KeepAlive</code>).</p>
+<h3>Environment variables</h3></div>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LUMORA_BOT_TOKEN</code></td>
+<td>Token từ BotFather / BotFather token</td>
+</tr>
+<tr>
+<td><code>LUMORAD</code></td>
+<td>Đường dẫn Lumora Bot Runner / Path to Lumora Bot Runner</td>
+</tr>
+<tr>
+<td><code>LUMORA_BOT_LOG_FORMAT</code></td>
+<td><code>json</code> = log dạng JSON / JSON logs</td>
+</tr>
+<tr>
+<td><code>LUMORA_BOT_LOG_LEVEL</code></td>
+<td><code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>, <code>ERROR</code></td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section class="doc-sec" id="operations"><h2><span class="l-vi">Cập nhật, sao lưu, theo dõi</span><span class="l-en" lang="en">Updates, backups, monitoring</span></h2>
+<div class="l-vi"><ul>
+<li><strong>Cập nhật SDK:</strong> cài lại gói mới (<code>pip install -U …whl</code>, <code>npm install …tgz</code>) rồi khởi động lại bot. Mã bot viết cho bản 1.0 vẫn chạy với 1.1. Xem <a href="https://getlumora.pages.dev/developers/reference/#changelog">nhật ký thay đổi</a>.</li>
+<li><strong>Cập nhật Lumora Bot Runner:</strong> dừng bot, thay tệp, chạy lại. Dữ liệu được giữ nguyên.</li>
+<li><strong>Sao lưu:</strong> dừng bot (hoặc chấp nhận bản sao "đang chạy") rồi sao chép cả thư mục dữ liệu. Bot tạo bằng token có thể chạy lại từ token, nhưng lịch sử và <code>bot-storage.json</code> chỉ có trong thư mục.</li>
+<li><strong>Theo dõi:</strong> đặt <code>LUMORA_BOT_LOG_FORMAT=json</code> và gom log bằng công cụ bạn quen dùng. Các sự kiện đáng cảnh báo: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Log của Lumora Bot Runner ở <code>runner.log</code> trong thư mục dữ liệu (tự xoay vòng ở 10 MB).</li>
+</ul></div>
+<div class="l-en" lang="en"><ul>
+<li><strong>Updating the SDK:</strong> install the new package (<code>pip install -U …whl</code>, <code>npm install …tgz</code>) and restart the bot. Bots written for 1.0 run unchanged on 1.1. See the <a href="https://getlumora.pages.dev/developers/reference/#changelog">changelog</a>.</li>
+<li><strong>Updating Lumora Bot Runner:</strong> stop the bot, replace the file, start again. Data is kept.</li>
+<li><strong>Backups:</strong> stop the bot (or accept a "live" copy) and copy the whole data folder. A token bot can be started again from its token, but its history and <code>bot-storage.json</code> only live in the folder.</li>
+<li><strong>Monitoring:</strong> set <code>LUMORA_BOT_LOG_FORMAT=json</code> and collect the logs with the tool you already use. Events worth an alert: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Lumora Bot Runner's own log is <code>runner.log</code> in the data folder (rotated at 10 MB).</li>
+</ul></div>
+</section>
+<section class="doc-sec" id="troubleshooting"><h2><span class="l-vi">Khắc phục sự cố</span><span class="l-en" lang="en">Troubleshooting</span></h2>
+<div class="l-vi"><div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Hiện tượng</th>
+<th>Cách xử lý</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Lumora Bot Runner not found</code> (<code>sdk.runner_missing</code>)</td>
+<td>Đặt <code>LUMORAD</code> trỏ đúng tệp Bot Runner; trên Linux/macOS chạy <code>chmod +x</code> cho tệp. macOS chặn tệp tải về: cho phép trong Cài đặt hệ thống → Quyền riêng tư &amp; Bảo mật.</td>
+</tr>
+<tr>
+<td><code>Lumora Bot Runner could not start</code> (<code>sdk.runner_failed</code>)</td>
+<td>Xem <code>runner.log</code> trong thư mục dữ liệu. Thường do một tiến trình khác đang dùng cùng thư mục, hoặc ổ đĩa đầy.</td>
+</tr>
+<tr>
+<td><code>err.bad_bot_token</code></td>
+<td>Token chép thiếu hoặc đã bị thu hồi. Lấy lại trong BotFather (<code>/mybots</code> → Mã bí mật).</td>
+</tr>
+<tr>
+<td><code>err.bot_token_mismatch</code></td>
+<td>Thư mục dữ liệu thuộc về bot khác (hoặc token cũ trước khi thu hồi). Dùng thư mục mới cho token này.</td>
+</tr>
+<tr>
+<td>Không ai tìm thấy bot</td>
+<td>Chờ một phút sau lần chạy đầu tiên; gửi cho người dùng mã 9 số hoặc <code>@tên·mã</code> đầy đủ. Đừng dùng <code>public_directory=False</code> khi chạy thật.</td>
+</tr>
+<tr>
+<td><code>err.bot_cannot_start</code></td>
+<td>Bot chỉ nhắn được cho người đã nhắn bot trước. Hãy để người dùng gửi <code>/start</code>.</td>
+</tr>
+<tr>
+<td>Bot im lặng trong nhóm</td>
+<td>Ở chế độ riêng tư bot chỉ thấy lệnh <code>/…</code>, tin nhắc @bot và tin trả lời bot. Thành viên vào nhóm sau khi bot được thêm cần chế độ "đọc mọi tin". Xem <a href="https://getlumora.pages.dev/developers/guides/#groups">Nhóm</a>.</td>
+</tr>
+<tr>
+<td><code>err.group_syncing</code> khi sửa, xóa, ghim hay quản trị trong nhóm</td>
+<td>Bot đang ở chế độ riêng tư: các việc này cần quyền "đọc mọi tin" (và quyền quản trị viên cho việc quản trị).</td>
+</tr>
+<tr>
+<td><code>err.slow_mode</code></td>
+<td>Nhóm bật chế độ chậm; cho bot làm quản trị viên hoặc gửi ít tin hơn.</td>
+</tr>
+<tr>
+<td>Gửi hàng loạt chậm</td>
+<td>Đúng như thiết kế: 15 tin/giây để tin của bot không bị chặn như tin rác. 1.000 người ≈ 70 giây.</td>
+</tr>
+<tr>
+<td>Nhắc hẹn không báo</td>
+<td>Bot phải đang chạy đúng giờ nhắc (nếu tắt, bot nhận nhắc khi bật lại với <code>late=True</code>, trong vòng 24 giờ). Giờ dùng múi giờ của máy chạy bot.</td>
+</tr>
+<tr>
+<td>Tệp không tải về</td>
+<td>Tăng <code>timeout</code> của <code>ctx.download()</code>; kiểm tra dung lượng đĩa (<code>err.disk_full</code>) và quyền ghi thư mục <code>downloads</code>.</td>
+</tr>
+<tr>
+<td>Bot trả lời hai lần</td>
+<td>Có hai tiến trình chạy cùng bot. Mỗi bot chỉ chạy một tiến trình.</td>
+</tr>
+</tbody>
+</table></div></div>
+<div class="l-en" lang="en"><div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Symptom</th>
+<th>What to do</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Lumora Bot Runner not found</code> (<code>sdk.runner_missing</code>)</td>
+<td>Point <code>LUMORAD</code> at the Bot Runner file; on Linux/macOS run <code>chmod +x</code> on it. If macOS blocks the downloaded file, allow it in System Settings → Privacy &amp; Security.</td>
+</tr>
+<tr>
+<td><code>Lumora Bot Runner could not start</code> (<code>sdk.runner_failed</code>)</td>
+<td>Read <code>runner.log</code> in the data folder. Usually another process is using the same folder, or the disk is full.</td>
+</tr>
+<tr>
+<td><code>err.bad_bot_token</code></td>
+<td>The token was copied incompletely or has been revoked. Get it again in BotFather (<code>/mybots</code> → Secret token).</td>
+</tr>
+<tr>
+<td><code>err.bot_token_mismatch</code></td>
+<td>The data folder belongs to another bot (or to the old token before a revoke). Use a new folder for this token.</td>
+</tr>
+<tr>
+<td>Nobody can find the bot</td>
+<td>Wait a minute after the first start; give people the 9-digit ID or the full <code>@name·tag</code>. Don't use <code>public_directory=False</code> in production.</td>
+</tr>
+<tr>
+<td><code>err.bot_cannot_start</code></td>
+<td>Bots can only message people who messaged them first. Ask users to send <code>/start</code>.</td>
+</tr>
+<tr>
+<td>The bot is silent in a group</td>
+<td>In privacy mode it only sees <code>/commands</code>, messages that @mention it and replies to it. Members who joined after the bot was added need "Read all messages". See <a href="https://getlumora.pages.dev/developers/guides/#groups">Groups</a>.</td>
+</tr>
+<tr>
+<td><code>err.group_syncing</code> when editing, deleting, pinning or moderating in a group</td>
+<td>The bot is in privacy mode: these need "Read all messages" (and admin rights for moderation).</td>
+</tr>
+<tr>
+<td><code>err.slow_mode</code></td>
+<td>The group has slow mode on; make the bot an admin or send fewer messages.</td>
+</tr>
+<tr>
+<td>Broadcasts are slow</td>
+<td>By design: 15 messages/s so the bot is never treated as spam. 1,000 users ≈ 70 seconds.</td>
+</tr>
+<tr>
+<td>Reminders don't fire</td>
+<td>The bot must be running at the due time (if it was off, it gets the reminder on start with <code>late=True</code>, within 24 hours). Times use the bot computer's time zone.</td>
+</tr>
+<tr>
+<td>Files don't download</td>
+<td>Raise the <code>timeout</code> of <code>ctx.download()</code>; check free disk space (<code>err.disk_full</code>) and that the <code>downloads</code> folder is writable.</td>
+</tr>
+<tr>
+<td>The bot answers twice</td>
+<td>Two processes are running the same bot. Run exactly one per bot.</td>
+</tr>
+</tbody>
+</table></div></div>
+</section>
+<section class="doc-sec" id="faq"><h2><span class="l-vi">Câu hỏi thường gặp</span><span class="l-en" lang="en">FAQ</span></h2>
+<div class="l-vi"><p><strong>Có cần thuê máy chủ không?</strong> Không bắt buộc. Bot chạy trên bất kỳ máy nào có Bot Runner; chỉ cần máy luôn bật nếu muốn bot trả lời cả ngày.</p>
+<p><strong>Tắt máy thì sao?</strong> Bot tạm ngừng. Tin nhắn gửi trong lúc đó sẽ đến khi bot chạy lại.</p>
+<p><strong>Một máy chạy được bao nhiêu bot?</strong> Mỗi bot khoảng 30 MB RAM; mỗi bot một thư mục dữ liệu và một tiến trình.</p>
+<p><strong>Có thu phí hay giới hạn lượt gọi không?</strong> Không. Giới hạn duy nhất là tốc độ gửi để tránh làm phiền người nhận.</p>
+<p><strong>Đổi tên, mô tả, menu lệnh ở đâu?</strong> Trong mã bot: <code>about=</code>, <code>bot.set_profile(name=…, bio=…, avatar=…)</code> và các lệnh bạn khai báo. Menu lệnh được cập nhật mỗi lần bot khởi động.</p>
+<p><strong>Bot có tự vào nhóm được không?</strong> Không. Chỉ quản trị viên nhóm thêm được bot. Bot tìm được nhóm công khai bằng <code>search_groups</code> nhưng không tự tham gia.</p>
+<p><strong>Python hay JavaScript?</strong> Hai SDK có cùng tính năng và cùng định dạng dữ liệu; chọn ngôn ngữ bạn quen. JavaScript có sẵn kiểu TypeScript.</p>
+<p><strong>Gọi lệnh chưa có trong SDK?</strong> Dùng <code>bot.call("tên_lệnh", …)</code> với mọi lệnh trong <a href="https://getlumora.pages.dev/developers/api/">tài liệu JSON API</a>.</p></div>
+<div class="l-en" lang="en"><p><strong>Do I need a server?</strong> No. The bot runs on any computer with Bot Runner; you only need an always-on one if the bot should answer all day.</p>
+<p><strong>What if the computer is off?</strong> The bot pauses. Messages sent meanwhile arrive when the bot runs again.</p>
+<p><strong>How many bots per computer?</strong> About 30 MB RAM each; one data folder and one process per bot.</p>
+<p><strong>Are there fees or call limits?</strong> No. The only limit is the send pace that keeps the bot from flooding people.</p>
+<p><strong>Where do I change the name, description or command menu?</strong> In your code: <code>about=</code>, <code>bot.set_profile(name=…, bio=…, avatar=…)</code> and the commands you declare. The menu is updated every time the bot starts.</p>
+<p><strong>Can a bot join groups by itself?</strong> No. Only a group admin can add a bot. A bot can find public groups with <code>search_groups</code> but never joins on its own.</p>
+<p><strong>Python or JavaScript?</strong> Both SDKs have the same features and the same storage format; pick the one you know. JavaScript ships TypeScript types.</p>
+<p><strong>A command the SDK doesn't wrap?</strong> Use <code>bot.call("command_name", …)</code> with anything in the <a href="https://getlumora.pages.dev/developers/api/">JSON API reference</a>.</p></div>
+</section>
+
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

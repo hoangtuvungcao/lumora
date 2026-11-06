@@ -1,0 +1,39 @@
+{
+  "name": "lumora-bot",
+  "version": "1.1.0",
+  "description": "Lumora Bot SDK for JavaScript: build bots for the Lumora messenger (commands, buttons, groups, files, checklists, reminders).",
+  "type": "module",
+  "main": "./lumora-bot.mjs",
+  "module": "./lumora-bot.mjs",
+  "types": "./lumora-bot.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lumora-bot.d.ts",
+      "import": "./lumora-bot.mjs",
+      "default": "./lumora-bot.mjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lumora-bot.mjs",
+    "lumora-bot.d.ts",
+    "lumora-bot.d.mts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "license": "MIT",
+  "homepage": "https://getlumora.pages.dev/developers/",
+  "keywords": [
+    "lumora",
+    "bot",
+    "chatbot",
+    "messenger",
+    "sdk",
+    "end-to-end-encryption"
+  ]
+}

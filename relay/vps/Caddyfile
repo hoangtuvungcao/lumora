@@ -1,0 +1,11 @@
+# Caddy obtains and renews the TLS certificate for $DOMAIN automatically
+# (ports 80 and 443 must reach this machine). WebSocket upgrades are proxied
+# transparently, so the app connects to wss://$DOMAIN/ws.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy relay:8443
+	log {
+		output stdout
+		format console
+	}
+}

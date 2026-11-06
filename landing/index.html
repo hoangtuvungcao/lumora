@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.</title>
+<meta name="description" content="Lumora: nhắn tin, gọi video, sticker, tin 24 giờ, gửi file to bao nhiêu cũng được và giúp người thân sửa máy từ xa. Miễn phí, không cần đăng ký, chỉ bạn và người nhận đọc được. Có cho Windows, Mac, Linux và Android.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:description" content="Nhắn tin, gọi video, gửi file và giúp người thân sửa máy từ xa. Miễn phí, không cần đăng ký, chỉ bạn và người nhận đọc được.">
+<meta property="og:url" content="https://getlumora.pages.dev/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta name="twitter:description" content="Nhắn tin, gọi video, gửi file và giúp người thân sửa máy từ xa. Miễn phí, không cần đăng ký.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container hero__copy">
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sparkles"/></svg><span data-i18n="hero.badge">Miễn phí trọn đời · Không quảng cáo</span></p>
+      <h1 class="hero__title" data-i18n-html="hero.title">Kết nối trực tiếp.<br><span class="grad-text">Riêng tư theo cách của bạn.</span></h1>
+      <p class="hero__lead" data-i18n="hero.lead">Nhắn tin, gọi video, gửi file và giúp người thân sửa máy tính từ xa, tất cả trong một ứng dụng. Không cần đăng ký, không cần số điện thoại. Chỉ bạn và người nhận đọc được.</p>
+      <div class="hero__cta">
+        <a class="btn btn--primary btn--xl" id="primary-dl" href="/download/">
+          <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg>
+          <span id="primary-dl-label" data-i18n="hero.cta">Tải về miễn phí</span>
+        </a>
+        <a class="btn btn--glass btn--xl" href="/#features" data-i18n="hero.secondary">Xem tính năng</a>
+      </div>
+      <p class="hero__meta" id="primary-dl-meta" aria-live="polite"></p>
+      <p class="hero__platforms">
+        <a href="/download/#windows"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-windows"/></svg>Windows</a>
+        <a href="/download/#macos"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-apple"/></svg>macOS</a>
+        <a href="/download/#linux"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-linux"/></svg>Linux</a>
+        <a href="/download/#android"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-android"/></svg>Android</a>
+      </p>
+    </div>
+
+    <!-- Product mock: mirrors the real Lumora app (decorative, HTML/CSS only).
+         Wide screens: desktop window. Narrow screens: the same markup becomes the phone "Chats" screen. -->
+    <div class="container stage" aria-hidden="true">
+      <div class="stage__glow"></div>
+      <div class="app">
+        <div class="app__chrome"><span></span><span></span><span></span><b>Lumora</b></div>
+        <div class="app__status"><b>9:41</b><span class="app__status-ic"><i></i><i></i><i></i></span></div>
+        <div class="app__body">
+          <!-- left rail -->
+          <div class="app__rail">
+            <span class="rail__logo"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg><i class="cnt">12</i></span>
+            <span class="rail__btn"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#friends"/></svg><i class="cnt">1</i></span>
+            <i class="rail__sep"></i>
+            <span class="rail__srv rail__srv--tv is-on">TV<i class="dot"></i></span>
+            <span class="rail__srv rail__srv--sg">SG</span>
+            <span class="rail__btn rail__btn--green"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#plus"/></svg></span>
+            <span class="rail__btn rail__btn--green"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#compass"/></svg></span>
+            <span class="rail__btn rail__btn--end"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#monitor"/></svg></span>
+            <span class="rail__btn"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#transfer"/></svg><i class="dot dot--cyan"></i></span>
+            <span class="rail__btn"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#settings"/></svg></span>
+          </div>
+
+          <!-- chat list -->
+          <div class="app__list">
+            <div class="list__head">
+              <span class="list__logo"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg></span>
+              <b data-i18n="mock.chats">Trò chuyện</b>
+              <svg class="ic ic--green" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bars"/></svg>
+              <svg class="ic only-desk" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#filter-lines"/></svg>
+              <svg class="ic only-phone" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#search"/></svg>
+              <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bell"/></svg>
+              <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#edit"/></svg>
+            </div>
+            <p class="list__search"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#search"/></svg><span data-i18n="mock.search">Tìm kiếm cuộc trò chuyện</span></p>
+            <p class="list__chips"><span class="is-on" data-i18n="mock.all">Tất cả</span><span data-i18n="mock.unread">Chưa đọc</span><span data-i18n="mock.personal">Cá nhân</span><span data-i18n="mock.groups">Nhóm</span><span data-i18n="mock.communities">Cộng đồng</span></p>
+            <div class="list__stories">
+              <span class="story"><i class="av av--lp">LP<i class="story__add">+</i></i><small data-i18n="mock.yourStory">Tin của bạn</small></span>
+              <span class="story"><i class="av av--ma ring">MA</i><small>Anh</small></span>
+              <span class="story"><i class="av av--p av--ha ring"></i><small>Hà</small></span>
+              <span class="story"><i class="av av--p av--ngoc ring"></i><small>Ngọc</small></span>
+              <span class="story"><i class="av av--p av--linh ring ring--seen"></i><small>Linh</small></span>
+              <span class="story"><i class="av av--gb ring">GB</i><small>Bảo</small></span>
+            </div>
+            <div class="row">
+              <i class="av av--bot"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bot"/></svg></i>
+              <p class="row__main"><span class="row__top"><b>BotFather</b><i class="tag">BOT</i><svg class="ic ic--ok" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#verified"/></svg><svg class="ic row__pin" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#pushpin"/></svg></span><span class="row__sub"><span data-i18n="mock.botfather">Tạo và quản lý bot của bạn</span></span></p>
+            </div>
+            <div class="row row--muted">
+              <i class="av av--soft"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#archive"/></svg></i>
+              <p class="row__main"><span class="row__top"><b data-i18n="mock.archived">Đã lưu trữ</b></span><span class="row__sub"><span data-i18n="mock.archivedSub">1 cuộc trò chuyện</span></span></p>
+            </div>
+            <p class="list__sec" data-i18n="mock.pinned">Đã ghim</p>
+            <div class="row">
+              <i class="av av--saved"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bookmark"/></svg></i>
+              <p class="row__main"><span class="row__top"><b data-i18n="mock.saved">Tin nhắn đã lưu</b><time data-i18n="mock.yesterday">Hôm qua</time></span><span class="row__sub"><span data-i18n="mock.savedSub">Họp lớp tháng 11 ở Đà Lạt, nhớ đặt phòng sớm</span><svg class="ic row__pin" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#pushpin"/></svg></span></p>
+            </div>
+            <div class="row is-active">
+              <i class="av av--ma">MA<i class="st st--on"></i></i>
+              <p class="row__main"><span class="row__top"><b>Nguyễn Minh Anh</b><svg class="ic ic--ok" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#verified"/></svg><time class="is-new">16:57</time></span><span class="row__sub"><span data-i18n="mock.m5">Đẹp quá! Tối nay gọi video cho cả nhà xem nhé 😍</span><i class="n">1</i></span></p>
+            </div>
+            <div class="row">
+              <i class="av av--p av--ngoc"><i class="st st--away"></i></i>
+              <p class="row__main"><span class="row__top"><b>Trần Bảo Ngọc</b><svg class="ic ic--ok" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#verified"/></svg><time>16:08</time></span><span class="row__sub"><span data-i18n="mock.ngocSub">Bạn: Mai mình đi cà phê nhé</span><svg class="ic row__pin" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#pushpin"/></svg></span></p>
+            </div>
+            <p class="list__sec" data-i18n="mock.recent">Gần đây</p>
+            <div class="row">
+              <i class="av av--p av--grp"></i>
+              <p class="row__main"><span class="row__top"><b data-i18n="mock.project">Dự án Lumora 🚀</b><time class="is-new">16:50</time></span><span class="row__sub is-strong"><span data-i18n="mock.projectSub">Anh: @Lan Phương xem giúp bản thiết kế mới nhé</span><i class="n n--at">@</i><i class="n">6</i></span></p>
+            </div>
+            <div class="row">
+              <i class="av av--tb">TB<i class="st st--on"></i></i>
+              <p class="row__main"><span class="row__top"><b data-i18n="mock.weather">Thời tiết Bot</b><i class="tag">BOT</i><time class="is-new">16:49</time></span><span class="row__sub is-strong"><span data-i18n="mock.weatherSub">🌤️ Hà Nội hôm nay: 24–31°C</span><i class="n">1</i></span></p>
+            </div>
+            <div class="row">
+              <i class="av av--fam">🏡</i>
+              <p class="row__main"><span class="row__top"><b data-i18n="mock.family">Gia đình 🏡</b><time class="is-new">16:46</time></span><span class="row__sub is-strong"><span data-i18n="mock.familySub">Hà: Ừ, mua 2 hộp nhé</span><i class="n">3</i></span></p>
+            </div>
+            <div class="list__me">
+              <i class="av av--lp">LP<i class="st st--on"></i></i>
+              <p><b>Lan Phương</b><span data-i18n="mock.online">Trực tuyến</span></p>
+              <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#copy"/></svg>
+              <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#settings"/></svg>
+            </div>
+          </div>
+
+          <!-- conversation -->
+          <div class="app__conv">
+            <div class="conv__head">
+              <i class="av av--ma">MA<i class="st st--on"></i></i>
+              <p class="conv__who"><b>Nguyễn Minh Anh</b><span><i class="live"></i><span data-i18n="mock.active">Đang hoạt động</span><span class="sep"> · </span><span class="e2e"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#lock"/></svg><span data-i18n="mock.e2e">Mã hoá đầu cuối</span></span></span></p>
+              <span class="conv__tools">
+                <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#phone"/></svg>
+                <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#video"/></svg>
+                <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#more-v"/></svg>
+                <svg class="ic conv__info" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#info"/></svg>
+              </span>
+            </div>
+            <div class="conv__msgs">
+              <p class="day" data-i18n="mock.today">Hôm nay</p>
+              <p class="b b--in"><span data-i18n="mock.m1">Chị gửi em bảng tổng kết quý 3 nhé, xem giúp chị với.</span><time>16:52</time></p>
+              <div class="b b--in b--file">
+                <p class="fcard"><i class="fcard__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sheet"/></svg></i><span class="fcard__txt"><b>bao_cao_Q3.xlsx</b><span data-i18n="mock.fileMeta">801 KB · Đã tải xong</span></span><svg class="ic fcard__dl" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download-tray"/></svg></p>
+                <time>16:53</time>
+              </div>
+              <p class="b b--out"><span data-i18n="mock.m3">Em nhận được rồi ạ. Ảnh đi biển hôm qua đây chị 🏖️</span><time>16:55<svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#checks"/></svg></time></p>
+              <div class="b b--out b--img"><i class="beach"><i class="beach__sun"></i><i class="beach__sea"></i><i class="beach__sand"></i><i class="beach__palm"></i></i><time>16:56<svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#checks"/></svg></time></div>
+              <p class="b b--in"><span data-i18n="mock.m5">Đẹp quá! Tối nay gọi video cho cả nhà xem nhé 😍</span><time>16:57</time></p>
+            </div>
+            <div class="conv__composer">
+              <i class="round"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#plus"/></svg></i>
+              <p class="field"><span data-i18n="mock.input">Nhập tin nhắn…</span><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#timer"/></svg><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#smile"/></svg></p>
+              <i class="round"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#mic"/></svg></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- phone bottom tab bar -->
+        <div class="app__tabs">
+          <span class="is-on"><i class="tab__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#chat"/></svg><i class="cnt">13</i></i><small data-i18n="mock.chats">Trò chuyện</small></span>
+          <span><i class="tab__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#friends"/></svg><i class="cnt cnt--red">1</i></i><small data-i18n="mock.friends">Bạn bè</small></span>
+          <span><i class="tab__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#chats2"/></svg></i><small data-i18n="mock.communities">Cộng đồng</small></span>
+          <span><i class="tab__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#monitor"/></svg></i><small data-i18n="mock.remoteTab">Từ xa</small></span>
+          <span><i class="tab__ic"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#settings"/></svg></i><small data-i18n="mock.settings">Cài đặt</small></span>
+        </div>
+      </div>
+
+
+      <!-- floating accent: incoming video call, shown beside the window only on very wide screens (never covers it) -->
+      <div class="ring-card">
+        <i class="av av--p av--ha"><i class="ring-card__pulse"></i></i>
+        <p><b data-i18n="mock.callFrom">Hà đang gọi video</b><span data-i18n="mock.callSub">Cuộc gọi video đến…</span></p>
+        <i class="ring-card__btn ring-card__btn--no"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#phone"/></svg></i>
+        <i class="ring-card__btn ring-card__btn--ok"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#video"/></svg></i>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRUST STRIP -->
+  <section class="strip" aria-label="Lumora">
+    <div class="container strip__grid">
+      <p class="strip__item reveal"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#gift"/></svg><span data-i18n="strip.1">Miễn phí mãi mãi</span></p>
+      <p class="strip__item reveal"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#user-off"/></svg><span data-i18n="strip.2">Không cần đăng ký</span></p>
+      <p class="strip__item reveal"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#eye-off"/></svg><span data-i18n="strip.3">Không quảng cáo, không theo dõi</span></p>
+      <p class="strip__item reveal"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#devices"/></svg><span data-i18n="strip.4">Máy tính &amp; điện thoại</span></p>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <header class="section__head reveal">
+        <p class="overline" data-i18n="features.overline">Tính năng</p>
+        <h2 data-i18n-html="features.title">Một ứng dụng,<br><span class="grad-text">đủ mọi cách kết nối</span></h2>
+        <p class="section__lead" data-i18n="features.lead">Không cần cài năm ứng dụng khác nhau. Lumora gom việc nhắn tin, gọi điện, gửi file và hỗ trợ từ xa vào một nơi, đơn giản đến mức ai cũng dùng được.</p>
+      </header>
+      <div class="features">
+        <article class="glass feature feature--wide reveal">
+          <span class="feature__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#headset"/></svg></span>
+          <h3 data-i18n="f3.t">Hỗ trợ người thân sửa máy từ xa</h3>
+          <p data-i18n="f3.d">Nhìn và điều khiển máy tính của bố mẹ, bạn bè như đang ngồi cạnh: cài ứng dụng, sửa máy in, chỉnh cài đặt. Chỉ khi họ đồng ý, và họ có thể dừng bất cứ lúc nào.</p>
+        </article>
+        <article class="glass feature reveal">
+          <span class="feature__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#chat"/></svg></span>
+          <h3 data-i18n="f1.t">Nhắn tin &amp; lập nhóm</h3>
+          <p data-i18n="f1.d">Nhắn riêng, lập nhóm gia đình, nhóm lớp hay cộng đồng có nhiều kênh trò chuyện theo chủ đề.</p>
+        </article>
+        <article class="glass feature reveal">
+          <span class="feature__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#video"/></svg></span>
+          <h3 data-i18n="f2.t">Gọi thoại &amp; video</h3>
+          <p data-i18n="f2.d">Gọi rõ nét, ít giật lag. Chia sẻ màn hình ngay trong cuộc gọi chỉ bằng một chạm.</p>
+        </article>
+        <article class="glass feature reveal">
+          <span class="feature__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#file"/></svg></span>
+          <h3 data-i18n="f4.t">Gửi file to bao nhiêu cũng được</h3>
+          <p data-i18n="f4.d">Video, ảnh gốc, tài liệu nặng hàng chục GB, không bị nén mờ. Mất mạng giữa chừng? Lumora tự gửi tiếp.</p>
+        </article>
+        <article class="glass feature reveal">
+          <span class="feature__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#shield"/></svg></span>
+          <h3 data-i18n="f5.t">Riêng tư thật sự</h3>
+          <p data-i18n="f5.d">Nói chuyện riêng tư, chỉ bạn và người nhận đọc được. Kể cả chúng tôi cũng không xem được.</p>
+        </article>
+        <article class="glass feature reveal">
+          <span class="feature__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#user-off"/></svg></span>
+          <h3 data-i18n="f6.t">Không cần đăng ký</h3>
+          <p data-i18n="f6.d">Không số điện thoại, không email, không mật khẩu phải nhớ. Cài xong là dùng được ngay.</p>
+        </article>
+      </div>
+      <h3 class="more__title reveal" data-i18n="more.title">Và còn rất nhiều tiện ích khác</h3>
+      <div class="more">
+        <div class="mini reveal"><span class="mini__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sticker"/></svg></span><div><h4 data-i18n="m1.t">Sticker, GIF &amp; meme</h4><p data-i18n="m1.d">Tạo bộ sticker riêng, gửi ảnh động và meme cho cả nhóm cùng cười.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#at"/></svg></span><div><h4 data-i18n="m2.t">Tìm bạn bằng @tên·mã</h4><p data-i18n="m2.d">Tìm bạn bè bằng tên người dùng dễ nhớ, kèm mã riêng nên không ai giả mạo được.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bot"/></svg></span><div><h4 data-i18n="m3.t">Bot &amp; BotFather</h4><p data-i18n="m3.d">Bot thời tiết, nhắc việc, bán hàng… Tự tạo bot ngay trong ứng dụng với BotFather, không cần thuê máy chủ.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#trash"/></svg></span><div><h4 data-i18n="m4.t">Xóa cho mình hoặc mọi người</h4><p data-i18n="m4.d">Lỡ gửi nhầm? Thu hồi tin nhắn ở máy mọi người chỉ với một chạm.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#megaphone"/></svg></span><div><h4 data-i18n="m5.t">Công cụ quản trị nhóm</h4><p data-i18n="m5.d">Chế độ chậm, kênh thông báo, xem ai "đã xem" để nhóm lớn vẫn gọn gàng.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#story"/></svg></span><div><h4 data-i18n="m6.t">Tin 24 giờ</h4><p data-i18n="m6.d">Chia sẻ khoảnh khắc trong ngày, tự biến mất sau 24 giờ.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#pin"/></svg></span><div><h4 data-i18n="m7.t">Chia sẻ vị trí trực tiếp</h4><p data-i18n="m7.d">Cho người thân biết bạn đang ở đâu trên đường về, chỉ trong thời gian bạn chọn.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#mic"/></svg></span><div><h4 data-i18n="m8.t">Tin nhắn thoại</h4><p data-i18n="m8.d">Ngại gõ phím? Giữ nút và nói, gửi ngay.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#users"/></svg></span><div><h4 data-i18n="m9.t">Nhóm công khai &amp; riêng tư</h4><p data-i18n="m9.d">Nhóm riêng tư: không ai tìm thấy, chỉ vào bằng link mời. Nhóm công khai: ai cũng tìm được bằng @tên, mỗi nhóm có mã riêng nên không lo nhầm nhóm giả.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#lock"/></svg></span><div><h4 data-i18n="m10.t">Khoá ứng dụng &amp; khoá chat</h4><p data-i18n="m10.d">Đặt mã PIN cho cả ứng dụng hoặc riêng từng cuộc trò chuyện. Thông báo không lộ nội dung.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#hdd"/></svg></span><div><h4 data-i18n="m11.t">Tiết kiệm bộ nhớ</h4><p data-i18n="m11.d">Tự dọn file cũ và không lưu trùng một file hai lần, máy luôn nhẹ nhàng.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#devices"/></svg></span><div><h4 data-i18n="m13.t">Dùng trên nhiều thiết bị</h4><p data-i18n="m13.d">Liên kết điện thoại và máy tính bằng một lần quét mã, rồi chuyển lịch sử trò chuyện sang thiết bị mới.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#checks"/></svg></span><div><h4 data-i18n="m14.t">Danh sách việc &amp; nhắc hẹn</h4><p data-i18n="m14.d">Lên danh sách đồ cần mua cho cả nhà, đặt lời nhắc để máy của mọi người cùng báo khi đến giờ.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bars"/></svg></span><div><h4 data-i18n="m15.t">Bình chọn &amp; hẹn giờ gửi</h4><p data-i18n="m15.d">Tạo bình chọn để cả nhóm chốt lịch nhanh. Soạn tin trước và hẹn giờ để Lumora tự gửi.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#timer"/></svg></span><div><h4 data-i18n="m16.t">Tin tự xoá, không lưu lịch sử</h4><p data-i18n="m16.d">Đặt tin nhắn tự huỷ sau thời gian bạn chọn, hoặc trò chuyện không lưu lại lịch sử.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#verified"/></svg></span><div><h4 data-i18n="m17.t">Xác minh mã bảo mật</h4><p data-i18n="m17.d">So mã an toàn với người kia khi gặp mặt hoặc gọi video để chắc chắn không ai chen vào giữa.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#smile"/></svg></span><div><h4 data-i18n="m18.t">Gọi video có làm đẹp</h4><p data-i18n="m18.d">Làm mịn da, sáng và ấm nhẹ ngay trong cuộc gọi, tự sáng hơn khi phòng thiếu ánh sáng.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#edit"/></svg></span><div><h4 data-i18n="m19.t">Chỉnh sửa ảnh</h4><p data-i18n="m19.d">Cắt, xoay, vẽ, thêm chữ, nhãn dán, bộ lọc và che thông tin nhạy cảm trước khi gửi. Vị trí GPS trong ảnh được tự xoá.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sheet"/></svg></span><div><h4 data-i18n="m20.t">Xem trước tệp</h4><p data-i18n="m20.d">Xem PDF, bảng tính CSV, văn bản và Markdown ngay trong ứng dụng, kèm ảnh trang đầu của PDF trước khi tải.</p></div></div>
+        <div class="mini reveal"><span class="mini__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#gift"/></svg></span><div><h4 data-i18n="m12.t">Tất cả đều miễn phí</h4><p data-i18n="m12.d">Mọi tính năng, cho mọi người, không gói trả phí, không quảng cáo.</p></div></div>
+      </div>
+      <p class="more__note reveal"><span data-i18n="more.os">Dùng được trên Windows, macOS, Linux và Android. Bản cho iPhone/iPad sắp ra mắt.</span> <a href="/developers/" data-i18n="more.dev">Bạn là lập trình viên? Tự tạo bot →</a></p>
+    </div>
+  </section>
+
+  <!-- FOR WHO -->
+  <section class="section" id="for-who">
+    <div class="container">
+      <header class="section__head reveal">
+        <p class="overline" data-i18n="who.overline">Dành cho ai</p>
+        <h2 data-i18n-html="who.title">Mỗi người một cách dùng,<br><span class="grad-text">ai cũng thấy hợp</span></h2>
+      </header>
+      <div class="who">
+        <article class="glass who__card reveal">
+          <div class="who__top"><span class="who__icon wi-1"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#home"/></svg></span><span class="who__tag" data-i18n="who1.tag">Gia đình</span></div>
+          <p class="who__quote" data-i18n="who1.q">"Máy của bố mẹ trục trặc, mình mở Lumora là sửa được ngay, không phải chạy về nhà."</p>
+          <p class="who__text" data-i18n="who1.d">Cả nhà gọi video mỗi tối, gửi ảnh nét căng, và con cháu ở xa vẫn giúp ông bà cài đặt điện thoại, máy tính.</p>
+          <p class="chips"><span data-i18n="chip.remote">Hỗ trợ từ xa</span><span data-i18n="chip.video">Gọi video</span><span data-i18n="chip.photos">Gửi ảnh</span></p>
+        </article>
+        <article class="glass who__card reveal">
+          <div class="who__top"><span class="who__icon wi-2"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#book"/></svg></span><span class="who__tag" data-i18n="who2.tag">Học nhóm</span></div>
+          <p class="who__quote" data-i18n="who2.q">"Nhóm lớp có kênh riêng cho từng môn, tối nào cũng gọi nhóm ôn thi."</p>
+          <p class="who__text" data-i18n="who2.d">Gửi bài giảng, video bài học dung lượng lớn mà không lo giới hạn. Chia sẻ màn hình để giảng bài cho nhau.</p>
+          <p class="chips"><span data-i18n="chip.groups">Nhóm &amp; kênh</span><span data-i18n="chip.screen">Chia sẻ màn hình</span><span data-i18n="chip.files">Gửi file lớn</span></p>
+        </article>
+        <article class="glass who__card reveal">
+          <div class="who__top"><span class="who__icon wi-3"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#store"/></svg></span><span class="who__tag" data-i18n="who3.tag">Cửa hàng &amp; doanh nghiệp nhỏ</span></div>
+          <p class="who__quote" data-i18n="who3.q">"Gửi báo giá, hình sản phẩm cho khách và nhân viên, không tốn đồng phí nào mỗi tháng."</p>
+          <p class="who__text" data-i18n="who3.d">Trao đổi nội bộ riêng tư, sửa máy tính quầy thu ngân từ xa, lưu trữ trò chuyện ngay trên máy của bạn.</p>
+          <p class="chips"><span data-i18n="chip.private">Riêng tư</span><span data-i18n="chip.remote">Hỗ trợ từ xa</span><span data-i18n="chip.free">Miễn phí</span></p>
+        </article>
+        <article class="glass who__card reveal">
+          <div class="who__top"><span class="who__icon wi-4"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#gamepad"/></svg></span><span class="who__tag" data-i18n="who4.tag">Game thủ</span></div>
+          <p class="who__quote" data-i18n="who4.q">"Hội anh em có kênh thoại riêng, nói chuyện mượt suốt trận."</p>
+          <p class="who__text" data-i18n="who4.d">Lập hội nhóm riêng có kênh thoại, gọi thoại độ trễ thấp, chia sẻ màn hình khoe pha xử lý đẹp.</p>
+          <p class="chips"><span data-i18n="chip.voice">Kênh thoại</span><span data-i18n="chip.screen">Chia sẻ màn hình</span><span data-i18n="chip.groups">Nhóm &amp; kênh</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section class="section" id="how">
+    <div class="container">
+      <header class="section__head reveal">
+        <p class="overline" data-i18n="how.overline">Bắt đầu thế nào</p>
+        <h2 data-i18n="how.title">Ba bước, chưa tới một phút</h2>
+      </header>
+      <ol class="steps">
+        <li class="glass step reveal"><span class="step__num">1</span><h3 data-i18n="s1.t">Tải về và cài đặt</h3><p data-i18n="s1.d">Miễn phí trên máy tính và điện thoại Android. Cài như mọi ứng dụng khác.</p></li>
+        <li class="glass step reveal"><span class="step__num">2</span><h3 data-i18n="s2.t">Thêm bạn bè, người thân</h3><p data-i18n="s2.d">Gửi lời mời qua tin nhắn, hoặc đưa điện thoại quét mã trên màn hình của nhau.</p></li>
+        <li class="glass step reveal"><span class="step__num">3</span><h3 data-i18n="s3.t">Bắt đầu kết nối</h3><p data-i18n="s3.d">Nhắn tin, gọi điện, gửi file hay giúp nhau sửa máy. Mọi thứ chỉ giữa bạn và người nhận.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- PRIVACY -->
+  <section class="section" id="privacy">
+    <div class="container">
+      <div class="privacy glass reveal">
+        <div class="privacy__copy">
+          <p class="overline" data-i18n="pr.overline">Riêng tư là mặc định</p>
+          <h2 data-i18n-html="pr.title">Chuyện của bạn, <span class="grad-text">chỉ bạn biết</span></h2>
+          <p class="section__lead" data-i18n="pr.lead">Lumora được làm ra để không ai nhìn trộm được cuộc trò chuyện của bạn, kể cả chúng tôi. Không thu thập, không quảng cáo, không bán dữ liệu.</p>
+        </div>
+        <ul class="privacy__list">
+          <li><span class="tick"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#check"/></svg></span><div><h3 data-i18n="pr1.t">Chỉ bạn và người nhận đọc được</h3><p data-i18n="pr1.d">Tin nhắn, cuộc gọi và file được bảo vệ ngay trên máy bạn trước khi gửi đi.</p></div></li>
+          <li><span class="tick"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#check"/></svg></span><div><h3 data-i18n="pr2.t">Không số điện thoại, không email</h3><p data-i18n="pr2.d">Không có máy chủ trung tâm nào lưu tin nhắn của bạn, và nội dung luôn được mã hoá đầu cuối.</p></div></li>
+          <li><span class="tick"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#check"/></svg></span><div><h3 data-i18n="pr3.t">Dữ liệu nằm trên máy của bạn</h3><p data-i18n="pr3.d">Lịch sử trò chuyện được mã hoá và cất giữ trên chính thiết bị của bạn, không nằm trên "đám mây" của ai.</p></div></li>
+          <li><span class="tick"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#check"/></svg></span><div><h3 data-i18n="pr4.t">Bạn luôn làm chủ</h3><p data-i18n="pr4.d">Hỗ trợ từ xa chỉ bắt đầu khi bạn bấm đồng ý, trừ khi chính bạn đã đặt mật khẩu truy cập không giám sát hoặc chọn luôn cho phép thiết bị của mình. Bạn có thể dừng ngay bằng một nút.</p></div></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- DOWNLOADS -->
+  <section class="section" id="download">
+    <div class="container">
+      <header class="section__head reveal">
+        <p class="overline" data-i18n="dl.overline">Tải về</p>
+        <h2 data-i18n-html="dl.title">Miễn phí trên <span class="grad-text">mọi thiết bị của bạn</span></h2>
+        <p class="section__lead" data-i18n="dl.lead">Chọn thiết bị bạn đang dùng. Chúng tôi đã đánh dấu sẵn bản phù hợp nhất.</p>
+      </header>
+      <div class="dl-grid" id="dl-grid">
+        <noscript><p class="center"><a class="btn btn--primary" href="/download/">Trang tải về</a></p></noscript>
+      </div>
+      <p class="dl-note"><span data-i18n="dl.note">Bản cho iPhone/iPad: sắp ra mắt.</span> <a href="/download/" data-i18n="dl.more">Xem thêm lựa chọn và hướng dẫn cài đặt</a></p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="container container--narrow">
+      <header class="section__head reveal">
+        <p class="overline" data-i18n="faq.overline">Hỏi đáp</p>
+        <h2 data-i18n="faq.title">Câu hỏi thường gặp</h2>
+      </header>
+      <div class="faq">
+        <details><summary data-i18n="q1">Lumora có thật sự miễn phí không?</summary><p data-i18n="a1">Có. Lumora miễn phí trọn đời, không quảng cáo, không gói trả phí ẩn. Bạn không phải nhập thẻ hay đăng ký gì cả.</p></details>
+        <details><summary data-i18n="q2">Tôi có cần tạo tài khoản không?</summary><p data-i18n="a2">Không. Bạn chỉ cần cài ứng dụng, đặt tên hiển thị và bắt đầu dùng. Không cần số điện thoại hay email.</p></details>
+        <details><summary data-i18n="q3">Người khác, kể cả Lumora, có đọc được tin nhắn của tôi không?</summary><p data-i18n="a3">Không. Tin nhắn, cuộc gọi và file của bạn được bảo vệ ngay trên máy trước khi gửi, và chỉ máy của người nhận mở ra được. Chúng tôi không có cách nào xem nội dung.</p></details>
+        <details><summary data-i18n="q4">Làm sao để giúp bố mẹ sửa máy từ xa?</summary><p data-i18n="a4">Hai bên cùng cài Lumora và kết bạn với nhau, rồi bạn gửi yêu cầu điều khiển từ xa. Khi bố mẹ bấm "Cho phép điều khiển" (hoặc "Chỉ cho xem màn hình"), bạn sẽ thấy màn hình và giúp được họ. Họ có thể dừng bất cứ lúc nào.</p></details>
+        <details><summary data-i18n="q5">Nếu mất hoặc đổi điện thoại thì sao?</summary><p data-i18n="a5">Nếu máy cũ vẫn dùng được, hãy liên kết máy mới từ máy cũ trong Cài đặt › Thiết bị: danh bạ và lịch sử trò chuyện sẽ được chuyển sang. Nếu đã mất máy, chỉ cụm từ khôi phục mới lấy lại được danh tính của bạn, vì không có tài khoản nên không ai khôi phục hộ được. Hãy chép cụm từ đó ra giấy, cất ở nơi an toàn, và tạo thêm tệp sao lưu có mật khẩu trong Cài đặt, cất ở nơi khác ngoài điện thoại.</p></details>
+        <details><summary data-i18n="q6">Cài trên điện thoại Android thế nào?</summary><p data-i18n="a6">Bấm "Tải về" trên điện thoại, mở tệp vừa tải và chọn "Cài đặt". Lần đầu, điện thoại có thể hỏi bạn có cho phép cài ứng dụng từ trình duyệt không. Hãy chọn "Cho phép".</p></details>
+        <details><summary data-i18n="q7">Máy tính hiện cảnh báo khi mở ứng dụng thì làm sao?</summary><p data-i18n="a7">Chỉ tải Lumora từ trang này hoặc trang phát hành chính thức trên GitHub (get_lumora). Bản cài đặt được ký số khi có thể; bản chưa được ký có thể khiến Windows hoặc macOS hiện cảnh báo. Trước khi mở, luôn kiểm tra mã SHA-256 và chữ ký đi kèm trên trang phát hành: so mã của tệp với tệp SHA256SUMS (cách làm có trong mục "Thông tin cho người rành kỹ thuật" ở trang Tải về). Nếu mã không khớp, hãy xoá tệp và tải lại.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section section--cta">
+    <div class="container">
+      <div class="cta reveal">
+        <span class="cta__glow" aria-hidden="true"></span>
+        <span class="cta__mark" aria-hidden="true"><svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><g fill="#fff"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg></span>
+        <p class="cta__badge"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#gift"/></svg><span data-i18n="cta.badge">Miễn phí trọn đời</span></p>
+        <h2 class="cta__title" data-i18n="cta.title">Kết nối với những người bạn thương, theo cách riêng tư nhất.</h2>
+        <p class="cta__lead" data-i18n="cta.lead">Cài đặt trong một phút. Không đăng ký, không chờ đợi.</p>
+        <div class="cta__actions">
+          <a class="btn btn--white btn--xl cta__btn" id="cta-dl" href="/download/">
+            <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span id="cta-dl-label" data-i18n="cta.btn">Tải Lumora miễn phí</span>
+          </a>
+          <a class="cta__link" href="/download/"><span data-i18n="cta.other">Xem trên thiết bị khác</span><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#arrow-right"/></svg></a>
+        </div>
+        <p class="cta__os"><a href="/download/#windows"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-windows"/></svg>Windows</a><a href="/download/#macos"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-apple"/></svg>macOS</a><a href="/download/#linux"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-linux"/></svg>Linux</a><a href="/download/#android"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#os-android"/></svg>Android</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

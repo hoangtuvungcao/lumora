@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="vi" data-page="dev-examples" data-title-en="Example bots — Lumora" data-desc-en="Sample Lumora bots in Python and JavaScript: group helper, team tasks with checklists and reminders, file summary, buttons.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ví dụ bot — Lumora</title>
+<meta name="description" content="Bot Lumora mẫu bằng Python và JavaScript: quản lý nhóm, việc nhóm với danh sách việc và nhắc hẹn, tóm tắt tệp, nút bấm.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/examples/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Ví dụ bot — Lumora">
+<meta property="og:description" content="Bot Lumora mẫu bằng Python và JavaScript: quản lý nhóm, việc nhóm với danh sách việc và nhắc hẹn, tóm tắt tệp, nút bấm.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/examples/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Ví dụ bot — Lumora">
+<meta name="twitter:description" content="Bot Lumora mẫu bằng Python và JavaScript: quản lý nhóm, việc nhóm với danh sách việc và nhắc hẹn, tóm tắt tệp, nút bấm.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/" aria-current="page"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#bot"/></svg><span class="l-vi">Đã kiểm thử</span><span class="l-en" lang="en">Tested</span></p>
+      <h1 class="hero__title"><span class="l-vi">Ví dụ bot</span><span class="l-en" lang="en">Example bots</span></h1>
+      <p class="lead-p"><span class="l-vi">Bốn bot hoàn chỉnh, mỗi bot có bản Python và JavaScript giống nhau, được kiểm thử tự động.</span><span class="l-en" lang="en">Four complete bots, each in matching Python and JavaScript versions, tested automatically.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#starter"><span class="l-vi">Bot khởi đầu</span><span class="l-en" lang="en">Starter bot</span></a></li><li><a href="#group-helper"><span class="l-vi">Bot quản lý nhóm</span><span class="l-en" lang="en">Group helper bot</span></a></li><li><a href="#team-tasks"><span class="l-vi">Bot việc nhóm</span><span class="l-en" lang="en">Team tasks bot</span></a></li><li><a href="#file-summary"><span class="l-vi">Bot tóm tắt tệp</span><span class="l-en" lang="en">File summary bot</span></a></li><li><a href="#small"><span class="l-vi">Ví dụ nhỏ</span><span class="l-en" lang="en">Small examples</span></a></li><li><a href="#run"><span class="l-vi">Chạy ví dụ</span><span class="l-en" lang="en">Run an example</span></a></li></ul></nav>
+      <article class="prose prose--docs">
+<section class="doc-sec" id="starter">
+  <div class="guide__top"><span class="feature__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sparkles"/></svg></span><div><h2><span class="l-vi">Bot khởi đầu</span><span class="l-en" lang="en">Starter bot</span></h2><p><span class="l-vi">Lệnh, nút bấm, dữ liệu nút theo tiền tố và regex, sửa tin nhắn khi bấm nút, nhắc lại tin nhắn.</span><span class="l-en" lang="en">Commands, buttons, callbacks by prefix and regex, editing the message on press, echo.</span></p></div></div>
+  <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/starter_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>starter_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/starter-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>starter-bot.mjs</span></a></p>
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-17-0" aria-controls="panel-17-0" data-sync="py">starter_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-17-1" aria-controls="panel-17-1" data-sync="js">starter-bot.mjs</button></div><div role="tabpanel" id="panel-17-0" aria-labelledby="tab-17-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Starter bot: commands, inline buttons, callbacks, editing a message, echo.
+
+Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 starter_bot.py
+      (without a token it starts a test bot named &quot;Starter Bot&quot;)
+&quot;&quot;&quot;
+import os
+import sys
+
+try:
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, Button
+except ImportError:  # running from the sdk/ folder without &quot;pip install&quot;
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), &quot;..&quot;, &quot;python&quot;))
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, Button
+
+bot = Bot(&quot;Starter Bot&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./starter-bot&quot;),
+          about=&quot;Ví dụ: nút bấm và trả lời tin nhắn / Example: buttons and echo&quot;)
+
+
+@bot.command(&quot;start&quot;, &quot;Bắt đầu / Start&quot;)
+def start(ctx):
+    ctx.reply(f&quot;Chào {ctx.sender_name} 👋 Bấm thử nhé / Try a button:&quot;, buttons=[
+        [Button(&quot;👍 Thích / Like&quot;, data=&quot;vote:up&quot;), Button(&quot;👎&quot;, data=&quot;vote:down&quot;)],
+        [Button(&quot;🔢 Đếm / Count: 0&quot;, data=&quot;count:0&quot;)],
+    ])
+
+
+@bot.on_callback(data=&quot;vote:*&quot;)              # every button whose data starts with &quot;vote:&quot;
+def vote(ctx):
+    ctx.edit(&quot;Cảm ơn! / Thanks! &quot; + (&quot;👍&quot; if ctx.data == &quot;vote:up&quot; else &quot;👎&quot;))
+
+
+@bot.on_callback(pattern=r&quot;^count:(\d+)$&quot;)
+def count(ctx):
+    n = int(ctx.match.group(1)) + 1
+    ctx.reply(f&quot;Đếm / Count: {n}&quot;, buttons=[[Button(f&quot;🔢 +1 ({n})&quot;, data=f&quot;count:{n}&quot;)]])
+
+
+@bot.on_message
+def echo(ctx):
+    ctx.reply(f&quot;Bạn nói / You said: {ctx.text}&quot;, reply=True)
+
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-17-1" aria-labelledby="tab-17-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Starter bot: commands, inline buttons, callbacks, editing a message, echo.
+//
+// Run:  LUMORA_BOT_TOKEN=lumora_bot_... node starter-bot.mjs
+//       (without a token it starts a test bot named &quot;Starter Bot&quot;)
+const { Bot, Button } = await import(&quot;lumora-bot&quot;).catch(() =&gt; import(&quot;../js/lumora-bot.mjs&quot;));
+
+const bot = new Bot({
+  name: &quot;Starter Bot&quot;,
+  dataDir: process.env.BOT_DIR || &quot;./starter-bot&quot;,
+  about: &quot;Ví dụ: nút bấm và trả lời tin nhắn / Example: buttons and echo&quot;,
+});
+
+bot.command(&quot;start&quot;, &quot;Bắt đầu / Start&quot;, (ctx) =&gt;
+  ctx.reply(`Chào ${ctx.senderName} 👋 Bấm thử nhé / Try a button:`, [
+    [Button(&quot;👍 Thích / Like&quot;, &quot;vote:up&quot;), Button(&quot;👎&quot;, &quot;vote:down&quot;)],
+    [Button(&quot;🔢 Đếm / Count: 0&quot;, &quot;count:0&quot;)],
+  ]));
+
+// every button whose data starts with &quot;vote:&quot;
+bot.onCallback({ data: &quot;vote:*&quot; }, (ctx) =&gt;
+  ctx.edit(&quot;Cảm ơn! / Thanks! &quot; + (ctx.data === &quot;vote:up&quot; ? &quot;👍&quot; : &quot;👎&quot;)));
+
+bot.onCallback({ pattern: /^count:(\d+)$/ }, (ctx) =&gt; {
+  const n = Number(ctx.match[1]) + 1;
+  return ctx.reply(`Đếm / Count: ${n}`, [[Button(`🔢 +1 (${n})`, `count:${n}`)]]);
+});
+
+bot.onMessage((ctx) =&gt; ctx.reply(`Bạn nói / You said: ${ctx.text}`, { reply: true }));
+
+await bot.run();</code></pre></div></div>
+</section>
+<section class="doc-sec" id="group-helper">
+  <div class="guide__top"><span class="feature__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#users"/></svg></span><div><h2><span class="l-vi">Bot quản lý nhóm</span><span class="l-en" lang="en">Group helper bot</span></h2><p><span class="l-vi">Chào thành viên mới, nút nội quy, tự bật chế độ chậm khi có người spam, lệnh chỉ dành cho quản trị viên nhóm (cấm, xóa tin, chế độ chậm).</span><span class="l-en" lang="en">Welcomes new members, a rules button, automatic slow mode on spam, group-admin-only commands (ban, purge, slow mode).</span></p></div></div>
+  <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/group_helper_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>group_helper_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/group-helper-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>group-helper-bot.mjs</span></a></p>
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-18-0" aria-controls="panel-18-0" data-sync="py">group_helper_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-18-1" aria-controls="panel-18-1" data-sync="js">group-helper-bot.mjs</button></div><div role="tabpanel" id="panel-18-0" aria-labelledby="tab-18-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Group helper: welcome message, rules button, automatic slow mode on spam,
+admin-only moderation commands.
+
+Add the bot to a group (group info → Bots → add @yourbot), turn on &quot;Let the bot read all
+messages&quot; and make it an admin so it can see new members and moderate.
+
+Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 group_helper_bot.py
+&quot;&quot;&quot;
+import collections
+import os
+import sys
+import time
+
+try:
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, Button, LumoraError
+except ImportError:  # running from the sdk/ folder without &quot;pip install&quot;
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), &quot;..&quot;, &quot;python&quot;))
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, Button, LumoraError
+
+bot = Bot(&quot;Group Helper&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./group-helper&quot;),
+          about=&quot;Chào thành viên mới, nội quy, chống spam / Welcome, rules, anti-spam&quot;)
+
+RULES = (&quot;📜 Nội quy / Rules\n&quot;
+         &quot;1. Tôn trọng mọi người / Be kind\n&quot;
+         &quot;2. Không spam, không quảng cáo / No spam or ads\n&quot;
+         &quot;3. Đúng chủ đề / Stay on topic&quot;)
+SPAM_MSGS, SPAM_WINDOW = 6, 10      # 6 messages in 10 s from one person = spam
+SLOW_SECONDS, SLOW_FOR = 30, 300    # then 30 s slow mode for 5 minutes
+recent = collections.defaultdict(collections.deque)   # (group, user) -&gt; message times
+
+
+def rules_for(conv):
+    return bot.storage.get(&quot;rules&quot;, {}).get(conv, RULES)
+
+
+@bot.on_added_to_group
+def hello_group(ctx):
+    ctx.reply(&quot;Xin chào! Gõ /rules để xem nội quy. / Hi! Type /rules for the rules.&quot;,
+              buttons=[[Button(&quot;📜 Nội quy / Rules&quot;, data=&quot;rules&quot;)]])
+
+
+@bot.on_new_member
+def welcome(ctx):
+    # a mention notifies the newcomer (the bot may not know their name yet)
+    ctx.reply(&quot;👋 Chào mừng bạn mới! Đọc nội quy trước nhé. / Welcome! Please read the rules.&quot;,
+              buttons=[[Button(&quot;📜 Nội quy / Rules&quot;, data=&quot;rules&quot;)]], mentions=[ctx.sender], silent=True)
+
+
+@bot.on_callback(data=&quot;rules&quot;)
+@bot.command(&quot;rules&quot;, &quot;Nội quy nhóm / Group rules&quot;, chats=&quot;group&quot;)
+def rules(ctx):
+    ctx.reply(rules_for(ctx.conv))
+
+
+def group_admin(fn):
+    &quot;&quot;&quot;Only group admins (or the bot&#x27;s own admins) may use the command.&quot;&quot;&quot;
+    def wrapper(ctx):
+        if not (ctx.is_group_admin or ctx.is_admin):
+            return ctx.reply(&quot;⛔ Chỉ quản trị viên nhóm. / Group admins only.&quot;)
+        try:
+            return fn(ctx)
+        except LumoraError as e:
+            if e.code in (&quot;err.admin_only&quot;, &quot;err.no_perm_remove&quot;, &quot;err.group_syncing&quot;):
+                return ctx.reply(&quot;Hãy cho bot quyền quản trị và quyền đọc mọi tin. / Make the bot an admin with full access.&quot;)
+            raise
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
+def target_of(ctx):
+    &quot;&quot;&quot;The member a moderation command is about: first @mention, else the replied-to message&#x27;s author.&quot;&quot;&quot;
+    mentions = (ctx.event.get(&quot;meta&quot;) or {}).get(&quot;mentions&quot;) or []
+    if mentions:
+        return mentions[0]
+    if ctx.reply_to:
+        for m in bot.messages(ctx.conv, limit=200):
+            if m[&quot;id&quot;] == ctx.reply_to:
+                return m[&quot;author&quot;]
+    return None
+
+
+@bot.command(&quot;setrules&quot;, &quot;Đổi nội quy / Change the rules&quot;, chats=&quot;group&quot;, hidden=True)
+@group_admin
+def set_rules(ctx):
+    bot.storage.update_key(&quot;rules&quot;, lambda r: dict(r or {}, **{ctx.conv: ctx.args or RULES}), {})
+    ctx.reply(&quot;✅ Đã lưu nội quy. / Rules saved.&quot;)
+
+
+@bot.command(&quot;slowmode&quot;, &quot;Chế độ chậm: /slowmode 30 (0 = tắt) / Slow mode&quot;, chats=&quot;group&quot;, hidden=True)
+@group_admin
+def slowmode(ctx):
+    seconds = int(ctx.args or &quot;0&quot;)
+    bot.set_slow_mode(ctx.conv, seconds)
+    ctx.reply(f&quot;🐢 Chế độ chậm / Slow mode: {seconds}s&quot; if seconds else &quot;Đã tắt chế độ chậm. / Slow mode off.&quot;)
+
+
+@bot.command(&quot;ban&quot;, &quot;Cấm thành viên (trả lời tin của họ) / Ban (reply to them)&quot;, chats=&quot;group&quot;, hidden=True)
+@group_admin
+def ban(ctx):
+    who = target_of(ctx)
+    if not who:
+        return ctx.reply(&quot;Trả lời một tin của người cần cấm rồi gõ /ban. / Reply to their message with /ban.&quot;)
+    bot.group_ban(ctx.conv, who)
+    ctx.reply(f&quot;🚫 Đã cấm / Banned {bot.name_of(who)}.&quot;)
+
+
+@bot.command(&quot;purge&quot;, &quot;Xóa mọi tin của một người / Delete all their messages&quot;, chats=&quot;group&quot;, hidden=True)
+@group_admin
+def purge(ctx):
+    who = target_of(ctx)
+    if not who:
+        return ctx.reply(&quot;Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.&quot;)
+    bot.group_purge_member(ctx.conv, who)
+    ctx.reply(&quot;🧹 Đã xóa. / Deleted.&quot;, silent=True)
+
+
+@bot.on_message(chats=&quot;group&quot;, kinds=None)
+def anti_spam(ctx):
+    now = time.time()
+    q = recent[(ctx.conv, ctx.sender)]
+    q.append(now)
+    while q and now - q[0] &gt; SPAM_WINDOW:
+        q.popleft()
+    if len(q) &lt; SPAM_MSGS or ctx.is_group_admin:
+        return
+    q.clear()
+    try:
+        bot.set_slow_mode(ctx.conv, SLOW_SECONDS)
+    except LumoraError as e:   # not an admin here: just warn
+        bot.log.info(&quot;cannot slow down %s: %s&quot;, ctx.conv, e.code)
+        return ctx.reply(&quot;⚠️ Chậm lại một chút nhé! / Please slow down!&quot;, silent=True)
+    ctx.reply(f&quot;🐢 Nhiều tin quá, bật chế độ chậm {SLOW_SECONDS}s trong 5 phút. / Slow mode on for 5 minutes.&quot;, silent=True)
+    bot.after(SLOW_FOR, lambda: bot.set_slow_mode(ctx.conv, 0))
+
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-18-1" aria-labelledby="tab-18-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Group helper: welcome message, rules button, automatic slow mode on spam,
+// admin-only moderation commands.
+//
+// Add the bot to a group (group info → Bots → add @yourbot), turn on &quot;Let the bot read all
+// messages&quot; and make it an admin so it can see new members and moderate.
+//
+// Run:  LUMORA_BOT_TOKEN=lumora_bot_... node group-helper-bot.mjs
+const { Bot, Button, LumoraError } = await import(&quot;lumora-bot&quot;).catch(() =&gt; import(&quot;../js/lumora-bot.mjs&quot;));
+
+const bot = new Bot({
+  name: &quot;Group Helper&quot;,
+  dataDir: process.env.BOT_DIR || &quot;./group-helper&quot;,
+  about: &quot;Chào thành viên mới, nội quy, chống spam / Welcome, rules, anti-spam&quot;,
+});
+
+const RULES = &quot;📜 Nội quy / Rules\n&quot;
+  + &quot;1. Tôn trọng mọi người / Be kind\n&quot;
+  + &quot;2. Không spam, không quảng cáo / No spam or ads\n&quot;
+  + &quot;3. Đúng chủ đề / Stay on topic&quot;;
+const SPAM_MSGS = 6, SPAM_WINDOW = 10;     // 6 messages in 10 s from one person = spam
+const SLOW_SECONDS = 30, SLOW_FOR = 300;   // then 30 s slow mode for 5 minutes
+const recent = new Map();                  // &quot;group|user&quot; -&gt; message times (ms)
+
+const rulesFor = (conv) =&gt; bot.storage.get(&quot;rules&quot;, {})[conv] ?? RULES;
+const rulesButton = [[Button(&quot;📜 Nội quy / Rules&quot;, &quot;rules&quot;)]];
+
+bot.onAddedToGroup((ctx) =&gt;
+  ctx.reply(&quot;Xin chào! Gõ /rules để xem nội quy. / Hi! Type /rules for the rules.&quot;, rulesButton));
+
+bot.onNewMember((ctx) =&gt;
+  // a mention notifies the newcomer (the bot may not know their name yet)
+  ctx.reply(&quot;👋 Chào mừng bạn mới! Đọc nội quy trước nhé. / Welcome! Please read the rules.&quot;,
+    { buttons: rulesButton, mentions: [ctx.sender], silent: true }));
+
+const rules = (ctx) =&gt; ctx.reply(rulesFor(ctx.conv));
+bot.onCallback({ data: &quot;rules&quot; }, rules);
+bot.command(&quot;rules&quot;, &quot;Nội quy nhóm / Group rules&quot;, rules, { chats: &quot;group&quot; });
+
+/** Only group admins (or the bot&#x27;s own admins) may use the command. */
+const groupAdmin = (fn) =&gt; async (ctx) =&gt; {
+  if (!(ctx.isAdmin || (await ctx.isGroupAdmin()))) return ctx.reply(&quot;⛔ Chỉ quản trị viên nhóm. / Group admins only.&quot;);
+  try {
+    return await fn(ctx);
+  } catch (e) {
+    if (e instanceof LumoraError &amp;&amp; [&quot;err.admin_only&quot;, &quot;err.no_perm_remove&quot;, &quot;err.group_syncing&quot;].includes(e.code)) {
+      return ctx.reply(&quot;Hãy cho bot quyền quản trị và quyền đọc mọi tin. / Make the bot an admin with full access.&quot;);
+    }
+    throw e;
+  }
+};
+
+/** The member a moderation command is about: first @mention, else the replied-to message&#x27;s author. */
+async function targetOf(ctx) {
+  const mentions = ctx.event.meta?.mentions || [];
+  if (mentions.length) return mentions[0];
+  if (ctx.replyTo) {
+    const m = (await bot.messages(ctx.conv, { limit: 200 })).find((x) =&gt; x.id === ctx.replyTo);
+    if (m) return m.author;
+  }
+  return null;
+}
+
+const groupOnly = { chats: &quot;group&quot;, hidden: true };
+
+bot.command(&quot;setrules&quot;, &quot;Đổi nội quy / Change the rules&quot;, groupAdmin(async (ctx) =&gt; {
+  bot.storage.updateKey(&quot;rules&quot;, (r) =&gt; ({ ...(r || {}), [ctx.conv]: ctx.args || RULES }), {});
+  await ctx.reply(&quot;✅ Đã lưu nội quy. / Rules saved.&quot;);
+}), groupOnly);
+
+bot.command(&quot;slowmode&quot;, &quot;Chế độ chậm: /slowmode 30 (0 = tắt) / Slow mode&quot;, groupAdmin(async (ctx) =&gt; {
+  const seconds = parseInt(ctx.args || &quot;0&quot;, 10) || 0;
+  await bot.setSlowMode(ctx.conv, seconds);
+  await ctx.reply(seconds ? `🐢 Chế độ chậm / Slow mode: ${seconds}s` : &quot;Đã tắt chế độ chậm. / Slow mode off.&quot;);
+}), groupOnly);
+
+bot.command(&quot;ban&quot;, &quot;Cấm thành viên (trả lời tin của họ) / Ban (reply to them)&quot;, groupAdmin(async (ctx) =&gt; {
+  const who = await targetOf(ctx);
+  if (!who) return ctx.reply(&quot;Trả lời một tin của người cần cấm rồi gõ /ban. / Reply to their message with /ban.&quot;);
+  await bot.groupBan(ctx.conv, who);
+  await ctx.reply(`🚫 Đã cấm / Banned ${await bot.nameOf(who)}.`);
+}), groupOnly);
+
+bot.command(&quot;purge&quot;, &quot;Xóa mọi tin của một người / Delete all their messages&quot;, groupAdmin(async (ctx) =&gt; {
+  const who = await targetOf(ctx);
+  if (!who) return ctx.reply(&quot;Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.&quot;);
+  await bot.groupPurgeMember(ctx.conv, who);
+  await ctx.reply(&quot;🧹 Đã xóa. / Deleted.&quot;, { silent: true });
+}), groupOnly);
+
+bot.onMessage({ chats: &quot;group&quot;, kinds: null }, async (ctx) =&gt; {
+  const now = Date.now();
+  const key = `${ctx.conv}|${ctx.sender}`;
+  const q = (recent.get(key) || []).filter((t) =&gt; now - t &lt;= SPAM_WINDOW * 1000);
+  q.push(now);
+  recent.set(key, q);
+  if (q.length &lt; SPAM_MSGS || (await ctx.isGroupAdmin())) return;
+  recent.delete(key);
+  try {
+    await bot.setSlowMode(ctx.conv, SLOW_SECONDS);
+  } catch (e) {
+    if (!(e instanceof LumoraError)) throw e;   // not an admin here: just warn
+    bot.log.info(`cannot slow down ${ctx.conv}: ${e.code}`);
+    return ctx.reply(&quot;⚠️ Chậm lại một chút nhé! / Please slow down!&quot;, { silent: true });
+  }
+  await ctx.reply(`🐢 Nhiều tin quá, bật chế độ chậm ${SLOW_SECONDS}s trong 5 phút. / Slow mode on for 5 minutes.`, { silent: true });
+  bot.after(SLOW_FOR, () =&gt; bot.setSlowMode(ctx.conv, 0));
+});
+
+await bot.run();</code></pre></div></div>
+</section>
+<section class="doc-sec" id="team-tasks">
+  <div class="guide__top"><span class="feature__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#checks"/></svg></span><div><h2><span class="l-vi">Bot việc nhóm</span><span class="l-en" lang="en">Team tasks bot</span></h2><p><span class="l-vi">Danh sách việc bằng /todo, nhắc hẹn bằng /remind, chúc mừng khi xong việc, danh sách stand-up lúc 9:00 mỗi ngày.</span><span class="l-en" lang="en">Checklists with /todo, reminders with /remind, a cheer when everything is done, a daily 9:00 stand-up checklist.</span></p></div></div>
+  <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/team_tasks_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>team_tasks_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/team-tasks-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>team-tasks-bot.mjs</span></a></p>
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-19-0" aria-controls="panel-19-0" data-sync="py">team_tasks_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-19-1" aria-controls="panel-19-1" data-sync="js">team-tasks-bot.mjs</button></div><div role="tabpanel" id="panel-19-0" aria-labelledby="tab-19-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Team tasks: checklists, reminders and a daily stand-up message.
+
+  /todo Release 1.2: write notes; build; publish     → a checklist anyone can tick
+  /remind 30m Stand-up call                          → a reminder for everyone in the chat
+  /remind 2026-12-01 09:00 Pay the rent | bank app   → at a date/time, with a note
+  /tasks                                             → open checklists in this chat
+  /standup on|off                                    → daily 09:00 stand-up checklist
+
+Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 team_tasks_bot.py
+&quot;&quot;&quot;
+import datetime as dt
+import os
+import re
+import sys
+
+try:
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, LumoraError
+except ImportError:  # running from the sdk/ folder without &quot;pip install&quot;
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), &quot;..&quot;, &quot;python&quot;))
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot, LumoraError
+
+bot = Bot(&quot;Team Tasks&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./team-tasks&quot;),
+          about=&quot;Danh sách việc và nhắc hẹn cho nhóm / Checklists and reminders for teams&quot;)
+
+UNITS = {&quot;s&quot;: 1, &quot;m&quot;: 60, &quot;h&quot;: 3600, &quot;d&quot;: 86400}
+
+
+def parse_when(text):
+    &quot;&quot;&quot;&#x27;30m Title&#x27;, &#x27;2h Title&#x27;, &#x27;2026-12-01 09:00 Title&#x27; or &#x27;09:00 Title&#x27; → (datetime, rest).&quot;&quot;&quot;
+    m = re.match(r&quot;^(\d+)([smhd])\s+(.+)$&quot;, text)
+    if m:
+        return dt.datetime.now() + dt.timedelta(seconds=int(m.group(1)) * UNITS[m.group(2)]), m.group(3)
+    m = re.match(r&quot;^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}:\d{2})\s+(.+)$&quot;, text)
+    if m:
+        return dt.datetime.strptime(f&quot;{m.group(1)} {m.group(2)}&quot;, &quot;%Y-%m-%d %H:%M&quot;), m.group(3)
+    m = re.match(r&quot;^(\d{1,2}):(\d{2})\s+(.+)$&quot;, text)
+    if m:
+        at = dt.datetime.now().replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        return (at if at &gt; dt.datetime.now() else at + dt.timedelta(days=1)), m.group(3)
+    return None, text
+
+
+@bot.command(&quot;todo&quot;, &quot;Tạo danh sách việc / New checklist: /todo Title: a; b; c&quot;)
+def todo(ctx):
+    title, _, rest = ctx.args.partition(&quot;:&quot;)
+    items = [i.strip() for i in rest.split(&quot;;&quot;) if i.strip()]
+    if not title.strip() or not items:
+        return ctx.reply(&quot;Cách dùng / Usage: /todo Tiêu đề: việc 1; việc 2; việc 3&quot;)
+    m = ctx.reply_checklist(title.strip(), items)
+    bot.storage.update_key(&quot;open&quot;, lambda o: dict(o or {}, **{m[&quot;id&quot;]: ctx.conv}), {})
+
+
+@bot.command(&quot;remind&quot;, &quot;Nhắc hẹn / Reminder: /remind 30m Title | note&quot;)
+def remind(ctx):
+    at, rest = parse_when(ctx.args.strip())
+    if at is None:
+        return ctx.reply(&quot;Cách dùng / Usage: /remind 30m Họp | ghi chú   ·   /remind 2026-12-01 09:00 Trả tiền nhà&quot;)
+    title, _, note = rest.partition(&quot;|&quot;)
+    try:
+        ctx.reply_reminder(title.strip(), at, note=note.strip())
+    except LumoraError as e:            # e.g. err.reminder_past
+        return ctx.reply(f&quot;⚠️ {e.message}&quot;)
+    ctx.reply(f&quot;⏰ OK: {at:%d/%m %H:%M}&quot;, silent=True)
+
+
+@bot.command(&quot;tasks&quot;, &quot;Việc còn mở / Open checklists&quot;)
+def tasks(ctx):
+    lines = []
+    for mid, conv in bot.storage.get(&quot;open&quot;, {}).items():
+        if conv != ctx.conv:
+            continue
+        cl = bot.checklist(conv, mid)
+        if cl and cl[&quot;done&quot;] &lt; cl[&quot;total&quot;]:
+            todo_left = &quot;, &quot;.join(i[&quot;text&quot;] for i in cl[&quot;items&quot;] if not i[&quot;done&quot;])
+            lines.append(f&quot;☐ {cl[&#x27;title&#x27;]} ({cl[&#x27;done&#x27;]}/{cl[&#x27;total&#x27;]}): {todo_left}&quot;)
+    ctx.reply(&quot;\n&quot;.join(lines) or &quot;🎉 Không còn việc nào. / Nothing open.&quot;)
+
+
+@bot.on_checklist
+def progress(ctx):
+    cl = ctx.checklist
+    for ch in ctx.changes:
+        if ch.get(&quot;done&quot;):
+            bot.log.info(&quot;%s ticked %r&quot;, bot.name_of(ch[&quot;by&quot;]), ch[&quot;text&quot;])
+    if cl[&quot;total&quot;] and cl[&quot;done&quot;] == cl[&quot;total&quot;]:
+        bot.storage.update_key(&quot;open&quot;, lambda o: {k: v for k, v in (o or {}).items() if k != cl[&quot;msg_id&quot;]}, {})
+        ctx.reply(f&quot;🎉 Xong hết / All done: {cl[&#x27;title&#x27;]}&quot;)
+
+
+@bot.on_reminder_due
+def due(ctx):
+    r = ctx.reminder
+    if not r[&quot;mine&quot;]:          # a user&#x27;s own reminder sent to the bot: just acknowledge it
+        return ctx.reply(f&quot;⏰ {r[&#x27;title&#x27;]}&quot;, silent=True)
+    ctx.reply(f&quot;⏰ Đến giờ / Time: {r[&#x27;title&#x27;]}&quot; + (f&quot;\n{r[&#x27;note&#x27;]}&quot; if r[&quot;note&quot;] else &quot;&quot;))
+
+
+@bot.command(&quot;standup&quot;, &quot;Stand-up 09:00 hằng ngày / Daily stand-up: on|off&quot;)
+def standup(ctx):
+    on = ctx.args.strip().lower() != &quot;off&quot;
+    bot.storage.update_key(&quot;standup&quot;, lambda s: sorted(set(s or []) | {ctx.conv}) if on else [c for c in (s or []) if c != ctx.conv], [])
+    ctx.reply(&quot;✅ Stand-up lúc 09:00 mỗi ngày. / Daily at 09:00.&quot; if on else &quot;Đã tắt. / Off.&quot;)
+
+
+@bot.daily(&quot;09:00&quot;)
+def morning():
+    for conv in bot.storage.get(&quot;standup&quot;, []):
+        try:
+            m = bot.send_checklist(conv, f&quot;Stand-up {dt.date.today():%d/%m}&quot;, [&quot;Hôm qua / Yesterday&quot;, &quot;Hôm nay / Today&quot;, &quot;Vướng mắc / Blockers&quot;], silent=True)
+            bot.storage.update_key(&quot;open&quot;, lambda o: dict(o or {}, **{m[&quot;id&quot;]: conv}), {})
+        except LumoraError as e:
+            bot.log.warning(&quot;stand-up for %s failed: %s&quot;, conv, e.code)
+
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-19-1" aria-labelledby="tab-19-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Team tasks: checklists, reminders and a daily stand-up message.
+//
+//   /todo Release 1.2: write notes; build; publish     → a checklist anyone can tick
+//   /remind 30m Stand-up call                          → a reminder for everyone in the chat
+//   /remind 2026-12-01 09:00 Pay the rent | bank app   → at a date/time, with a note
+//   /tasks                                             → open checklists in this chat
+//   /standup on|off                                    → daily 09:00 stand-up checklist
+//
+// Run:  LUMORA_BOT_TOKEN=lumora_bot_... node team-tasks-bot.mjs
+const { Bot, LumoraError } = await import(&quot;lumora-bot&quot;).catch(() =&gt; import(&quot;../js/lumora-bot.mjs&quot;));
+
+const bot = new Bot({
+  name: &quot;Team Tasks&quot;,
+  dataDir: process.env.BOT_DIR || &quot;./team-tasks&quot;,
+  about: &quot;Danh sách việc và nhắc hẹn cho nhóm / Checklists and reminders for teams&quot;,
+});
+
+const UNITS = { s: 1, m: 60, h: 3600, d: 86400 };
+const pad = (n) =&gt; String(n).padStart(2, &quot;0&quot;);
+const fmt = (d) =&gt; `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+/** &#x27;30m Title&#x27;, &#x27;2h Title&#x27;, &#x27;2026-12-01 09:00 Title&#x27; or &#x27;09:00 Title&#x27; → [Date, rest]. */
+function parseWhen(text) {
+  let m = /^(\d+)([smhd])\s+(.+)$/s.exec(text);
+  if (m) return [new Date(Date.now() + Number(m[1]) * UNITS[m[2]] * 1000), m[3]];
+  m = /^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})\s+(.+)$/s.exec(text);
+  if (m) return [new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]), m[6]];
+  m = /^(\d{1,2}):(\d{2})\s+(.+)$/s.exec(text);
+  if (m) {
+    const at = new Date();
+    at.setHours(+m[1], +m[2], 0, 0);
+    if (at &lt;= new Date()) at.setDate(at.getDate() + 1);
+    return [at, m[3]];
+  }
+  return [null, text];
+}
+
+const remember = (msgId, conv) =&gt; bot.storage.updateKey(&quot;open&quot;, (o) =&gt; ({ ...(o || {}), [msgId]: conv }), {});
+
+bot.command(&quot;todo&quot;, &quot;Tạo danh sách việc / New checklist: /todo Title: a; b; c&quot;, async (ctx) =&gt; {
+  const i = ctx.args.indexOf(&quot;:&quot;);
+  const title = (i &gt;= 0 ? ctx.args.slice(0, i) : ctx.args).trim();
+  const items = (i &gt;= 0 ? ctx.args.slice(i + 1) : &quot;&quot;).split(&quot;;&quot;).map((s) =&gt; s.trim()).filter(Boolean);
+  if (!title || !items.length) return ctx.reply(&quot;Cách dùng / Usage: /todo Tiêu đề: việc 1; việc 2; việc 3&quot;);
+  const m = await ctx.replyChecklist(title, items);
+  remember(m.id, ctx.conv);
+});
+
+bot.command(&quot;remind&quot;, &quot;Nhắc hẹn / Reminder: /remind 30m Title | note&quot;, async (ctx) =&gt; {
+  const [at, rest] = parseWhen(ctx.args.trim());
+  if (!at) return ctx.reply(&quot;Cách dùng / Usage: /remind 30m Họp | ghi chú   ·   /remind 2026-12-01 09:00 Trả tiền nhà&quot;);
+  const [title, ...note] = rest.split(&quot;|&quot;);
+  try {
+    await ctx.replyReminder(title.trim(), at, { note: note.join(&quot;|&quot;).trim() });
+  } catch (e) {
+    if (e instanceof LumoraError) return ctx.reply(`⚠️ ${e.message}`);   // e.g. err.reminder_past
+    throw e;
+  }
+  await ctx.reply(`⏰ OK: ${fmt(at)}`, { silent: true });
+});
+
+bot.command(&quot;tasks&quot;, &quot;Việc còn mở / Open checklists&quot;, async (ctx) =&gt; {
+  const lines = [];
+  for (const [mid, conv] of Object.entries(bot.storage.get(&quot;open&quot;, {}))) {
+    if (conv !== ctx.conv) continue;
+    const cl = await bot.checklist(conv, mid);
+    if (cl &amp;&amp; cl.done &lt; cl.total) {
+      const left = cl.items.filter((i) =&gt; !i.done).map((i) =&gt; i.text).join(&quot;, &quot;);
+      lines.push(`☐ ${cl.title} (${cl.done}/${cl.total}): ${left}`);
+    }
+  }
+  await ctx.reply(lines.join(&quot;\n&quot;) || &quot;🎉 Không còn việc nào. / Nothing open.&quot;);
+});
+
+bot.onChecklist(async (ctx) =&gt; {
+  const cl = ctx.checklist;
+  for (const ch of ctx.changes) {
+    if (ch.done) bot.log.info(`${await bot.nameOf(ch.by)} ticked ${JSON.stringify(ch.text)}`);
+  }
+  if (cl.total &amp;&amp; cl.done === cl.total) {
+    bot.storage.updateKey(&quot;open&quot;, (o) =&gt; Object.fromEntries(Object.entries(o || {}).filter(([k]) =&gt; k !== cl.msg_id)), {});
+    await ctx.reply(`🎉 Xong hết / All done: ${cl.title}`);
+  }
+});
+
+bot.onReminderDue((ctx) =&gt; {
+  const r = ctx.reminder;
+  if (!r.mine) return ctx.reply(`⏰ ${r.title}`, { silent: true });   // a user&#x27;s own reminder sent to the bot
+  return ctx.reply(`⏰ Đến giờ / Time: ${r.title}` + (r.note ? `\n${r.note}` : &quot;&quot;));
+});
+
+bot.command(&quot;standup&quot;, &quot;Stand-up 09:00 hằng ngày / Daily stand-up: on|off&quot;, (ctx) =&gt; {
+  const on = ctx.args.trim().toLowerCase() !== &quot;off&quot;;
+  bot.storage.updateKey(&quot;standup&quot;, (s) =&gt; (on ? [...new Set([...(s || []), ctx.conv])].sort() : (s || []).filter((c) =&gt; c !== ctx.conv)), []);
+  return ctx.reply(on ? &quot;✅ Stand-up lúc 09:00 mỗi ngày. / Daily at 09:00.&quot; : &quot;Đã tắt. / Off.&quot;);
+});
+
+bot.daily(&quot;09:00&quot;, async function morning() {
+  const d = new Date();
+  for (const conv of bot.storage.get(&quot;standup&quot;, [])) {
+    try {
+      const m = await bot.sendChecklist(conv, `Stand-up ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`,
+        [&quot;Hôm qua / Yesterday&quot;, &quot;Hôm nay / Today&quot;, &quot;Vướng mắc / Blockers&quot;], { silent: true });
+      remember(m.id, conv);
+    } catch (e) {
+      if (!(e instanceof LumoraError)) throw e;
+      bot.log.warn(`stand-up for ${conv} failed: ${e.code}`);
+    }
+  }
+});
+
+await bot.run();</code></pre></div></div>
+</section>
+<section class="doc-sec" id="file-summary">
+  <div class="guide__top"><span class="feature__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#file"/></svg></span><div><h2><span class="l-vi">Bot tóm tắt tệp</span><span class="l-en" lang="en">File summary bot</span></h2><p><span class="l-vi">Nhận tệp .txt/.csv, đọc phần xem trước, tải về, trả lời bản tóm tắt và gửi lại một tệp tóm tắt có xem trước.</span><span class="l-en" lang="en">Receives .txt/.csv files, reads the preview, downloads them, replies with a summary and sends back a summary file with a preview.</span></p></div></div>
+  <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/file_summary_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>file_summary_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/file-summary-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>file-summary-bot.mjs</span></a></p>
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-20-0" aria-controls="panel-20-0" data-sync="py">file_summary_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-20-1" aria-controls="panel-20-1" data-sync="js">file-summary-bot.mjs</button></div><div role="tabpanel" id="panel-20-0" aria-labelledby="tab-20-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;File summary: send the bot a .txt or .csv file and get a short summary back,
+plus a summary file whose preview shows the result before anyone downloads it.
+
+Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 file_summary_bot.py
+&quot;&quot;&quot;
+import collections
+import csv
+import io
+import os
+import re
+import sys
+import tempfile
+
+try:
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot
+except ImportError:  # running from the sdk/ folder without &quot;pip install&quot;
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), &quot;..&quot;, &quot;python&quot;))
+    # pyrefly: ignore[missing-import]
+    from lumora_bot import Bot
+
+bot = Bot(&quot;File Summary&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./file-summary&quot;),
+          about=&quot;Gửi tệp .txt/.csv để nhận tóm tắt / Send a .txt or .csv file for a summary&quot;)
+MAX_BYTES = 5 * 1024 * 1024
+
+
+def summarize_text(text):
+    words = re.findall(r&quot;\w+&quot;, text.lower())
+    top = collections.Counter(w for w in words if len(w) &gt; 3).most_common(5)
+    return (f&quot;Dòng / Lines: {text.count(chr(10)) + (1 if text and not text.endswith(chr(10)) else 0)}\n&quot;
+            f&quot;Từ / Words: {len(words)}\nKý tự / Characters: {len(text)}\n&quot;
+            f&quot;Hay gặp / Top words: {&#x27;, &#x27;.join(f&#x27;{w} ({n})&#x27; for w, n in top) or &#x27;-&#x27;}&quot;)
+
+
+def summarize_csv(text):
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return &quot;Tệp trống. / Empty file.&quot;
+    head, data = rows[0], rows[1:]
+    out = [f&quot;Hàng / Rows: {len(data)} · Cột / Columns: {len(head)}&quot;]
+    for i, name in enumerate(head):
+        nums = []
+        for r in data:
+            try:
+                nums.append(float(r[i].replace(&quot;,&quot;, &quot;&quot;)))
+            except (IndexError, ValueError):
+                pass
+        if nums and len(nums) &gt;= len(data) / 2:
+            out.append(f&quot;• {name}: min {min(nums):g} · max {max(nums):g} · avg {sum(nums) / len(nums):.2f}&quot;)
+        else:
+            distinct = len({r[i] for r in data if i &lt; len(r)})
+            out.append(f&quot;• {name}: {distinct} giá trị khác nhau / distinct values&quot;)
+    return &quot;\n&quot;.join(out)
+
+
+@bot.command(&quot;start&quot;, &quot;Bắt đầu / Start&quot;)
+def start(ctx):
+    ctx.reply(&quot;Gửi cho mình một tệp .txt hoặc .csv (≤ 5 MB). / Send me a .txt or .csv file (≤ 5 MB).&quot;)
+
+
+@bot.on_file(extensions=[&quot;txt&quot;, &quot;csv&quot;])
+def summarize(ctx):
+    f = ctx.file
+    if f[&quot;size&quot;] &gt; MAX_BYTES:
+        return ctx.reply(&quot;Tệp lớn quá (tối đa 5 MB). / File too large (max 5 MB).&quot;)
+    if f.get(&quot;preview&quot;) and f[&quot;preview&quot;].get(&quot;text&quot;):
+        bot.log.info(&quot;preview of %s: %r&quot;, f[&quot;name&quot;], f[&quot;preview&quot;][&quot;text&quot;][:60])
+    ctx.typing()
+    path = ctx.download(timeout=120)
+    with open(path, encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;) as fh:
+        text = fh.read()
+    summary = summarize_csv(text) if f[&quot;name&quot;].lower().endswith(&quot;.csv&quot;) else summarize_text(text)
+    ctx.reply(f&quot;📄 {f[&#x27;name&#x27;]}\n{summary}&quot;, reply=True)
+    out = os.path.join(tempfile.gettempdir(), f&quot;summary-{f[&#x27;file_id&#x27;][:8]}.txt&quot;)
+    with open(out, &quot;w&quot;, encoding=&quot;utf-8&quot;) as fh:
+        fh.write(f&quot;Summary of {f[&#x27;name&#x27;]}\n\n{summary}\n&quot;)
+    ctx.reply_file(out, preview={&quot;kind&quot;: &quot;text&quot;, &quot;text&quot;: summary, &quot;lines&quot;: summary.count(&quot;\n&quot;) + 1})
+
+
+@bot.on_file
+def other_files(ctx):
+    ctx.reply(&quot;Mình chỉ đọc được .txt và .csv. / I can only read .txt and .csv files.&quot;)
+
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-20-1" aria-labelledby="tab-20-1" class="tabs__panel"><pre class="code"><code data-lang="js">// File summary: send the bot a .txt or .csv file and get a short summary back,
+// plus a summary file whose preview shows the result before anyone downloads it.
+//
+// Run:  LUMORA_BOT_TOKEN=lumora_bot_... node file-summary-bot.mjs
+import { readFileSync, writeFileSync } from &quot;node:fs&quot;;
+import { tmpdir } from &quot;node:os&quot;;
+import { join } from &quot;node:path&quot;;
+
+const { Bot } = await import(&quot;lumora-bot&quot;).catch(() =&gt; import(&quot;../js/lumora-bot.mjs&quot;));
+
+const bot = new Bot({
+  name: &quot;File Summary&quot;,
+  dataDir: process.env.BOT_DIR || &quot;./file-summary&quot;,
+  about: &quot;Gửi tệp .txt/.csv để nhận tóm tắt / Send a .txt or .csv file for a summary&quot;,
+});
+const MAX_BYTES = 5 * 1024 * 1024;
+
+function summarizeText(text) {
+  const words = text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [];
+  const counts = new Map();
+  for (const w of words) if (w.length &gt; 3) counts.set(w, (counts.get(w) || 0) + 1);
+  const top = [...counts].sort((a, b) =&gt; b[1] - a[1]).slice(0, 5);
+  const lines = (text.match(/\n/g) || []).length + (text &amp;&amp; !text.endsWith(&quot;\n&quot;) ? 1 : 0);
+  return `Dòng / Lines: ${lines}\nTừ / Words: ${words.length}\nKý tự / Characters: ${[...text].length}\n`
+    + `Hay gặp / Top words: ${top.map(([w, n]) =&gt; `${w} (${n})`).join(&quot;, &quot;) || &quot;-&quot;}`;
+}
+
+/** Minimal CSV parser (quotes, commas, newlines in quotes). */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], cell = &quot;&quot;, q = false;
+  for (let i = 0; i &lt; text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === &#x27;&quot;&#x27; &amp;&amp; text[i + 1] === &#x27;&quot;&#x27;) { cell += &#x27;&quot;&#x27;; i++; } else if (c === &#x27;&quot;&#x27;) q = false; else cell += c;
+    } else if (c === &#x27;&quot;&#x27;) q = true;
+    else if (c === &quot;,&quot;) { row.push(cell); cell = &quot;&quot;; }
+    else if (c === &quot;\n&quot; || c === &quot;\r&quot;) {
+      if (c === &quot;\r&quot; &amp;&amp; text[i + 1] === &quot;\n&quot;) i++;
+      row.push(cell); rows.push(row); row = []; cell = &quot;&quot;;
+    } else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+function summarizeCsv(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return &quot;Tệp trống. / Empty file.&quot;;
+  const [head, ...data] = rows;
+  const out = [`Hàng / Rows: ${data.length} · Cột / Columns: ${head.length}`];
+  head.forEach((name, i) =&gt; {
+    const nums = data.map((r) =&gt; Number(String(r[i] ?? &quot;&quot;).replace(/,/g, &quot;&quot;))).filter((n, k) =&gt; data[k][i] !== undefined &amp;&amp; data[k][i] !== &quot;&quot; &amp;&amp; Number.isFinite(n));
+    if (nums.length &amp;&amp; nums.length &gt;= data.length / 2) {
+      const avg = nums.reduce((a, b) =&gt; a + b, 0) / nums.length;
+      out.push(`• ${name}: min ${Math.min(...nums)} · max ${Math.max(...nums)} · avg ${avg.toFixed(2)}`);
+    } else {
+      out.push(`• ${name}: ${new Set(data.filter((r) =&gt; i &lt; r.length).map((r) =&gt; r[i])).size} giá trị khác nhau / distinct values`);
+    }
+  });
+  return out.join(&quot;\n&quot;);
+}
+
+bot.command(&quot;start&quot;, &quot;Bắt đầu / Start&quot;, (ctx) =&gt;
+  ctx.reply(&quot;Gửi cho mình một tệp .txt hoặc .csv (≤ 5 MB). / Send me a .txt or .csv file (≤ 5 MB).&quot;));
+
+bot.onFile({ extensions: [&quot;txt&quot;, &quot;csv&quot;] }, async (ctx) =&gt; {
+  const f = ctx.file;
+  if (f.size &gt; MAX_BYTES) return ctx.reply(&quot;Tệp lớn quá (tối đa 5 MB). / File too large (max 5 MB).&quot;);
+  if (f.preview?.text) bot.log.info(`preview of ${f.name}: ${JSON.stringify(f.preview.text.slice(0, 60))}`);
+  await ctx.typing();
+  const path = await ctx.download({ timeoutMs: 120000 });
+  const text = readFileSync(path, &quot;utf8&quot;);
+  const summary = f.name.toLowerCase().endsWith(&quot;.csv&quot;) ? summarizeCsv(text) : summarizeText(text);
+  await ctx.reply(`📄 ${f.name}\n${summary}`, { reply: true });
+  const out = join(tmpdir(), `summary-${f.file_id.slice(0, 8)}.txt`);
+  writeFileSync(out, `Summary of ${f.name}\n\n${summary}\n`);
+  await ctx.replyFile(out, { preview: { kind: &quot;text&quot;, text: summary, lines: summary.split(&quot;\n&quot;).length } });
+});
+
+bot.onFile((ctx) =&gt; ctx.reply(&quot;Mình chỉ đọc được .txt và .csv. / I can only read .txt and .csv files.&quot;));
+
+await bot.run();</code></pre></div></div>
+</section>
+<section class="doc-sec" id="small">
+  <h2><span class="l-vi">Ví dụ nhỏ</span><span class="l-en" lang="en">Small examples</span></h2>
+  <p><span class="l-vi">Bot thời tiết có nút bấm, bot cửa hàng có quản trị viên, vai trò và gửi hàng loạt, bot nhắc lại bằng JavaScript.</span><span class="l-en" lang="en">A weather bot with buttons, a shop bot with admins, roles and broadcasts, an echo bot in JavaScript.</span></p>
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-21-0" aria-controls="panel-21-0">weather_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-21-1" aria-controls="panel-21-1">admin_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-21-2" aria-controls="panel-21-2">echo-bot.mjs</button></div><div role="tabpanel" id="panel-21-0" aria-labelledby="tab-21-0" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/weather_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>weather_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot Lumora (Python): chào hỏi, nút bấm, trả lời lại tin nhắn.&quot;&quot;&quot;
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), &quot;..&quot;, &quot;python&quot;))
+# pyrefly: ignore[missing-import]
+from lumora_bot import Bot
+
+bot = Bot(&quot;Thời tiết Bot&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./weather-bot&quot;),
+          about=&quot;Xem thời tiết nhanh các thành phố Việt Nam&quot;)
+
+WEATHER = {&quot;hn&quot;: &quot;Hà Nội: 24°C, có mây&quot;, &quot;hcm&quot;: &quot;TP.HCM: 32°C, nắng&quot;, &quot;dn&quot;: &quot;Đà Nẵng: 28°C, mưa rào&quot;}
+
+@bot.command(&quot;start&quot;, &quot;Bắt đầu&quot;)
+def start(ctx):
+    ctx.reply(&quot;Xin chào! Bạn muốn xem thời tiết ở đâu?&quot;,
+              buttons=[[(&quot;Hà Nội&quot;, &quot;hn&quot;), (&quot;TP.HCM&quot;, &quot;hcm&quot;), (&quot;Đà Nẵng&quot;, &quot;dn&quot;)]])
+
+@bot.on_callback
+def on_city(ctx):
+    ctx.reply(WEATHER.get(ctx.data, &quot;Chưa có dữ liệu&quot;))
+
+@bot.on_message
+def echo(ctx):
+    ctx.reply(f&quot;Gõ /start để bắt đầu. Bạn vừa nói: {ctx.text}&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-21-1" aria-labelledby="tab-21-1" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/admin_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>admin_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot có phân quyền admin, vai trò, lưu trữ và gửi hàng loạt.&quot;&quot;&quot;
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), &quot;..&quot;, &quot;python&quot;))
+# pyrefly: ignore[missing-import]
+from lumora_bot import Bot
+
+ADMINS = [a for a in os.environ.get(&quot;BOT_ADMINS&quot;, &quot;&quot;).split(&quot;,&quot;) if a]
+bot = Bot(&quot;Cửa hàng Bot&quot;, data_dir=os.environ.get(&quot;BOT_DIR&quot;, &quot;./shop-bot&quot;), admins=ADMINS, about=&quot;Đặt hàng &amp; khuyến mãi&quot;)
+
+@bot.command(&quot;start&quot;, &quot;Bắt đầu&quot;)
+def start(ctx):
+    n = bot.storage.get(&quot;visits&quot;, 0) + 1
+    bot.storage[&quot;visits&quot;] = n
+    ctx.reply(f&quot;Chào bạn! Bạn là khách thứ {n}&quot;, buttons=[[(&quot;Xem hàng&quot;, &quot;menu&quot;)]])
+
+@bot.command(&quot;promo&quot;, &quot;Gửi khuyến mãi cho mọi người&quot;, admin_only=True)
+def promo(ctx):
+    sent = bot.broadcast(ctx.args or &quot;Giảm 20% hôm nay!&quot;)
+    ctx.reply(f&quot;Đã gửi cho {sent} người.&quot;)
+
+@bot.command(&quot;addmod&quot;, &quot;Cấp quyền mod&quot;, admin_only=True)
+def addmod(ctx):
+    bot.roles.grant(ctx.args.strip(), &quot;mod&quot;)
+    ctx.reply(&quot;Đã cấp quyền mod.&quot;)
+
+@bot.command(&quot;stats&quot;, &quot;Thống kê&quot;, role=&quot;mod&quot;)
+def stats(ctx):
+    ctx.reply(f&quot;Lượt truy cập: {bot.storage.get(&#x27;visits&#x27;, 0)} — người dùng: {len(bot.users())}&quot;)
+
+@bot.on_callback
+def on_btn(ctx):
+    if ctx.data == &quot;menu&quot;:
+        ctx.reply(&quot;Cà phê 25k\nTrà sữa 30k&quot;)
+
+if __name__ == &quot;__main__&quot;:
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-21-2" aria-labelledby="tab-21-2" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/echo-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>echo-bot.mjs</span></a></p><pre class="code"><code data-lang="js">// Ví dụ bot Lumora (JavaScript / Node.js ≥ 18)
+import { Bot } from &quot;../js/lumora-bot.mjs&quot;;
+
+const bot = new Bot({ name: &quot;Echo Bot&quot;, dataDir: process.env.BOT_DIR || &quot;./echo-bot&quot;, about: &quot;Nhắc lại mọi tin nhắn&quot; });
+
+bot.command(&quot;start&quot;, &quot;Bắt đầu&quot;, (ctx) =&gt;
+  ctx.reply(&quot;Chào bạn Bấm thử nút nhé:&quot;, [[{ text: &quot;Thích&quot;, data: &quot;like&quot; }, { text: &quot;Trang chủ&quot;, url: &quot;https://getlumora.pages.dev&quot; }]])
+);
+bot.onCallback((ctx) =&gt; ctx.reply(`Cảm ơn! Bạn đã bấm: ${ctx.data}`));
+bot.onMessage((ctx) =&gt; ctx.reply(`Bạn nói: ${ctx.text}`));
+
+await bot.run();</code></pre></div></div>
+</section>
+<section class="doc-sec" id="run">
+  <h2><span class="l-vi">Chạy ví dụ</span><span class="l-en" lang="en">Run an example</span></h2>
+  <div class="l-vi"><p>Các ví dụ dùng token trong <code>LUMORA_BOT_TOKEN</code> nếu có; không có token thì chạy như một bot thử nghiệm có tên riêng. <code>BOT_DIR</code> chọn thư mục dữ liệu.</p></div>
+  <div class="l-en" lang="en"><p>The examples use the token in <code>LUMORA_BOT_TOKEN</code> when set; without one they start as a named test bot. <code>BOT_DIR</code> picks the data folder.</p></div>
+  <pre class="code"><code data-lang="bash">export LUMORA_BOT_TOKEN=&quot;lumora_bot_...&quot;
+export LUMORAD=./lumora-bot-runner-linux-x86_64
+BOT_DIR=./team-tasks python3 team_tasks_bot.py      # Python
+BOT_DIR=./team-tasks node team-tasks-bot.mjs          # JavaScript</code></pre>
+</section>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

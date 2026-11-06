@@ -1,0 +1,24 @@
+# Lumora push bridge behind Caddy (automatic HTTPS). First: cp lumora-push.env.example lumora-push.env and fill it in.
+#   docker compose up -d   then   docker compose exec push lumora-push --print-public-key
+services:
+  push:
+    build:
+      context: ../../core
+      dockerfile: ../relay/push/Dockerfile
+    restart: unless-stopped
+    env_file: lumora-push.env
+    environment:
+      LUMORA_PUSH_TRUST_PROXY: "true"   # client IP for rate limits comes from Caddy
+    volumes:
+      - push-data:/data
+      - ./AuthKey.p8:/keys/AuthKey.p8:ro
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    command: caddy reverse-proxy --from ${PUSH_DOMAIN:?set PUSH_DOMAIN} --to push:8099
+    volumes:
+      - caddy-data:/data
+volumes:
+  push-data:
+  caddy-data:

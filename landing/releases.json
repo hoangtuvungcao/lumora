@@ -1,0 +1,244 @@
+{
+  "version": "1.0.0",
+  "date": "2026-11-06",
+  "repo": "hoangtuvungcao/get_lumora",
+  "baseUrl": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v{version}/",
+  "notesUrl": "https://github.com/hoangtuvungcao/get_lumora/releases/tag/v{version}",
+  "checksums": {
+    "file": "SHA256SUMS",
+    "signature": "SHA256SUMS.sigstore.json"
+  },
+  "platforms": {
+    "windows": {
+      "name": "Windows",
+      "icon": "os-windows",
+      "simple": {
+        "vi": "Máy tính Windows 10 trở lên",
+        "en": "Windows 10 or later"
+      },
+      "requirements": {
+        "vi": "Windows 10 / 11, 64-bit (x64)",
+        "en": "Windows 10 / 11, 64-bit (x64)"
+      },
+      "files": [
+        {
+          "id": "win-exe",
+          "label": {
+            "vi": "Trình cài đặt",
+            "en": "Installer"
+          },
+          "ext": ".exe",
+          "arch": "x64",
+          "file": "Lumora-v{version}-windows-x86_64-setup.exe",
+          "primary": true,
+          "available": false
+        },
+        {
+          "id": "win-zip",
+          "label": {
+            "vi": "Bản không cần cài (.zip)",
+            "en": "Portable, no install (.zip)"
+          },
+          "ext": ".zip",
+          "arch": "x64",
+          "file": "Lumora-v{version}-windows-x86_64-portable.zip",
+          "available": false
+        }
+      ]
+    },
+    "macos": {
+      "name": "macOS",
+      "icon": "os-apple",
+      "simple": {
+        "vi": "Máy Mac (macOS 11 trở lên)",
+        "en": "Mac (macOS 11 or later)"
+      },
+      "requirements": {
+        "vi": "macOS 11+ · Universal (Apple Silicon & Intel)",
+        "en": "macOS 11+ · Universal (Apple Silicon & Intel)"
+      },
+      "files": [
+        {
+          "id": "mac-dmg",
+          "label": {
+            "vi": "Trình cài đặt",
+            "en": "Installer"
+          },
+          "ext": ".dmg",
+          "arch": "Universal",
+          "file": "Lumora-v{version}-macos-universal.dmg",
+          "primary": true,
+          "signed": false,
+          "note": {
+            "vi": "Chưa được Apple ký số: lần đầu mở, bấm \"Vẫn mở\" trong Cài đặt hệ thống › Quyền riêng tư & Bảo mật.",
+            "en": "Not yet signed by Apple: the first time, click \"Open Anyway\" in System Settings › Privacy & Security."
+          },
+          "available": false
+        }
+      ]
+    },
+    "linux": {
+      "name": "Linux",
+      "icon": "os-linux",
+      "simple": {
+        "vi": "Ubuntu 24.04, Debian 13, Fedora 40 trở lên",
+        "en": "Ubuntu 24.04, Debian 13, Fedora 40 or later"
+      },
+      "requirements": {
+        "vi": "x86_64 · glibc 2.39+ (Ubuntu 24.04, Debian 13, Fedora 40 trở lên) · X11 hoặc Wayland",
+        "en": "x86_64 · glibc 2.39+ (Ubuntu 24.04, Debian 13, Fedora 40 or later) · X11 or Wayland"
+      },
+      "files": [
+        {
+          "id": "linux-appimage",
+          "label": {
+            "vi": "AppImage (mọi bản Linux)",
+            "en": "AppImage (any distro)"
+          },
+          "ext": ".AppImage",
+          "arch": "x86_64",
+          "file": "Lumora-v{version}-linux-x86_64.AppImage",
+          "primary": true,
+          "available": false
+        },
+        {
+          "id": "linux-deb",
+          "label": {
+            "vi": "Gói Debian / Ubuntu",
+            "en": "Debian / Ubuntu package"
+          },
+          "ext": ".deb",
+          "arch": "amd64",
+          "file": "Lumora-v{version}-linux-amd64.deb",
+          "available": false
+        },
+        {
+          "id": "linux-tar",
+          "label": {
+            "vi": "Bản nén (.tar.gz)",
+            "en": "Archive (.tar.gz)"
+          },
+          "ext": ".tar.gz",
+          "arch": "x86_64",
+          "file": "Lumora-v{version}-linux-x86_64.tar.gz",
+          "available": false
+        }
+      ]
+    },
+    "android": {
+      "name": "Android",
+      "icon": "os-android",
+      "simple": {
+        "vi": "Điện thoại, máy tính bảng Android 8 trở lên",
+        "en": "Android 8 or later phones and tablets"
+      },
+      "requirements": {
+        "vi": "Android 8.0+ · arm64-v8a (hầu hết điện thoại), armeabi-v7a (máy cũ), x86_64",
+        "en": "Android 8.0+ · arm64-v8a (most phones), armeabi-v7a (older phones), x86_64"
+      },
+      "files": [
+        {
+          "id": "android-arm64",
+          "label": {
+            "vi": "Hầu hết điện thoại (arm64)",
+            "en": "Most phones (arm64)"
+          },
+          "ext": ".apk",
+          "arch": "arm64-v8a",
+          "file": "Lumora-v{version}-android-arm64-v8a.apk",
+          "primary": true,
+          "available": false
+        },
+        {
+          "id": "android-universal",
+          "label": {
+            "vi": "Mọi điện thoại (lớn hơn)",
+            "en": "Any phone (larger)"
+          },
+          "ext": ".apk",
+          "arch": "universal",
+          "file": "Lumora-v{version}-android-universal.apk",
+          "alt": true,
+          "available": false
+        },
+        {
+          "id": "android-armv7",
+          "label": {
+            "vi": "Điện thoại đời cũ (32-bit)",
+            "en": "Older phones (32-bit)"
+          },
+          "ext": ".apk",
+          "arch": "armeabi-v7a",
+          "file": "Lumora-v{version}-android-armeabi-v7a.apk",
+          "available": false
+        },
+        {
+          "id": "android-x86_64",
+          "label": {
+            "vi": "Máy tính bảng / máy ảo x86",
+            "en": "x86 tablets / emulators"
+          },
+          "ext": ".apk",
+          "arch": "x86_64",
+          "file": "Lumora-v{version}-android-x86_64.apk",
+          "available": false
+        }
+      ]
+    }
+  },
+  "comingSoon": {
+    "ios": {
+      "name": "iPhone / iPad",
+      "icon": "os-apple",
+      "note": {
+        "vi": "Sắp ra mắt",
+        "en": "Coming soon"
+      }
+    }
+  },
+  "tools": {
+    "botRunner": {
+      "name": "Lumora Bot Runner",
+      "label": {
+        "vi": "Lumora Bot Runner",
+        "en": "Lumora Bot Runner"
+      },
+      "description": {
+        "vi": "Chương trình nhỏ chạy trên máy tính của bạn, giúp đoạn mã bot kết nối vào Lumora.",
+        "en": "A small program that connects your bot code to Lumora."
+      },
+      "files": [
+        {
+          "id": "runner-windows",
+          "label": {
+            "vi": "Windows",
+            "en": "Windows"
+          },
+          "arch": "x86_64",
+          "file": "Lumora-bot-runner-v{version}-windows-x86_64.exe",
+          "available": false
+        },
+        {
+          "id": "runner-linux",
+          "label": {
+            "vi": "Linux",
+            "en": "Linux"
+          },
+          "arch": "x86_64",
+          "file": "Lumora-bot-runner-v{version}-linux-x86_64",
+          "available": false
+        },
+        {
+          "id": "runner-macos",
+          "label": {
+            "vi": "macOS",
+            "en": "macOS"
+          },
+          "arch": "Universal",
+          "file": "Lumora-bot-runner-v{version}-macos-universal",
+          "available": false
+        }
+      ]
+    }
+  }
+}

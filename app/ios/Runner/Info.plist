@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Lumora</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Lumora</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>vi</string>
+	</array>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<!-- Privacy strings (English base; Vietnamese in vi.lproj/InfoPlist.strings). -->
+	<key>NSCameraUsageDescription</key>
+	<string>Lumora uses the camera so the other person can see you during video calls, and to scan the QR code when you link a device.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lumora uses the microphone for calls and voice messages.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lumora connects directly to your contacts' devices on the same Wi-Fi, so messages, calls and files stay fast and never leave your network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_lumora._udp</string>
+		<string>_lumora._tcp</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Lumora lets you choose photos and videos to send to your contacts.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Lumora saves photos and videos you receive to your library when you ask it to.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Lumora shares your location only when you choose to send it to a contact.</string>
+	<!-- audio: keeps an ongoing call (and a screen-sharing session) running when you switch
+	     apps. voip: PushKit incoming calls via the optional push bridge, always reported to
+	     CallKit. Publishers who ship WITHOUT a push bridge should remove "voip". -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>voip</string>
+	</array>
+	<!-- Keychain group shared with the notification extension (notification key). -->
+	<key>LumoraKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)vn.lumora.lumora.shared</string>
+	<!-- Received files are saved in Documents; this shows them in the Files app. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+</dict>
+</plist>

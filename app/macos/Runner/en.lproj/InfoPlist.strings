@@ -1,0 +1,7 @@
+/* Privacy strings shown by macOS (English). Keep in sync with vi.lproj and Info.plist. */
+"NSCameraUsageDescription" = "Lumora uses the camera so the other person can see you during video calls.";
+"NSMicrophoneUsageDescription" = "Lumora uses the microphone for calls and voice messages.";
+"NSLocalNetworkUsageDescription" = "Lumora connects directly to your contacts' devices on the same network, so messages, calls and files stay fast and never leave your network.";
+"NSLocationUsageDescription" = "Lumora shares your location only when you choose to send it to a contact.";
+"NSLocationWhenInUseUsageDescription" = "Lumora shares your location only when you choose to send it to a contact.";
+"NSAppleEventsUsageDescription" = "Lumora uses System Events only when someone you allowed to control this Mac asks to log out or restart it.";

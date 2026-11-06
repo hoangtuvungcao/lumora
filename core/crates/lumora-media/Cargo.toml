@@ -1,0 +1,84 @@
+[package]
+name = "lumora-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lumora platform media layer: screen capture, VP8/VP9 + OS H.264 video, Opus audio, input injection, diagnostics"
+
+[features]
+default = ["video", "audio"]
+# Video codecs: bundled libvpx (VP8/VP9, always) + H.264 from the OS where available
+# (MediaCodec / Media Foundation / VideoToolbox). Nothing is downloaded at run time.
+video = ["dep:lumora-vpx-sys"]
+# DEV/TEST ONLY: OpenH264 compiled from source (H.264 on Linux for tests, legacy-peer
+# interop). Not patent-licensed — never enable it for release builds (CI checks).
+openh264-source = ["video", "dep:openh264", "dep:openh264-sys2"]
+# Opus codec + cpal device I/O (jitter buffer / noise gate are always available).
+audio = ["dep:opus", "dep:cpal", "dep:aec-rs", "dep:nnnoiseless"]
+# V4L2 webcam capture (Linux only).
+camera-v4l = ["dep:v4l"]
+
+[dependencies]
+anyhow = "1"
+bytes = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+parking_lot = "0.12"
+lumora-vpx-sys = { path = "../lumora-vpx-sys", optional = true }
+openh264 = { version = "0.9", optional = true, default-features = false, features = ["source"] }
+openh264-sys2 = { version = "0.9", optional = true, default-features = false, features = ["source"] }
+opus = { version = "0.3", optional = true }
+cpal = { version = "0.18", optional = true }
+aec-rs = { version = "1", optional = true }
+# RNNoise (pure Rust) noise suppression for calls
+nnnoiseless = { version = "0.5", optional = true, default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+v4l = { version = "0.14", optional = true }
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+pipewire = "0.10"
+x11rb = { version = "0.14", features = ["shm", "xtest", "randr", "xfixes", "damage"] }
+evdev = "0.13"
+libc = "0.2"
+# VA-API H.264 (src/codec/vaapi.rs): libva is loaded at run time, never linked
+libloading = "0.8"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-context = "0.1"
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+  "Win32_Foundation", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Direct3D",
+  "Win32_Graphics_Direct3D11", "Win32_Graphics_Gdi", "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Win32_System_LibraryLoader",
+  # H.264 via Media Foundation (src/codec/mf.rs)
+  "Win32_Media_MediaFoundation", "Win32_System_Com", "Win32_System_Ole", "Win32_System_Variant",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = { version = "0.24", features = ["highsierra"] }
+core-foundation = "0.10"
+# CF types for the VideoToolbox H.264 backend (src/codec/vt.rs)
+core-foundation-sys = "0.8"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+core-foundation-sys = "0.8"
+
+[dev-dependencies]
+png = "0.18"
+rmp-serde = "1"
+
+[[example]]
+name = "capture_test"
+required-features = ["video"]
+
+[[example]]
+name = "codec_bench"
+required-features = ["video"]
+
+[[example]]
+name = "fx_camera"
+required-features = ["video", "camera-v4l"]

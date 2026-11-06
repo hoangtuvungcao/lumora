@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Lumora
+GenericName=Private messenger
+GenericName[vi]=Nhắn tin riêng tư
+Comment=Private chat, calls, file sharing and remote desktop
+Comment[vi]=Nhắn tin, gọi điện, gửi tệp và điều khiển máy tính từ xa một cách riêng tư
+Exec=lumora %u
+Icon=lumora
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=chat;messenger;call;video;file;remote;desktop;
+Keywords[vi]=nhắn tin;trò chuyện;gọi điện;video;tệp;điều khiển từ xa;
+MimeType=x-scheme-handler/lumora;
+StartupNotify=true
+StartupWMClass=vn.lumora.lumora

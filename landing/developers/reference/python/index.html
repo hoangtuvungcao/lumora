@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="vi" data-page="dev-ref-python" data-title-en="Python SDK reference — Lumora" data-desc-en="Complete Lumora Bot SDK reference for Python: Bot, Context, Storage, errors, helpers.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tham chiếu SDK Python — Lumora</title>
+<meta name="description" content="Tham chiếu đầy đủ Lumora Bot SDK cho Python: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/reference/python/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Tham chiếu SDK Python — Lumora">
+<meta property="og:description" content="Tham chiếu đầy đủ Lumora Bot SDK cho Python: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/reference/python/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tham chiếu SDK Python — Lumora">
+<meta name="twitter:description" content="Tham chiếu đầy đủ Lumora Bot SDK cho Python: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/" aria-current="page"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#code"/></svg><span class="l-vi">SDK Python</span><span class="l-en" lang="en">Python SDK</span></p>
+      <h1 class="hero__title"><span class="l-vi">Tham chiếu SDK Python</span><span class="l-en" lang="en">Python SDK reference</span></h1>
+      <p class="lead-p"><span class="l-vi">Mọi lớp, hàm và tham số của lumora_bot.py.</span><span class="l-en" lang="en">Every class, method and parameter of lumora_bot.py.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li class="toc--2"><a href="#bot">Bot</a></li><li class="toc--3"><a href="#bot-handlers">Handlers</a></li><li class="toc--3"><a href="#bot-sending">Sending messages</a></li><li class="toc--3"><a href="#bot-tasks">Checklists and reminders</a></li><li class="toc--3"><a href="#bot-actions">Message actions</a></li><li class="toc--3"><a href="#bot-files">Files</a></li><li class="toc--3"><a href="#bot-groups">Groups</a></li><li class="toc--3"><a href="#bot-users">Users and profile</a></li><li class="toc--3"><a href="#bot-jobs">Jobs (scheduled tasks)</a></li><li class="toc--3"><a href="#bot-lifecycle">Lifecycle</a></li><li class="toc--3"><a href="#bot-lowlevel">Low-level API</a></li><li class="toc--2"><a href="#context">Context</a></li><li class="toc--2"><a href="#storage">Storage</a></li><li class="toc--2"><a href="#roles">Roles</a></li><li class="toc--2"><a href="#button">Button</a></li><li class="toc--2"><a href="#lumoraerror">LumoraError</a></li><li class="toc--2"><a href="#lumoratimeout">LumoraTimeout</a></li><li class="toc--2"><a href="#runnerstopped">RunnerStopped</a></li><li class="toc--2"><a href="#notallowedforbots">NotAllowedForBots</a></li><li class="toc--2"><a href="#helpers">Helpers</a></li><li class="toc--2"><a href="#constants">Constants</a></li></ul></nav>
+      <article class="prose prose--ref" lang="en">
+<p class="muted small l-vi">Phần tham chiếu được viết bằng tiếng Anh và tạo tự động từ mã nguồn SDK.</p>
+<p><code>lumora_bot</code> 1.1.0 · Python 3.8+ · one file, no dependencies. Generated from the docstrings in <code>sdk/python/lumora_bot.py</code> by <code>sdk/tools/gen_reference.py</code>; do not edit by hand.</p>
+<pre class="code"><code data-lang="py">from lumora_bot import Bot, Button, LumoraError</code></pre>
+<h2 id="bot">Bot</h2>
+<pre class="code"><code data-lang="py">Bot(
+    name: str = &quot;&quot;,
+    data_dir: str = &quot;./lumora-bot&quot;,
+    binary: Optional[str] = None,
+    token: Optional[str] = None,
+    about: str = &quot;&quot;,
+    lan: bool = True,
+    public_directory: bool = True,
+    workers: int = 4,
+    extra_args: Optional[List[str]] = None,
+    admins: Optional[List[str]] = None,
+    rate_per_sec: float = 15.0,
+    *,
+    downloads_dir: Optional[str] = None,
+    auto_restart: bool = True,
+    allow_groups: bool = True,
+    lang: Optional[str] = None,
+    log_json: Optional[bool] = None,
+    log_level: Optional[str] = None,
+    runner_log: Optional[str] = None,
+    help_command: bool = True,
+    deny_text: str = &quot;⛔ Bạn không có quyền dùng lệnh này. / You are not allowed to use this command.&quot;,
+)</code></pre>
+<p>A Lumora bot.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>name</code>: Display name for a bot made without BotFather (testing). Not needed with a token.</li>
+<li><code>data_dir</code>: Folder for the bot's identity, messages, storage and downloads. Keep it private and back it up; one folder per bot.</li>
+<li><code>binary</code>: Path to <code>lumorad</code> (default: <code>$LUMORAD</code>, then <code>lumorad</code> on <code>PATH</code>).</li>
+<li><code>token</code>: BotFather token (default: <code>$LUMORA_BOT_TOKEN</code>). Never hard-code it in public code.</li>
+<li><code>about</code>: Short description shown on the bot's profile.</li>
+<li><code>lan</code>: Also find users on the local network.</li>
+<li><code>public_directory</code>: Let people find the bot by ID / <code>@name</code> (turn off for tests).</li>
+<li><code>workers</code>: Handler threads (events of one conversation always run in order).</li>
+<li><code>extra_args</code>: Extra <code>lumorad</code> arguments.</li>
+<li><code>admins</code>: Bot admins: peer ids or <code>@name·tag</code> handles. They may use <code>admin_only</code> commands and pass every role check.</li>
+<li><code>rate_per_sec</code>: Overall send rate (default 15/s; per chat: burst 5, then 1/s).</li>
+<li><code>downloads_dir</code>: Where received files are saved (default <code>&lt;data_dir&gt;/downloads</code>).</li>
+<li><code>auto_restart</code>: Restart Lumora Bot Runner if it exits unexpectedly.</li>
+<li><code>allow_groups</code>: Accept being added to groups.</li>
+<li><code>lang</code>: <code>"vi"</code> or <code>"en"</code>: language of error messages and system texts.</li>
+<li><code>log_json</code>: Log as JSON lines (default: <code>$LUMORA_BOT_LOG_FORMAT == "json"</code>).</li>
+<li><code>log_level</code>: <code>"DEBUG"</code>, <code>"INFO"</code>… (default <code>$LUMORA_BOT_LOG_LEVEL</code> or INFO).</li>
+<li><code>runner_log</code>: File for Lumora Bot Runner's own log (default <code>&lt;data_dir&gt;/runner.log</code>; <code>""</code> to discard).</li>
+<li><code>help_command</code>: Answer <code>/help</code> with the command list when you don't define one.</li>
+<li><code>deny_text</code>: Reply sent when someone uses a command they are not allowed to.</li>
+</ul>
+<h3 id="bot-handlers">Handlers</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-command"><code>command</code></a></td>
+<td>Register <code>/name</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-message"><code>on_message</code></a></td>
+<td>Handle incoming messages that are not commands.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-text"><code>on_text</code></a></td>
+<td>Handle text messages matching <code>pattern</code> (regex, searched anywhere in the text).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-callback"><code>on_callback</code></a></td>
+<td>Handle inline button presses on the bot's messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-new-user"><code>on_new_user</code></a></td>
+<td>Called when someone starts a chat with the bot for the first time (<code>ctx.conv</code> is their direct chat).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-new-member"><code>on_new_member</code></a></td>
+<td>Called when someone joins a group the bot is in (<code>ctx.member</code> = <code>{peer, name, role}</code>, <code>ctx.sender</code> = the new member, <code>ctx.conv</code> = the group).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-member-left"><code>on_member_left</code></a></td>
+<td>Called when a member leaves or is removed from a group (full access needed).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-added-to-group"><code>on_added_to_group</code></a></td>
+<td>Called when a group admin adds the bot to a group (<code>ctx.conv</code> = the group).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-file"><code>on_file</code></a></td>
+<td>Handle received files.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-reminder-due"><code>on_reminder_due</code></a></td>
+<td>Called when a reminder in one of the bot's chats is due.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-checklist"><code>on_checklist</code></a></td>
+<td>Called when someone ticks / unticks checklist items or items are added.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-event"><code>on_event</code></a></td>
+<td>Low-level: receive every raw event <code>name</code> (<code>"message_update"</code>, <code>"typing"</code>, <code>"*"</code> for all).</td>
+</tr>
+<tr>
+<td><a href="#bot-middleware"><code>middleware</code></a></td>
+<td>Wrap every handled update.</td>
+</tr>
+<tr>
+<td><a href="#bot-use"><code>use</code></a></td>
+<td>Same as <code>middleware</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-error"><code>on_error</code></a></td>
+<td>Called with <code>(ctx, exception)</code> when a handler raises.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-start"><code>on_start</code></a></td>
+<td>Called once the bot is online (and again after an automatic restart).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-command"><code>command(name: str, description: str = "", admin_only: bool = False, role: Optional[str] = None, *, chats: str = "all", hidden: bool = False)</code></h4>
+<p>Register <code>/name</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>name</code>: Command name without <code>/</code> (<code>/name@yourbot</code> works too in groups).</li>
+<li><code>description</code>: Shown in the app's command menu and <code>/help</code>.</li>
+<li><code>admin_only</code>: Only bot admins may use it (hidden from the menu).</li>
+<li><code>role</code>: Only users with this bot role (or admins) may use it (hidden from the menu).</li>
+<li><code>chats</code>: <code>"all"</code>, <code>"private"</code> (direct chats only) or <code>"group"</code>.</li>
+<li><code>hidden</code>: Keep it out of the command menu.</li>
+</ul>
+<p><strong>Example</strong></p>
+<pre class="code"><code data-lang="py">@bot.command(&quot;ban&quot;, &quot;Ban a user&quot;, admin_only=True, chats=&quot;group&quot;)
+def ban(ctx): ...</code></pre>
+<h4 id="bot-on-message"><code>on_message(fn: Optional[Handler] = None, *, pattern: Union[str, Pattern, None] = None, kinds: Optional[Sequence[str]] = ('text',), chats: str = "all")</code></h4>
+<p>Handle incoming messages that are not commands.</p>
+<p>Usable bare (<code>@bot.on_message</code>: every text message) or with filters.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>pattern</code>: Regex searched in the text; the first matching handler wins and catch-all handlers don't run. The match is in <code>ctx.match</code>.</li>
+<li><code>kinds</code>: Message kinds: <code>"text"</code> (default), <code>"file"</code>, <code>"voice"</code>, <code>"sticker"</code>, <code>"location"</code>, <code>"contact"</code>, <code>"poll"</code>, <code>"checklist"</code>, <code>"reminder"</code>; <code>None</code> = all.</li>
+<li><code>chats</code>: <code>"all"</code>, <code>"private"</code> or <code>"group"</code>.</li>
+</ul>
+<h4 id="bot-on-text"><code>on_text(pattern: Union[str, Pattern], *, chats: str = "all")</code></h4>
+<p>Handle text messages matching <code>pattern</code> (regex, searched anywhere in the text).</p>
+<p><strong>Example</strong></p>
+<pre class="code"><code data-lang="py">@bot.on_text(r&quot;(?i)\bprice\b&quot;)
+def price(ctx): ctx.reply(&quot;From 25k&quot;)</code></pre>
+<h4 id="bot-on-callback"><code>on_callback(fn: Optional[Handler] = None, *, data: Optional[str] = None, pattern: Union[str, Pattern, None] = None)</code></h4>
+<p>Handle inline button presses on the bot's messages.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>data</code>: Only buttons whose data equals this. A value ending in <code>*</code> matches by prefix (<code>data="buy:*"</code>).</li>
+<li><code>pattern</code>: Regex matched against the data (<code>ctx.match</code>).</li>
+</ul>
+<h4 id="bot-on-new-user"><code>on_new_user(fn: Handler)</code></h4>
+<p>Called when someone starts a chat with the bot for the first time
+(<code>ctx.conv</code> is their direct chat).</p>
+<h4 id="bot-on-new-member"><code>on_new_member(fn: Handler)</code></h4>
+<p>Called when someone joins a group the bot is in (<code>ctx.member</code> = <code>{peer, name,
+role}</code>, <code>ctx.sender</code> = the new member, <code>ctx.conv</code> = the group). <code>name</code> is the
+9-digit ID when the bot doesn't know the person yet: greet them with
+<code>mentions=[ctx.sender]</code> instead. Needs full access ("read all") in that group: a
+privacy-mode bot is not told about membership changes.</p>
+<h4 id="bot-on-member-left"><code>on_member_left(fn: Handler)</code></h4>
+<p>Called when a member leaves or is removed from a group (full access needed).</p>
+<h4 id="bot-on-added-to-group"><code>on_added_to_group(fn: Handler)</code></h4>
+<p>Called when a group admin adds the bot to a group (<code>ctx.conv</code> = the group).</p>
+<h4 id="bot-on-file"><code>on_file(fn: Optional[Handler] = None, *, extensions: Optional[Sequence[str]] = None, chats: str = "all")</code></h4>
+<p>Handle received files. <code>ctx.file</code> has <code>file_id</code>, <code>name</code>, <code>size</code>, <code>mime</code>
+and <code>preview</code> (<code>{kind, text, pages, lines}</code> or <code>None</code>, available before
+downloading). Call <code>ctx.download()</code> to get the file on disk.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>extensions</code>: Only these file extensions, e.g. <code>["txt", "csv"]</code>.</li>
+</ul>
+<h4 id="bot-on-reminder-due"><code>on_reminder_due(fn: Handler)</code></h4>
+<p>Called when a reminder in one of the bot's chats is due. <code>ctx.reminder</code> has
+<code>title</code>, <code>note</code>, <code>at_ms</code>, <code>author</code>, <code>mine</code> and <code>late</code>.</p>
+<h4 id="bot-on-checklist"><code>on_checklist(fn: Handler)</code></h4>
+<p>Called when someone ticks / unticks checklist items or items are added.
+<code>ctx.checklist</code> = <code>{msg_id, conv, title, items: [{id, text, done, by, at}],
+done, total}</code>; <code>ctx.changes</code> = <code>[{item, text, done, by}]</code>. Changes made by the
+bot itself are not reported.</p>
+<h4 id="bot-on-event"><code>on_event(name: str)</code></h4>
+<p>Low-level: receive every raw event <code>name</code> (<code>"message_update"</code>, <code>"typing"</code>,
+<code>"*"</code> for all). <code>ctx.event</code> is the raw dict. Runs in addition to other handlers.</p>
+<h4 id="bot-middleware"><code>middleware(fn: Callable[[Context, Callable[[], Any]], Any])</code></h4>
+<p>Wrap every handled update. <code>fn(ctx, next)</code> must call <code>next()</code> to continue;
+not calling it stops the update (useful for bans, per-user limits, logging).</p>
+<p><strong>Example</strong></p>
+<pre class="code"><code data-lang="py">@bot.middleware
+def timing(ctx, next):
+    t = time.time(); r = next(); log.info(&quot;%s took %.0f ms&quot;, ctx.kind, (time.time()-t)*1000); return r</code></pre>
+<h4 id="bot-use"><code>use(fn: Callable[[Context, Callable[[], Any]], Any])</code></h4>
+<p>Same as <code>middleware</code> (the name used by the JavaScript SDK).</p>
+<h4 id="bot-on-error"><code>on_error(fn: Callable[[Context, BaseException], Any])</code></h4>
+<p>Called with <code>(ctx, exception)</code> when a handler raises. The error is logged anyway.</p>
+<h4 id="bot-on-start"><code>on_start(fn: Callable[[], Any])</code></h4>
+<p>Called once the bot is online (and again after an automatic restart).</p>
+<h3 id="bot-sending">Sending messages</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-send"><code>send</code></a></td>
+<td>Send a text message (paced so receivers never see the bot as spam).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-file"><code>send_file</code></a></td>
+<td>Send a file.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-poll"><code>send_poll</code></a></td>
+<td>Send a poll (2–10 options, question ≤ 300 chars).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-sticker"><code>send_sticker</code></a></td>
+<td>Send a built-in sticker (<code>pack</code>, <code>sticker</code>) or a custom one by <code>hash</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-location"><code>send_location</code></a></td>
+<td>Send a location (<code>live_minutes &gt; 0</code>: live location you update with <code>update_live_location</code>, max 8 h).</td>
+</tr>
+<tr>
+<td><a href="#bot-update-live-location"><code>update_live_location</code></a></td>
+<td>Move a live location, or end it (<code>stop=True</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-contact"><code>send_contact</code></a></td>
+<td>Send a contact card of user <code>peer</code> (or of the bot itself).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-voice"><code>send_voice</code></a></td>
+<td>Send a voice message (Ogg/Opus file ≤ 32 MB; <code>wave</code>: 0–255 bars for the waveform).</td>
+</tr>
+<tr>
+<td><a href="#bot-broadcast"><code>broadcast</code></a></td>
+<td>Send <code>text</code> to every user (or <code>users</code>), paced (≈ 15 messages/s).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-send"><code>send(conv: str, text: str, buttons: Buttons = None, reply_to: Optional[str] = None, *, silent: bool = False, mentions: Optional[Sequence[str]] = None, mention_all: bool = False, ttl_ms: Optional[int] = None)</code></h4>
+<p>Send a text message (paced so receivers never see the bot as spam).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code>: Conversation id (<code>d:&lt;peer&gt;</code>, <code>g:&lt;gid&gt;</code>). A bare peer id is accepted.</li>
+<li><code>text</code>: Up to 64 KB of UTF-8 text.</li>
+<li><code>buttons</code>: Inline buttons (rows; max 8×8, text/data ≤ 64 chars).</li>
+<li><code>reply_to</code>: Message id to quote.</li>
+<li><code>silent</code>: No sound or notification on the receivers' devices.</li>
+<li><code>mentions</code>: Peer ids to mention (they get a mention notification).</li>
+<li><code>mention_all</code>: Mention everyone (groups).</li>
+<li><code>ttl_ms</code>: Disappear this many ms after being read.</li>
+</ul>
+<p><strong>Returns</strong></p>
+<p>The sent message (<code>id</code>, <code>conv</code>, <code>ts</code>…).</p>
+<h4 id="bot-send-file"><code>send_file(conv: str, path: str, *, preview: Union[str, Dict[str, Any], None] = None, thumb: Optional[str] = None)</code></h4>
+<p>Send a file. Text/code files get an automatic preview of their first lines.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code>: Conversation id.</li>
+<li><code>path</code>: Local file path (readable by Lumora Bot Runner).</li>
+<li><code>preview</code>: Custom preview shown before download: a text snippet (<code>str</code>) or <code>{"kind": "text"|"pdf"|…, "text", "pages", "lines"}</code>. Text is cut to 4 KB.</li>
+<li><code>thumb</code>: Path to a JPEG/PNG/WebP picture ≤ 64 KB shown with the file (e.g. a chart or the first page of a PDF).</li>
+</ul>
+<p><strong>Returns</strong></p>
+<p>The file transfer entry (<code>id</code>, <code>name</code>, <code>size</code>, <code>state</code>…).</p>
+<h4 id="bot-send-poll"><code>send_poll(conv: str, question: str, options: Sequence[str])</code></h4>
+<p>Send a poll (2–10 options, question ≤ 300 chars). Votes arrive as
+<code>message_update</code> events (<code>reactions.__votes</code>).</p>
+<h4 id="bot-send-sticker"><code>send_sticker(conv: str, pack: str = "", sticker: str = "", *, hash: Optional[str] = None)</code></h4>
+<p>Send a built-in sticker (<code>pack</code>, <code>sticker</code>) or a custom one by <code>hash</code>.</p>
+<h4 id="bot-send-location"><code>send_location(conv: str, lat: float, lon: float, label: str = "", *, accuracy_m: float = 0, live_minutes: int = 0)</code></h4>
+<p>Send a location (<code>live_minutes &gt; 0</code>: live location you update with
+<code>update_live_location</code>, max 8 h).</p>
+<h4 id="bot-update-live-location"><code>update_live_location(conv: str, msg_id: str, lat: float, lon: float, *, accuracy_m: float = 0, stop: bool = False)</code></h4>
+<p>Move a live location, or end it (<code>stop=True</code>).</p>
+<h4 id="bot-send-contact"><code>send_contact(conv: str, peer: str)</code></h4>
+<p>Send a contact card of user <code>peer</code> (or of the bot itself).</p>
+<h4 id="bot-send-voice"><code>send_voice(conv: str, path: str, duration_ms: int, wave: Optional[Sequence[int]] = None)</code></h4>
+<p>Send a voice message (Ogg/Opus file ≤ 32 MB; <code>wave</code>: 0–255 bars for the waveform).</p>
+<h4 id="bot-broadcast"><code>broadcast(text: str, buttons: Buttons = None, *, silent: bool = False, users: Optional[Iterable[str]] = None, on_progress: Optional[Callable[[int, int], Any]] = None)</code></h4>
+<p>Send <code>text</code> to every user (or <code>users</code>), paced (≈ 15 messages/s).</p>
+<p><strong>Returns</strong></p>
+<p>How many users received it. Failures are logged and skipped.</p>
+<h3 id="bot-tasks">Checklists and reminders</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-send-checklist"><code>send_checklist</code></a></td>
+<td>Send a checklist (1–100 items, ≤ 200 chars each).</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist-toggle"><code>checklist_toggle</code></a></td>
+<td>Tick (<code>done=True</code>) or untick item <code>item</code> (its id) of a checklist.</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist-add"><code>checklist_add</code></a></td>
+<td>Add items to a checklist the bot sent.</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist"><code>checklist</code></a></td>
+<td>Current state of a checklist: <code>{msg_id, conv, title, items: [{id, text, done, by, at}], done, total}</code> or <code>None</code> if not found.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-reminder"><code>send_reminder</code></a></td>
+<td>Send a reminder.</td>
+</tr>
+<tr>
+<td><a href="#bot-reminder-cancel"><code>reminder_cancel</code></a></td>
+<td>Cancel a reminder the bot sent.</td>
+</tr>
+<tr>
+<td><a href="#bot-reminders"><code>reminders</code></a></td>
+<td>Upcoming reminders known to the bot (soonest first): <code>[{conv, msg_id, at_ms, title, note, author}]</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-send-checklist"><code>send_checklist(conv: str, title: str, items: Sequence[str], *, silent: bool = False)</code></h4>
+<p>Send a checklist (1–100 items, ≤ 200 chars each). Anyone in the chat can tick
+items; see <code>on_checklist</code>.</p>
+<p><strong>Returns</strong></p>
+<p>The message; <code>body.items</code> = <code>[{id, text}]</code> (ids start at 1).</p>
+<h4 id="bot-checklist-toggle"><code>checklist_toggle(conv: str, msg_id: str, item: int, done: bool = True)</code></h4>
+<p>Tick (<code>done=True</code>) or untick item <code>item</code> (its id) of a checklist.</p>
+<h4 id="bot-checklist-add"><code>checklist_add(conv: str, msg_id: str, items: Sequence[str])</code></h4>
+<p>Add items to a checklist the bot sent.</p>
+<h4 id="bot-checklist"><code>checklist(conv: str, msg_id: str)</code></h4>
+<p>Current state of a checklist: <code>{msg_id, conv, title, items: [{id, text, done,
+by, at}], done, total}</code> or <code>None</code> if not found.</p>
+<h4 id="bot-send-reminder"><code>send_reminder(conv: str, title: str, at: When, note: str = "", *, silent: bool = False)</code></h4>
+<p>Send a reminder. Everyone in the chat (and the bot) gets <code>reminder_due</code> at
+<code>at</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>title</code>: ≤ 200 chars. note: ≤ 1000 chars.</li>
+<li><code>at</code>: <code>datetime</code>, <code>timedelta</code> from now, or epoch ms. Must be in the future.</li>
+</ul>
+<h4 id="bot-reminder-cancel"><code>reminder_cancel(conv: str, msg_id: str)</code></h4>
+<p>Cancel a reminder the bot sent.</p>
+<h4 id="bot-reminders"><code>reminders()</code></h4>
+<p>Upcoming reminders known to the bot (soonest first):
+<code>[{conv, msg_id, at_ms, title, note, author}]</code>.</p>
+<h3 id="bot-actions">Message actions</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-edit-message"><code>edit_message</code></a></td>
+<td>Edit the text of one of the bot's messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-delete-message"><code>delete_message</code></a></td>
+<td>Delete a message.</td>
+</tr>
+<tr>
+<td><a href="#bot-pin-message"><code>pin_message</code></a></td>
+<td>Pin (<code>on=True</code>) or unpin a message.</td>
+</tr>
+<tr>
+<td><a href="#bot-pinned-messages"><code>pinned_messages</code></a></td>
+<td>Pinned messages of a conversation.</td>
+</tr>
+<tr>
+<td><a href="#bot-react"><code>react</code></a></td>
+<td>Add (or remove) an emoji reaction.</td>
+</tr>
+<tr>
+<td><a href="#bot-forward-message"><code>forward_message</code></a></td>
+<td>Forward a message to another conversation.</td>
+</tr>
+<tr>
+<td><a href="#bot-messages"><code>messages</code></a></td>
+<td>Recent messages of a conversation, oldest first.</td>
+</tr>
+<tr>
+<td><a href="#bot-typing"><code>typing</code></a></td>
+<td>Show (or hide) "typing…".</td>
+</tr>
+<tr>
+<td><a href="#bot-mark-read"><code>mark_read</code></a></td>
+<td>Mark a conversation as read.</td>
+</tr>
+<tr>
+<td><a href="#bot-schedule-message"><code>schedule_message</code></a></td>
+<td>Let Lumora send <code>text</code> at <code>at</code> (kept while the bot runs; ≤ 500 pending).</td>
+</tr>
+<tr>
+<td><a href="#bot-scheduled-messages"><code>scheduled_messages</code></a></td>
+<td>Pending scheduled messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel-scheduled"><code>cancel_scheduled</code></a></td>
+<td>Cancel a scheduled message.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-edit-message"><code>edit_message(conv: str, msg_id: str, text: str)</code></h4>
+<p>Edit the text of one of the bot's messages.</p>
+<h4 id="bot-delete-message"><code>delete_message(conv: str, msg_id: str, for_everyone: bool = True)</code></h4>
+<p>Delete a message. In groups, deleting others' messages needs admin rights.</p>
+<h4 id="bot-pin-message"><code>pin_message(conv: str, msg_id: str, on: bool = True)</code></h4>
+<p>Pin (<code>on=True</code>) or unpin a message.</p>
+<h4 id="bot-pinned-messages"><code>pinned_messages(conv: str)</code></h4>
+<p>Pinned messages of a conversation.</p>
+<h4 id="bot-react"><code>react(conv: str, msg_id: str, emoji: str, on: bool = True)</code></h4>
+<p>Add (or remove) an emoji reaction.</p>
+<h4 id="bot-forward-message"><code>forward_message(msg_id: str, to_conv: str)</code></h4>
+<p>Forward a message to another conversation.</p>
+<h4 id="bot-messages"><code>messages(conv: str, limit: int = 50, before: Optional[int] = None)</code></h4>
+<p>Recent messages of a conversation, oldest first. File messages carry
+<code>body.preview</code> and <code>file</code> (<code>state</code>, <code>path</code> once downloaded).</p>
+<h4 id="bot-typing"><code>typing(conv: str, on: bool = True)</code></h4>
+<p>Show (or hide) "typing…".</p>
+<h4 id="bot-mark-read"><code>mark_read(conv: str)</code></h4>
+<p>Mark a conversation as read.</p>
+<h4 id="bot-schedule-message"><code>schedule_message(conv: str, text: str, at: When)</code></h4>
+<p>Let Lumora send <code>text</code> at <code>at</code> (kept while the bot runs; ≤ 500 pending).
+Returns <code>{id, conv, text, at}</code>.</p>
+<h4 id="bot-scheduled-messages"><code>scheduled_messages()</code></h4>
+<p>Pending scheduled messages.</p>
+<h4 id="bot-cancel-scheduled"><code>cancel_scheduled(sched_id: str)</code></h4>
+<p>Cancel a scheduled message.</p>
+<h3 id="bot-files">Files</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-files"><code>files</code></a></td>
+<td>All file transfers (<code>id</code>, <code>conv</code>, <code>name</code>, <code>size</code>, <code>state</code>, <code>path</code>, <code>direction</code>, <code>preview</code>…).</td>
+</tr>
+<tr>
+<td><a href="#bot-accept-file"><code>accept_file</code></a></td>
+<td>Start (or resume) downloading a received file into <code>dir</code> (default: <code>downloads_dir</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel-file"><code>cancel_file</code></a></td>
+<td>Stop a transfer.</td>
+</tr>
+<tr>
+<td><a href="#bot-download-file"><code>download_file</code></a></td>
+<td>Download a received file and wait until it is complete.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-files"><code>files()</code></h4>
+<p>All file transfers (<code>id</code>, <code>conv</code>, <code>name</code>, <code>size</code>, <code>state</code>, <code>path</code>,
+<code>direction</code>, <code>preview</code>…). <code>state</code>: 0 offered, 1 transferring, 2 done,
+3 failed, 4 cancelled, 5 paused.</p>
+<h4 id="bot-accept-file"><code>accept_file(file_id: str, dir: Optional[str] = None)</code></h4>
+<p>Start (or resume) downloading a received file into <code>dir</code>
+(default: <code>downloads_dir</code>).</p>
+<h4 id="bot-cancel-file"><code>cancel_file(file_id: str)</code></h4>
+<p>Stop a transfer.</p>
+<h4 id="bot-download-file"><code>download_file(file_id: str, dir: Optional[str] = None, timeout: float = 300)</code></h4>
+<p>Download a received file and wait until it is complete. Returns the local path.</p>
+<p>Small files from users are downloaded automatically; this also works for those.</p>
+<p><strong>Raises</strong></p>
+<ul>
+<li><code>LumoraError</code>: <code>sdk.download_failed</code> (failed / cancelled) or <code>sdk.timeout</code>.</li>
+</ul>
+<h3 id="bot-groups">Groups</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-groups"><code>groups</code></a></td>
+<td>Groups the bot is in (<code>gid</code>, <code>conv</code>, <code>name</code>, <code>members</code>, <code>my_role</code>, <code>bots</code> [{peer, read_all}], <code>slow_mode_s</code>…).</td>
+</tr>
+<tr>
+<td><a href="#bot-group-info"><code>group_info</code></a></td>
+<td>Details of a group (<code>group</code>: gid or <code>g:</code> conversation id).</td>
+</tr>
+<tr>
+<td><a href="#bot-group-access"><code>group_access</code></a></td>
+<td>What the bot may do in a group: <code>{"read_all": bool, "admin": bool}</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-member-role"><code>member_role</code></a></td>
+<td>Role of <code>peer</code> in a group: <code>"owner"</code>, <code>"admin"</code>, <code>"member"</code> or <code>None</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-ban"><code>group_ban</code></a></td>
+<td>Ban (or unban) a member: removes them and stops them from rejoining.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-unban"><code>group_unban</code></a></td>
+<td>Lift a ban.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-remove"><code>group_remove</code></a></td>
+<td>Remove (kick) a member; they may be added again.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-settings"><code>group_settings</code></a></td>
+<td>Change group settings (admin): <code>slow_mode_s</code> (seconds between two messages of a member, 0 = off) and <code>admins_only</code> (only admins may post).</td>
+</tr>
+<tr>
+<td><a href="#bot-set-slow-mode"><code>set_slow_mode</code></a></td>
+<td>Shortcut for <code>group_settings(group, slow_mode_s=seconds)</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-purge-member"><code>group_purge_member</code></a></td>
+<td>Delete every message of <code>peer</code> in the group (admin; e.g.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-leave"><code>group_leave</code></a></td>
+<td>Leave a group.</td>
+</tr>
+<tr>
+<td><a href="#bot-search-groups"><code>search_groups</code></a></td>
+<td>Find public groups by <code>@handle</code> or <code>@handle·tag</code> (read-only; bots join a group only when one of its admins adds them).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-groups"><code>groups()</code></h4>
+<p>Groups the bot is in (<code>gid</code>, <code>conv</code>, <code>name</code>, <code>members</code>, <code>my_role</code>,
+<code>bots</code> [{peer, read_all}], <code>slow_mode_s</code>…).</p>
+<h4 id="bot-group-info"><code>group_info(group: str)</code></h4>
+<p>Details of a group (<code>group</code>: gid or <code>g:</code> conversation id).</p>
+<h4 id="bot-group-access"><code>group_access(group: str)</code></h4>
+<p>What the bot may do in a group: <code>{"read_all": bool, "admin": bool}</code>.
+<code>read_all</code> = an admin allowed "read all messages" (full access); <code>admin</code> = the
+bot is a group admin (needed for ban / slow mode / purge / delete others').</p>
+<h4 id="bot-member-role"><code>member_role(group: str, peer: str)</code></h4>
+<p>Role of <code>peer</code> in a group: <code>"owner"</code>, <code>"admin"</code>, <code>"member"</code> or <code>None</code>.</p>
+<h4 id="bot-group-ban"><code>group_ban(group: str, peer: str, ban: bool = True)</code></h4>
+<p>Ban (or unban) a member: removes them and stops them from rejoining.
+The bot must be a group admin with full access.</p>
+<h4 id="bot-group-unban"><code>group_unban(group: str, peer: str)</code></h4>
+<p>Lift a ban.</p>
+<h4 id="bot-group-remove"><code>group_remove(group: str, peer: str)</code></h4>
+<p>Remove (kick) a member; they may be added again. Needs admin rights.</p>
+<h4 id="bot-group-settings"><code>group_settings(group: str, *, slow_mode_s: Optional[int] = None, admins_only: Optional[bool] = None)</code></h4>
+<p>Change group settings (admin): <code>slow_mode_s</code> (seconds between two messages of
+a member, 0 = off) and <code>admins_only</code> (only admins may post).</p>
+<h4 id="bot-set-slow-mode"><code>set_slow_mode(group: str, seconds: int)</code></h4>
+<p>Shortcut for <code>group_settings(group, slow_mode_s=seconds)</code>.</p>
+<h4 id="bot-group-purge-member"><code>group_purge_member(group: str, peer: str)</code></h4>
+<p>Delete every message of <code>peer</code> in the group (admin; e.g. after spam).</p>
+<h4 id="bot-group-leave"><code>group_leave(group: str)</code></h4>
+<p>Leave a group.</p>
+<h4 id="bot-search-groups"><code>search_groups(query: str)</code></h4>
+<p>Find public groups by <code>@handle</code> or <code>@handle·tag</code> (read-only; bots join a
+group only when one of its admins adds them).</p>
+<h3 id="bot-users">Users and profile</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-users"><code>users</code></a></td>
+<td>Everyone who started a chat with the bot (peer ids).</td>
+</tr>
+<tr>
+<td><a href="#bot-contacts"><code>contacts</code></a></td>
+<td>Full user entries (<code>peer</code>, <code>short_id</code>, <code>name</code>, <code>handle</code>, <code>online</code>…).</td>
+</tr>
+<tr>
+<td><a href="#bot-name-of"><code>name_of</code></a></td>
+<td>Display name of a user (cached; falls back to the 9-digit ID).</td>
+</tr>
+<tr>
+<td><a href="#bot-resolve-username"><code>resolve_username</code></a></td>
+<td>Look up <code>@name</code> / <code>@name·tag</code>: <code>[{peer, handle, name?, contact}]</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-block-user"><code>block_user</code></a></td>
+<td>Block a user: they can no longer message the bot.</td>
+</tr>
+<tr>
+<td><a href="#bot-unblock-user"><code>unblock_user</code></a></td>
+<td>Unblock a user.</td>
+</tr>
+<tr>
+<td><a href="#bot-set-profile"><code>set_profile</code></a></td>
+<td>Update the bot's profile.</td>
+</tr>
+<tr>
+<td><a href="#bot-set-commands"><code>set_commands</code></a></td>
+<td>Publish the command menu again (done automatically at start).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-users"><code>users()</code></h4>
+<p>Everyone who started a chat with the bot (peer ids).</p>
+<h4 id="bot-contacts"><code>contacts()</code></h4>
+<p>Full user entries (<code>peer</code>, <code>short_id</code>, <code>name</code>, <code>handle</code>, <code>online</code>…).</p>
+<h4 id="bot-name-of"><code>name_of(peer: str)</code></h4>
+<p>Display name of a user (cached; falls back to the 9-digit ID).</p>
+<h4 id="bot-resolve-username"><code>resolve_username(handle: str)</code></h4>
+<p>Look up <code>@name</code> / <code>@name·tag</code>: <code>[{peer, handle, name?, contact}]</code>.</p>
+<h4 id="bot-block-user"><code>block_user(peer: str)</code></h4>
+<p>Block a user: they can no longer message the bot.</p>
+<h4 id="bot-unblock-user"><code>unblock_user(peer: str)</code></h4>
+<p>Unblock a user.</p>
+<h4 id="bot-set-profile"><code>set_profile(*, name: Optional[str] = None, bio: Optional[str] = None, avatar: Optional[str] = None)</code></h4>
+<p>Update the bot's profile. <code>avatar</code>: path to an image (≤ 96 KB).</p>
+<h4 id="bot-set-commands"><code>set_commands()</code></h4>
+<p>Publish the command menu again (done automatically at start).</p>
+<h3 id="bot-jobs">Jobs (scheduled tasks)</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-every"><code>every</code></a></td>
+<td>Run <code>fn()</code> every <code>seconds</code> (decorator or direct call).</td>
+</tr>
+<tr>
+<td><a href="#bot-daily"><code>daily</code></a></td>
+<td>Run <code>fn()</code> every day at local time <code>"HH:MM"</code> (decorator or direct call).</td>
+</tr>
+<tr>
+<td><a href="#bot-after"><code>after</code></a></td>
+<td>Run <code>fn()</code> once, <code>seconds</code> from now.</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel"><code>cancel</code></a></td>
+<td>Cancel a job returned by <code>every</code>, <code>daily</code> or <code>after</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-every"><code>every(seconds: float, fn: Optional[Callable[[], Any]] = None, *, first_in: Optional[float] = None)</code></h4>
+<p>Run <code>fn()</code> every <code>seconds</code> (decorator or direct call). Returns the job;
+<code>bot.cancel(job)</code> stops it.</p>
+<h4 id="bot-daily"><code>daily(at: str, fn: Optional[Callable[[], Any]] = None)</code></h4>
+<p>Run <code>fn()</code> every day at local time <code>"HH:MM"</code> (decorator or direct call).</p>
+<h4 id="bot-after"><code>after(seconds: float, fn: Callable[[], Any])</code></h4>
+<p>Run <code>fn()</code> once, <code>seconds</code> from now. Returns the job.</p>
+<h4 id="bot-cancel"><code>cancel(job: dict)</code></h4>
+<p>Cancel a job returned by <code>every</code>, <code>daily</code> or <code>after</code>.</p>
+<h3 id="bot-lifecycle">Lifecycle</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-start"><code>start</code></a></td>
+<td>Start Lumora Bot Runner and go online (non-blocking).</td>
+</tr>
+<tr>
+<td><a href="#bot-run"><code>run</code></a></td>
+<td>Start and block until stopped (Ctrl+C, SIGTERM or <code>stop</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-stop"><code>stop</code></a></td>
+<td>Stop gracefully: no new events, wait up to <code>timeout</code> s for running handlers, then close Lumora Bot Runner (it saves everything and exits).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-start"><code>start()</code></h4>
+<p>Start Lumora Bot Runner and go online (non-blocking). See <code>run</code>.</p>
+<h4 id="bot-run"><code>run()</code></h4>
+<p>Start and block until stopped (Ctrl+C, SIGTERM or <code>stop</code>). Shuts down
+gracefully: running handlers finish, then Lumora Bot Runner exits.</p>
+<h4 id="bot-stop"><code>stop(timeout: float = 10)</code></h4>
+<p>Stop gracefully: no new events, wait up to <code>timeout</code> s for running handlers,
+then close Lumora Bot Runner (it saves everything and exits).</p>
+<h3 id="bot-lowlevel">Low-level API</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-call"><code>call</code></a></td>
+<td>Run any command of the Lumora JSON API and return its <code>data</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-acall"><code>acall</code></a></td>
+<td>Awaitable <code>call</code> (runs in a thread, safe from any event loop).</td>
+</tr>
+<tr>
+<td><a href="#bot-aio"><code>aio</code></a></td>
+<td>Awaitable versions of every method: <code>await bot.aio.send(conv, "hi")</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-call"><code>call(cmd: str, timeout: float = 60, **args)</code></h4>
+<p>Run any command of the Lumora JSON API and return its <code>data</code>.</p>
+<p>Commands bots may not use (remote control, recovery phrase, backups, passwords,
+calls) raise <code>NotAllowedForBots</code>.</p>
+<p><strong>Raises</strong></p>
+<ul>
+<li><code>LumoraError</code>: the command failed (<code>.code</code>, <code>.message</code>, <code>.detail</code>).</li>
+<li><code>LumoraTimeout</code>: no answer within <code>timeout</code> seconds.</li>
+<li><code>RunnerStopped</code>: Lumora Bot Runner is not running.</li>
+</ul>
+<h4 id="bot-acall"><code>acall(cmd: str, timeout: float = 60, **args)</code></h4>
+<p><em>async</em></p>
+<p>Awaitable <code>call</code> (runs in a thread, safe from any event loop).</p>
+<h4 id="bot-aio"><code>aio</code></h4>
+<p><em>property</em></p>
+<p>Awaitable versions of every method: <code>await bot.aio.send(conv, "hi")</code>.</p>
+<h2 id="context">Context</h2>
+<p>What a handler receives: the event plus shortcuts to answer it.</p>
+<p>Common attributes (empty / <code>None</code> when not relevant to the event):</p>
+<ul>
+<li><code>kind</code>: <code>"command"</code>, <code>"message"</code>, <code>"callback"</code>, <code>"new_user"</code>,
+<code>"new_member"</code>, <code>"member_left"</code>, <code>"added_to_group"</code>, <code>"file"</code>,
+<code>"reminder_due"</code>, <code>"checklist"</code>, <code>"job"</code> or the raw event name.</li>
+<li><code>conv</code>: conversation id (<code>d:&lt;peer&gt;</code> direct chat, <code>g:&lt;gid&gt;</code> group).</li>
+<li><code>sender</code>: the user who caused the event; <code>sender_name</code>: their display name.</li>
+<li><code>text</code>, <code>command</code>, <code>args</code>, <code>match</code> (regex match of <code>on_text</code>).</li>
+<li><code>data</code>: button data (callbacks). <code>msg_id</code>: message id.</li>
+<li><code>msg_kind</code> and <code>body</code>: message kind (<code>"text"</code>, <code>"file"</code>, <code>"location"</code>…) and body.</li>
+<li><code>is_group</code>, <code>gid</code>: group chat and its id.</li>
+<li><code>file</code>: file info (<code>on_file</code>); <code>reminder</code>; <code>checklist</code> and <code>changes</code>;
+<code>member</code> (<code>on_new_member</code>).</li>
+<li><code>event</code>: the raw event dict.</li>
+</ul>
+<h4 id="context-is-group"><code>is_group</code></h4>
+<p><em>property</em></p>
+<p>True when the event happened in a group or community channel.</p>
+<h4 id="context-gid"><code>gid</code></h4>
+<p><em>property</em></p>
+<p>Group id for group events, else <code>None</code>.</p>
+<h4 id="context-sender-name"><code>sender_name</code></h4>
+<p><em>property</em></p>
+<p>Display name of <code>sender</code> (falls back to the 9-digit ID).</p>
+<h4 id="context-is-admin"><code>is_admin</code></h4>
+<p><em>property</em></p>
+<p>True when the sender is one of this bot's admins (<code>Bot(admins=[...])</code>).</p>
+<h4 id="context-has-role"><code>has_role(role: str)</code></h4>
+<p>True when the sender has bot role <code>role</code> (bot admins always do).</p>
+<h4 id="context-is-group-admin"><code>is_group_admin</code></h4>
+<p><em>property</em></p>
+<p>True when the sender is an admin or the owner of the current group.</p>
+<h4 id="context-aio"><code>aio</code></h4>
+<p><em>property</em></p>
+<p>Awaitable versions of this context's methods: <code>await ctx.aio.reply("hi")</code>.</p>
+<h4 id="context-reply"><code>reply(text: str, buttons: Buttons = None, reply: bool = False, *, silent: bool = False, mentions: Optional[Sequence[str]] = None, mention_all: bool = False)</code></h4>
+<p>Send <code>text</code> to the same conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>text</code>: Message text (max 64 KB).</li>
+<li><code>buttons</code>: Inline buttons, see <code>Button</code>.</li>
+<li><code>reply</code>: Quote the message being answered.</li>
+<li><code>silent</code>: Deliver without sound or notification.</li>
+<li><code>mentions</code>: Users (peer ids) to mention.</li>
+<li><code>mention_all</code>: Mention everyone in a group.</li>
+</ul>
+<p><strong>Returns</strong></p>
+<p>The sent message.</p>
+<h4 id="context-reply-file"><code>reply_file(path: str, preview: Union[str, Dict[str, Any], None] = None, *, thumb: Optional[str] = None)</code></h4>
+<p>Send a file to the same conversation (see <code>send_file</code>).</p>
+<h4 id="context-send-file"><code>send_file(path: str)</code></h4>
+<p>Send a file to the same conversation (kept for older bots; prefer <code>reply_file</code>).</p>
+<h4 id="context-reply-checklist"><code>reply_checklist(title: str, items: Sequence[str], *, silent: bool = False)</code></h4>
+<p>Send a checklist to the same conversation.</p>
+<h4 id="context-reply-reminder"><code>reply_reminder(title: str, at: When, note: str = "", *, silent: bool = False)</code></h4>
+<p>Send a reminder to the same conversation.</p>
+<h4 id="context-reply-poll"><code>reply_poll(question: str, options: Sequence[str])</code></h4>
+<p>Send a poll to the same conversation.</p>
+<h4 id="context-react"><code>react(emoji: str, on: bool = True)</code></h4>
+<p>React to the current message with <code>emoji</code> (<code>on=False</code> removes it).</p>
+<h4 id="context-edit"><code>edit(text: str)</code></h4>
+<p>Edit the current message. For callbacks that is the bot's message whose button
+was pressed, so <code>ctx.edit("Done ✅")</code> updates it in place.</p>
+<h4 id="context-delete"><code>delete(for_everyone: bool = True)</code></h4>
+<p>Delete the current message (others' messages in groups need admin rights).</p>
+<h4 id="context-pin"><code>pin(on: bool = True)</code></h4>
+<p>Pin (or unpin) the current message.</p>
+<h4 id="context-typing"><code>typing(on: bool = True)</code></h4>
+<p>Show (or hide) "typing…" in this conversation.</p>
+<h4 id="context-download"><code>download(dir: Optional[str] = None, timeout: float = 300)</code></h4>
+<p>Download the file of this message (<code>on_file</code>) and return its local path.</p>
+<h2 id="storage">Storage</h2>
+<p><em>class</em> <code>Storage(dict)</code></p>
+<p>A <code>dict</code> saved as JSON in the bot's data folder (<code>bot-storage.json</code>).</p>
+<p>Setting or deleting a top-level key saves the file atomically. If you change a nested
+value in place (<code>bot.storage["list"].append(x)</code>) call <code>save</code> afterwards, or use
+<code>update_key</code>. Values must be JSON-serialisable. Thread-safe.</p>
+<h4 id="storage-save"><code>save()</code></h4>
+<p>Write the whole store to disk now (atomic replace).</p>
+<h4 id="storage-setdefault"><code>setdefault(k, default = None)</code></h4>
+<h4 id="storage-update"><code>update(*a, **kw)</code></h4>
+<h4 id="storage-pop"><code>pop(k, *default)</code></h4>
+<h4 id="storage-update-key"><code>update_key(key: str, fn: Callable[[Any], Any], default: Any = None)</code></h4>
+<p>Atomically replace <code>storage[key]</code> with <code>fn(old)</code> and save. Returns the new value.</p>
+<p>Example: <code>bot.storage.update_key("visits", lambda n: n + 1, 0)</code></p>
+<h2 id="roles">Roles</h2>
+<p>Bot-level roles (<code>"mod"</code>, <code>"vip"</code>…) kept in storage: user → set of roles.</p>
+<p>These are <em>your bot's</em> roles, separate from group admins. Bot admins
+(<code>Bot(admins=[...])</code>) pass every role check.</p>
+<h4 id="roles-grant"><code>grant(peer: str, role: str)</code></h4>
+<p>Give <code>role</code> to user <code>peer</code>.</p>
+<h4 id="roles-revoke"><code>revoke(peer: str, role: str)</code></h4>
+<p>Take <code>role</code> away from user <code>peer</code>.</p>
+<h4 id="roles-of"><code>of(peer: str)</code></h4>
+<p>Roles of <code>peer</code> (a set, empty when none).</p>
+<h4 id="roles-members"><code>members(role: str)</code></h4>
+<p>Users that have <code>role</code>.</p>
+<h2 id="button">Button</h2>
+<p><em>class</em> <code>Button(dict)</code></p>
+<p>An inline button. <code>Button("Buy", data="buy:42")</code> or <code>Button("Site", url="https://…")</code>.</p>
+<p><code>text</code> and <code>data</code> are at most 64 characters. Pressing a data button sends a
+<code>callback</code> to the bot (<code>@bot.on_callback</code>); a URL button opens the link.</p>
+<p><code>Button(text: str, data: str = "", url: str = "")</code></p>
+<h2 id="lumoraerror">LumoraError</h2>
+<p><em>class</em> <code>LumoraError(RuntimeError)</code></p>
+<p>Error returned by Lumora (or raised by the SDK).</p>
+<p><strong>Attributes</strong></p>
+<ul>
+<li><code>code</code>: Stable machine key, e.g. <code>"err.slow_mode"</code>, <code>"err.admin_only"</code>, <code>"internal"</code>, or <code>"sdk.*"</code> for errors raised by the SDK itself.</li>
+<li><code>message</code>: Plain sentence in the bot's language (<code>Bot(lang=...)</code>), safe to show.</li>
+<li><code>detail</code>: Technical cause (may be <code>None</code>). Log it, don't show it to users.</li>
+<li><code>cmd</code>: The command that failed (<code>"send_message"</code>…), when known.</li>
+</ul>
+<p><code>LumoraError(message: str, code: Optional[str] = None, detail: Optional[str] = None, cmd: Optional[str] = None)</code></p>
+<h4 id="lumoraerror-to-dict"><code>to_dict()</code></h4>
+<p><code>{"error", "code", "detail", "cmd"}</code> for structured logs.</p>
+<h2 id="lumoratimeout">LumoraTimeout</h2>
+<p><em>class</em> <code>LumoraTimeout(LumoraError, TimeoutError)</code></p>
+<p>A request got no answer in time (code <code>sdk.timeout</code>).</p>
+<h2 id="runnerstopped">RunnerStopped</h2>
+<p><em>class</em> <code>RunnerStopped(LumoraError)</code></p>
+<p>Lumora Bot Runner is not running, or stopped while a request was pending
+(code <code>sdk.runner_stopped</code>).</p>
+<h2 id="notallowedforbots">NotAllowedForBots</h2>
+<p><em>class</em> <code>NotAllowedForBots(LumoraError)</code></p>
+<p>The command is not available to bots (code <code>sdk.not_for_bots</code>).</p>
+<h2 id="helpers">Helpers</h2>
+<h4 id="gid-of"><code>gid_of(conv_or_gid: str)</code></h4>
+<p>Group id (32 hex chars) from a group conversation id (<code>g:&lt;gid&gt;</code> or
+<code>g:&lt;gid&gt;#channel</code>) or a bare gid. Raises <code>ValueError</code> for direct chats.</p>
+<h4 id="conv-of"><code>conv_of(peer_or_gid: str)</code></h4>
+<p>Conversation id for a user (<code>d:&lt;peer&gt;</code>) or a group gid (<code>g:&lt;gid&gt;</code>).
+Conversation ids are returned unchanged.</p>
+<h4 id="is-group-conv"><code>is_group_conv(conv: str)</code></h4>
+<p>True for group / community channel conversations (<code>g:…</code>).</p>
+<h4 id="is-blocked-command"><code>is_blocked_command(cmd: str)</code></h4>
+<p>True when <code>cmd</code> is a core command bots may not use (remote control, recovery
+phrase, backups, passwords, calls, BotFather management).</p>
+<h2 id="constants">Constants</h2>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Name</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_TEXT_BYTES</code></td>
+<td>65536</td>
+<td>Text message size (UTF-8 bytes)</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_ROWS</code></td>
+<td>8</td>
+<td>Button rows</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTONS_PER_ROW</code></td>
+<td>8</td>
+<td>Buttons per row</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_TEXT</code></td>
+<td>64</td>
+<td>Button text length</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_DATA</code></td>
+<td>64</td>
+<td>Button data length</td>
+</tr>
+<tr>
+<td><code>MAX_PREVIEW_TEXT_BYTES</code></td>
+<td>4096</td>
+<td>File preview text</td>
+</tr>
+<tr>
+<td><code>MAX_PREVIEW_IMAGE_BYTES</code></td>
+<td>65536</td>
+<td>File preview picture</td>
+</tr>
+<tr>
+<td><code>MAX_CHECKLIST_ITEMS</code></td>
+<td>100</td>
+<td>Checklist items</td>
+</tr>
+<tr>
+<td><code>MAX_TASK_TEXT</code></td>
+<td>200</td>
+<td>Checklist item / reminder title length</td>
+</tr>
+<tr>
+<td><code>MAX_REMINDER_NOTE</code></td>
+<td>1000</td>
+<td>Reminder note length</td>
+</tr>
+</tbody>
+</table></div>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

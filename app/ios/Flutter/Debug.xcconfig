@@ -1,0 +1,3 @@
+#include "Generated.xcconfig"
+#include "Lumora.xcconfig"
+LUMORA_APS_ENVIRONMENT = development

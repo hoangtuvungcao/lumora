@@ -1,0 +1,41 @@
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=(), browsing-topics=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+
+# Cache rules. Cloudflare Pages merges every rule whose path matches, so never put a long
+# "immutable" rule on a parent folder of files that change between deploys.
+# Fonts never change (their names would change with them):
+/assets/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# CSS, JS and images keep the same names across deploys: short cache, then revalidate.
+/assets/css/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/assets/js/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/assets/img/*
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/releases.json
+  Cache-Control: no-cache
+  Content-Type: application/json; charset=utf-8
+
+/developers/sdk/*
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600, must-revalidate
+
+/developers/packages/*
+  Cache-Control: public, max-age=3600, must-revalidate
+  Content-Disposition: attachment
+
+/downloads/*
+  Cache-Control: public, max-age=86400
+  Content-Disposition: attachment

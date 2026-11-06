@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Lumora
+GenericName=Private messenger & remote desktop
+Comment=Serverless P2P chat, calls, file transfer and remote desktop
+Exec=lumora %u
+Icon=lumora
+Terminal=false
+Categories=Network;InstantMessaging;RemoteAccess;
+MimeType=x-scheme-handler/lumora;
+StartupWMClass=lumora

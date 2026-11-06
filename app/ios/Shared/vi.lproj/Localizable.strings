@@ -1,0 +1,3 @@
+/* Nội dung thông báo đẩy (không chứa nội dung tin nhắn). */
+"PUSH_NEW_MESSAGE" = "Bạn có tin nhắn mới";
+"PUSH_INCOMING_CALL" = "Cuộc gọi đến";

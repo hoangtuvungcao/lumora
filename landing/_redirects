@@ -1,0 +1,14 @@
+# Friendly aliases
+/tai-ve        /download/   301
+/taive         /download/   301
+/downloads     /download/   301
+/en            /?lang=en    302
+/dev           /developers/ 301
+/api           /developers/api/ 301
+/bot           /developers/ 301
+
+# Cloudflare Pages limits single files to 25 MiB, so installers are usually
+# hosted elsewhere (Cloudflare R2 public bucket, GitHub Releases, a VPS...).
+# Uncomment ONE line and keep releases.json "baseUrl" = "/downloads/":
+# /downloads/*  https://downloads.example.com/:splat  302
+# /downloads/*  https://github.com/OWNER/REPO/releases/latest/download/:splat  302

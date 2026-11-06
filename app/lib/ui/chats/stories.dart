@@ -1,0 +1,472 @@
+// 24 h stories (friends only): avatar row, full-screen viewer, composer.
+
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import '../widgets/app_icons.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+
+import '../../core/api.dart';
+import '../../l10n/strings.dart';
+import '../../state/stores.dart';
+import '../theme.dart';
+import '../widgets/common.dart';
+import '../widgets/peer_avatar.dart';
+import 'wallpaper.dart';
+
+const _storyBgs = ['aurora', 'sunset', 'ocean', 'mint', 'sakura', 'lavender'];
+
+class StoriesRow extends StatelessWidget {
+  const StoriesRow({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final me = context.select<SessionStore, String>((x) => x.me?.peer ?? '');
+    final store = context.watch<StoryStore>();
+    final groups = store.byAuthor(me);
+    final mine = store.mine(me);
+    final contacts = context.read<ContactsStore>();
+    return SizedBox(
+      height: 92,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        children: [
+          _StoryAvatar(
+            peer: me,
+            label: s('your_story'),
+            ring: mine.isEmpty ? null : false,
+            add: mine.isEmpty,
+            onTap: () => mine.isEmpty ? showStoryComposer(context) : openStories(context, [MapEntry(me, mine)], 0),
+            onLongPress: () => showStoryComposer(context),
+          ),
+          for (var i = 0; i < groups.length; i++)
+            _StoryAvatar(
+              peer: groups[i].key,
+              label: contacts.nameOf(groups[i].key).split(' ').last,
+              ring: groups[i].value.any((x) => !x.seen),
+              onTap: () => openStories(context, groups, i),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoryAvatar extends StatelessWidget {
+  const _StoryAvatar({required this.peer, required this.label, required this.ring, required this.onTap, this.add = false, this.onLongPress});
+  final String peer;
+  final String label;
+
+  /// true = unseen (gradient), false = seen (grey), null = none.
+  final bool? ring;
+  final bool add;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.md),
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: SizedBox(
+        width: 68,
+        child: Column(children: [
+          const SizedBox(height: 4),
+          Stack(clipBehavior: Clip.none, children: [
+            Container(
+              padding: const EdgeInsets.all(2.5),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: ring == true ? const SweepGradient(colors: [LC.primary, LC.accent, Color(0xFFEC4899), LC.primary]) : null,
+                color: ring == false ? context.lc.muted.withValues(alpha: 0.4) : Colors.transparent,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: context.lc.surface),
+                child: PeerAvatar(peer: peer, size: 50, presence: false),
+              ),
+            ),
+            if (add)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  decoration: BoxDecoration(color: LC.primary, shape: BoxShape.circle, border: Border.all(color: context.lc.surface, width: 2)),
+                  child: const Icon(AppIcons.add, color: Colors.white, size: 18),
+                ),
+              ),
+          ]),
+          const SizedBox(height: 4),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.bodySmall?.copyWith(fontSize: 11.5)),
+        ]),
+      ),
+    );
+  }
+}
+
+Future<void> openStories(BuildContext context, List<MapEntry<String, List<Story>>> groups, int index) {
+  return Navigator.of(context, rootNavigator: true).push(PageRouteBuilder<void>(
+    opaque: false,
+    barrierColor: Colors.black,
+    transitionDuration: Motion.normal,
+    pageBuilder: (_, _, _) => StoryViewer(groups: groups, initial: index),
+    transitionsBuilder: (_, a, _, c) => FadeTransition(opacity: a, child: ScaleTransition(scale: Tween(begin: 0.96, end: 1.0).animate(a), child: c)),
+  ));
+}
+
+class StoryViewer extends StatefulWidget {
+  const StoryViewer({super.key, required this.groups, required this.initial});
+  final List<MapEntry<String, List<Story>>> groups;
+  final int initial;
+  @override
+  State<StoryViewer> createState() => _StoryViewerState();
+}
+
+class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStateMixin {
+  late int _g = widget.initial;
+  int _i = 0;
+  late final AnimationController _progress = AnimationController(vsync: this, duration: const Duration(seconds: 6))
+    ..addStatusListener((st) {
+      if (st == AnimationStatus.completed) _next();
+    });
+  final _reply = TextEditingController();
+  Uint8List? _image;
+
+  List<Story> get _stories => widget.groups[_g].value;
+  Story get _story => _stories[_i];
+
+  @override
+  void initState() {
+    super.initState();
+    _i = _stories.indexWhere((s) => !s.seen).clamp(0, _stories.length - 1);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _show();
+    });
+  }
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    _reply.dispose();
+    super.dispose();
+  }
+
+  Future<void> _show() async {
+    final st = _story;
+    context.read<StoryStore>().seen(st.id);
+    _image = null;
+    _progress.reset();
+    if (st.hasImage) {
+      final img = await context.read<StoryStore>().image(st.id);
+      if (!mounted || _story.id != st.id) return;
+      setState(() => _image = img);
+    } else {
+      setState(() {});
+    }
+    _progress.forward();
+  }
+
+  void _next() {
+    if (_i < _stories.length - 1) {
+      _i++;
+    } else if (_g < widget.groups.length - 1) {
+      _g++;
+      _i = 0;
+    } else {
+      Navigator.pop(context);
+      return;
+    }
+    _show();
+  }
+
+  void _prev() {
+    if (_i > 0) {
+      _i--;
+    } else if (_g > 0) {
+      _g--;
+      _i = _stories.length - 1;
+    }
+    _show();
+  }
+
+  Future<void> _sendReply() async {
+    final text = _reply.text.trim();
+    if (text.isEmpty) return;
+    final chat = context.read<ChatStore>();
+    final contact = context.read<ContactsStore>()[widget.groups[_g].key];
+    if (contact == null) return;
+    final conv = chat.ensureDirect(contact);
+    await chat.send(conv, '${S.read(context)('story_reply_prefix')}: $text');
+    _reply.clear();
+    if (mounted) toast(context, S.read(context)('reply_sent'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final st = _story;
+    final me = context.read<SessionStore>().me?.peer;
+    final mine = st.author == me;
+    final name = mine ? s('you') : context.read<ContactsStore>().nameOf(st.author);
+    final ago = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(st.created));
+    final width = MediaQuery.sizeOf(context).width;
+    final content = Stack(fit: StackFit.expand, children: [
+      if (st.hasImage && _image != null)
+        Image.memory(_image!, fit: BoxFit.cover, gaplessPlayback: true)
+      else
+        WallpaperBackground(spec: WallpaperSpec.parse(st.bg ?? 'aurora') ?? WallpaperSpec.parse('aurora')!),
+      if (st.text.isNotEmpty)
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              st.text,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: st.hasImage ? 22 : 30,
+                fontWeight: FontWeight.w700,
+                height: 1.3,
+                shadows: const [Shadow(color: Colors.black54, blurRadius: 12)],
+              ),
+            ),
+          ),
+        ),
+      // Tap zones.
+      Row(children: [
+        Expanded(child: GestureDetector(onTap: _prev, onLongPressStart: (_) => _progress.stop(), onLongPressEnd: (_) => _progress.forward())),
+        Expanded(flex: 2, child: GestureDetector(onTap: _next, onLongPressStart: (_) => _progress.stop(), onLongPressEnd: (_) => _progress.forward())),
+      ]),
+      // Header.
+      Positioned(
+        left: 0,
+        right: 0,
+        top: 0,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 8, 24),
+          decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black54, Colors.transparent])),
+          child: SafeArea(
+            bottom: false,
+            child: Column(children: [
+              Row(children: [
+                for (var k = 0; k < _stories.length; k++)
+                  Expanded(
+                    child: Container(
+                      height: 3,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(color: Colors.white30, borderRadius: BorderRadius.circular(2)),
+                      alignment: Alignment.centerLeft,
+                      child: k < _i
+                          ? Container(color: Colors.white)
+                          : (k == _i
+                              ? AnimatedBuilder(
+                                  animation: _progress,
+                                  builder: (_, _) => FractionallySizedBox(widthFactor: _progress.value, child: Container(color: Colors.white)),
+                                )
+                              : null),
+                    ),
+                  ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                PeerAvatar(peer: st.author, size: 36, presence: false),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    Text(ago.inHours > 0 ? s('hours_ago', {'n': ago.inHours}) : s('minutes_ago', {'n': ago.inMinutes}),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  ]),
+                ),
+                IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(AppIcons.close, color: Colors.white), tooltip: s('close')),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+      // Footer.
+      Positioned(
+        left: 12,
+        right: 12,
+        bottom: 12,
+        child: SafeArea(
+          top: false,
+          child: mine
+              ? Row(children: [
+                  const Icon(AppIcons.show, color: Colors.white70, size: 18),
+                  const SizedBox(width: 6),
+                  Text(s('n_views', {'n': st.views}), style: const TextStyle(color: Colors.white)),
+                ])
+              : Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _reply,
+                      onTap: _progress.stop,
+                      onSubmitted: (_) => _sendReply(),
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: s('reply_story'),
+                        hintStyle: const TextStyle(color: Colors.white70),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.14),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Colors.white24)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  for (final e in ['❤️', '😂', '🔥'])
+                    InkWell(
+                      onTap: () {
+                        _reply.text = e;
+                        _sendReply();
+                      },
+                      child: Padding(padding: const EdgeInsets.all(4), child: Text(e, style: const TextStyle(fontSize: 24))),
+                    ),
+                ]),
+        ),
+      ),
+    ]);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.arrowRight): _next,
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): _prev,
+          const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.pop(context),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: width > 700 ? 9 / 16 : MediaQuery.sizeOf(context).aspectRatio,
+              child: ClipRRect(borderRadius: BorderRadius.circular(width > 700 ? Radii.lg : 0), child: content),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showStoryComposer(BuildContext context) {
+  return Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => const StoryComposer()));
+}
+
+class StoryComposer extends StatefulWidget {
+  const StoryComposer({super.key});
+  @override
+  State<StoryComposer> createState() => _StoryComposerState();
+}
+
+class _StoryComposerState extends State<StoryComposer> {
+  final _text = TextEditingController();
+  String _bg = 'aurora';
+  String? _imagePath;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _post() async {
+    setState(() => _busy = true);
+    try {
+      await context.read<StoryStore>().post(text: _text.text.trim().isEmpty ? null : _text.text.trim(), imagePath: _imagePath, bg: _bg);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) toastError(context, e);
+      setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: MediaQuery.sizeOf(context).width > 700 ? 9 / 16 : MediaQuery.sizeOf(context).aspectRatio,
+            child: Stack(fit: StackFit.expand, children: [
+              WallpaperBackground(spec: WallpaperSpec.parse(_bg)!),
+              if (_imagePath != null) Image(image: ResizeImage(FileImage(File(_imagePath!)), width: 1080), fit: BoxFit.cover),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: TextField(
+                    controller: _text,
+                    onChanged: (_) => setState(() {}),
+                    textAlign: TextAlign.center,
+                    maxLines: 6,
+                    minLines: 1,
+                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black45, blurRadius: 10)]),
+                    decoration: InputDecoration(
+                      hintText: s('story_hint'),
+                      hintStyle: const TextStyle(color: Colors.white60),
+                      filled: false,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: Row(children: [
+                  IconButton(tooltip: S.of(context)('close'), onPressed: () => Navigator.pop(context), icon: const Icon(AppIcons.close, color: Colors.white)),
+                  Expanded(child: Text(s('new_story'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16))),
+                  IconButton(
+                    tooltip: s('choose_photo'),
+                    onPressed: () async {
+                      final f = await FilePicker.pickFile(type: FileType.image);
+                      if (f?.path != null) setState(() => _imagePath = f!.path);
+                    },
+                    icon: const Icon(AppIcons.gallery, color: Colors.white),
+                  ),
+                ]),
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
+                child: Row(children: [
+                  for (final b in _storyBgs)
+                    GestureDetector(
+                      onTap: () => setState(() => _bg = b),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        margin: const EdgeInsets.only(right: 8),
+                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: _bg == b ? 3 : 1)),
+                        clipBehavior: Clip.antiAlias,
+                        child: WallpaperBackground(spec: WallpaperSpec.parse(b)!),
+                      ),
+                    ),
+                  const Spacer(),
+                  FilledButton.icon(
+                    onPressed: _busy || (_text.text.trim().isEmpty && _imagePath == null) ? null : _post,
+                    icon: const Icon(AppIcons.send, size: 18),
+                    label: Text(s('share_story')),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

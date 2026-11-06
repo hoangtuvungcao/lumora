@@ -1,0 +1,1686 @@
+<!doctype html>
+<html lang="vi" data-page="dev-ref-js" data-title-en="JavaScript SDK reference — Lumora" data-desc-en="Complete Lumora Bot SDK reference for JavaScript: Bot, Context, Storage, errors, helpers.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tham chiếu SDK JavaScript — Lumora</title>
+<meta name="description" content="Tham chiếu đầy đủ Lumora Bot SDK cho JavaScript: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/reference/js/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Tham chiếu SDK JavaScript — Lumora">
+<meta property="og:description" content="Tham chiếu đầy đủ Lumora Bot SDK cho JavaScript: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/reference/js/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tham chiếu SDK JavaScript — Lumora">
+<meta name="twitter:description" content="Tham chiếu đầy đủ Lumora Bot SDK cho JavaScript: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/" aria-current="page"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#code"/></svg><span class="l-vi">SDK JavaScript</span><span class="l-en" lang="en">JavaScript SDK</span></p>
+      <h1 class="hero__title"><span class="l-vi">Tham chiếu SDK JavaScript</span><span class="l-en" lang="en">JavaScript SDK reference</span></h1>
+      <p class="lead-p"><span class="l-vi">Mọi lớp, hàm và tham số của lumora-bot.mjs.</span><span class="l-en" lang="en">Every class, method and parameter of lumora-bot.mjs.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li class="toc--2"><a href="#bot">Bot</a></li><li class="toc--3"><a href="#bot-handlers">Handlers</a></li><li class="toc--3"><a href="#bot-sending">Sending messages</a></li><li class="toc--3"><a href="#bot-tasks">Checklists and reminders</a></li><li class="toc--3"><a href="#bot-actions">Message actions</a></li><li class="toc--3"><a href="#bot-files">Files</a></li><li class="toc--3"><a href="#bot-groups">Groups</a></li><li class="toc--3"><a href="#bot-users">Users and profile</a></li><li class="toc--3"><a href="#bot-jobs">Jobs (scheduled tasks)</a></li><li class="toc--3"><a href="#bot-lifecycle">Lifecycle</a></li><li class="toc--3"><a href="#bot-lowlevel">Low-level API</a></li><li class="toc--3"><a href="#bot-other">Properties and other members</a></li><li class="toc--2"><a href="#context">Context</a></li><li class="toc--2"><a href="#storage">Storage</a></li><li class="toc--2"><a href="#roles">Roles</a></li><li class="toc--2"><a href="#lumoraerror">LumoraError</a></li><li class="toc--2"><a href="#lumoratimeout">LumoraTimeout</a></li><li class="toc--2"><a href="#runnerstopped">RunnerStopped</a></li><li class="toc--2"><a href="#notallowedforbots">NotAllowedForBots</a></li><li class="toc--2"><a href="#helpers">Helpers</a></li><li class="toc--2"><a href="#constants">Constants</a></li></ul></nav>
+      <article class="prose prose--ref" lang="en">
+<p class="muted small l-vi">Phần tham chiếu được viết bằng tiếng Anh và tạo tự động từ mã nguồn SDK.</p>
+<p><code>lumora-bot</code> 1.1.0 · Node.js 18+ · ES module, no dependencies, TypeScript types in <code>lumora-bot.d.ts</code>. Generated from the JSDoc in <code>sdk/js/lumora-bot.mjs</code> by <code>sdk/tools/gen_reference.py</code>; do not edit by hand. Every method that talks to Lumora returns a <code>Promise</code>.</p>
+<pre class="code"><code data-lang="js">import { Bot, Button, LumoraError } from &quot;lumora-bot&quot;;</code></pre>
+<h2 id="bot">Bot</h2>
+<p><code>new Bot(options?)</code></p>
+<p>A Lumora bot.</p>
+<p>Options: <code>name</code> (display name for a bot made without BotFather, for tests), <code>token</code>
+(BotFather token; default <code>$LUMORA_BOT_TOKEN</code>, never hard-code it in public code),
+<code>dataDir</code> (identity, messages, storage and downloads; default <code>./lumora-bot</code>, one folder
+per bot, keep it private and back it up), <code>binary</code> (path to <code>lumorad</code>; default
+<code>$LUMORAD</code>, then <code>lumorad</code>), <code>about</code>, <code>lan</code> (also find users on the local network),
+<code>publicDirectory</code> (let people find the bot by ID / @name), <code>extraArgs</code>, <code>admins</code> (peer ids
+or <code>@name·tag</code> handles), <code>ratePerSec</code> (overall send rate, default 15/s; per chat: burst 5,
+then 1/s), <code>downloadsDir</code> (default <code>&lt;dataDir&gt;/downloads</code>), <code>autoRestart</code> (default true),
+<code>allowGroups</code> (default true), <code>lang</code> (<code>"vi"</code>/<code>"en"</code>: error message language), <code>logJson</code>,
+<code>logLevel</code>, <code>runnerLog</code> (Lumora Bot Runner's own log; default <code>&lt;dataDir&gt;/runner.log</code>,
+<code>""</code> discards), <code>helpCommand</code> (auto <code>/help</code>, default true), <code>denyText</code>.</p>
+<pre class="code"><code data-lang="js">const bot = new Bot({ token: process.env.LUMORA_BOT_TOKEN, admins: [&quot;@owner·k7q2xz&quot;] });</code></pre>
+<h3 id="bot-handlers">Handlers</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-command"><code>command</code></a></td>
+<td>Register <code>/name</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-message"><code>onMessage</code></a></td>
+<td>Handle incoming messages that are not commands.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-text"><code>onText</code></a></td>
+<td>Handle text messages matching <code>pattern</code> (regex, searched anywhere in the text).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-callback"><code>onCallback</code></a></td>
+<td>Handle inline button presses on the bot's messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-new-user"><code>onNewUser</code></a></td>
+<td>Called when someone starts a chat with the bot for the first time (<code>ctx.conv</code> is their direct chat).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-new-member"><code>onNewMember</code></a></td>
+<td>Called when someone joins a group the bot is in (<code>ctx.member</code> = <code>{peer, name, role}</code>, <code>ctx.sender</code> = the new member, <code>ctx.conv</code> = the group).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-member-left"><code>onMemberLeft</code></a></td>
+<td>Called when a member leaves or is removed from a group (full access needed).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-added-to-group"><code>onAddedToGroup</code></a></td>
+<td>Called when a group admin adds the bot to a group (<code>ctx.conv</code> = the group).</td>
+</tr>
+<tr>
+<td><a href="#bot-on-file"><code>onFile</code></a></td>
+<td>Handle received files.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-reminder-due"><code>onReminderDue</code></a></td>
+<td>Called when a reminder in one of the bot's chats is due.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-checklist"><code>onChecklist</code></a></td>
+<td>Called when someone ticks / unticks checklist items or items are added.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-event"><code>onEvent</code></a></td>
+<td>Low-level: receive every raw event <code>name</code> (<code>"message_update"</code>, <code>"typing"</code>, <code>"*"</code> for all).</td>
+</tr>
+<tr>
+<td><a href="#bot-middleware"><code>middleware</code></a></td>
+<td>Alias of <code>use</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-use"><code>use</code></a></td>
+<td>Wrap every handled update.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-error"><code>onError</code></a></td>
+<td>Called with <code>(ctx, error)</code> when a handler throws.</td>
+</tr>
+<tr>
+<td><a href="#bot-on-start"><code>onStart</code></a></td>
+<td>Called once the bot is online (and again after an automatic restart).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-command"><code>command(name, description, fn, options?)</code></h4>
+<p>Register <code>/name</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>name</code> <code>string</code>: Command name without <code>/</code> (<code>/name@yourbot</code> works too in groups).</li>
+<li><code>description</code> <code>string</code>: Shown in the app's command menu and <code>/help</code>.</li>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+<li><code>options</code> <code>CommandOptions</code> (optional): <code>{adminOnly, role, chats: "all"|"private"|"group", hidden}</code>. <code>adminOnly</code> / <code>role</code> restrict who may use it and hide it from the menu.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<pre class="code"><code data-lang="js">bot.command(&quot;ban&quot;, &quot;Ban a user&quot;, (ctx) =&gt; …, { adminOnly: true, chats: &quot;group&quot; });</code></pre>
+<h4 id="bot-on-message"><code>onMessage(fnOrFilter, filterOrFn?)</code></h4>
+<p>Handle incoming messages that are not commands. <code>onMessage(fn)</code> gets every text message;
+filters: <code>pattern</code> (regex searched in the text; the first matching handler wins and
+catch-all handlers don't run; the match is in <code>ctx.match</code>), <code>kinds</code> (default <code>["text"]</code>;
+also <code>"file"</code>, <code>"voice"</code>, <code>"sticker"</code>, <code>"location"</code>, <code>"contact"</code>, <code>"poll"</code>,
+<code>"checklist"</code>, <code>"reminder"</code>; <code>null</code> = all), <code>chats</code> (<code>"all"</code>, <code>"private"</code>, <code>"group"</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fnOrFilter</code> <code>Handler|MessageFilter</code>: Handler, or the filter.</li>
+<li><code>filterOrFn</code> <code>Handler|MessageFilter</code> (optional): The other one.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<pre class="code"><code data-lang="js">bot.onMessage({ kinds: [&quot;location&quot;] }, (ctx) =&gt; ctx.reply(`📍 ${ctx.body.lat}, ${ctx.body.lon}`));</code></pre>
+<h4 id="bot-on-text"><code>onText(pattern, fn, options?)</code></h4>
+<p>Handle text messages matching <code>pattern</code> (regex, searched anywhere in the text).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>pattern</code> <code>RegExp|string</code>: Pattern.</li>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+<li><code>options</code> <code>{chats?: Chats}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<pre class="code"><code data-lang="js">bot.onText(/\bprice\b/i, (ctx) =&gt; ctx.reply(&quot;From 25k&quot;));</code></pre>
+<h4 id="bot-on-callback"><code>onCallback(fnOrFilter, filterOrFn?)</code></h4>
+<p>Handle inline button presses on the bot's messages. Filters: <code>data</code> (exact; ending in
+<code>*</code> = prefix, e.g. <code>"buy:*"</code>), <code>pattern</code> (regex on the data, <code>ctx.match</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fnOrFilter</code> <code>Handler|CallbackFilter</code>: Handler, or the filter.</li>
+<li><code>filterOrFn</code> <code>Handler|CallbackFilter</code> (optional): The other one.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<h4 id="bot-on-new-user"><code>onNewUser(fn)</code></h4>
+<p>Called when someone starts a chat with the bot for the first time (<code>ctx.conv</code> is their
+direct chat).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-new-member"><code>onNewMember(fn)</code></h4>
+<p>Called when someone joins a group the bot is in (<code>ctx.member</code> = <code>{peer, name, role}</code>,
+<code>ctx.sender</code> = the new member, <code>ctx.conv</code> = the group). <code>name</code> is the 9-digit ID when the
+bot doesn't know the person yet: greet them with <code>{ mentions: [ctx.sender] }</code> instead.
+Needs full access ("read all") in that group: a privacy-mode bot is not told about
+membership changes.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-member-left"><code>onMemberLeft(fn)</code></h4>
+<p>Called when a member leaves or is removed from a group (full access needed).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-added-to-group"><code>onAddedToGroup(fn)</code></h4>
+<p>Called when a group admin adds the bot to a group (<code>ctx.conv</code> = the group).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-file"><code>onFile(fnOrFilter, filterOrFn?)</code></h4>
+<p>Handle received files. <code>ctx.file</code> has <code>file_id</code>, <code>name</code>, <code>size</code>, <code>mime</code> and <code>preview</code>
+(<code>{kind, text, pages, lines}</code> or null, available before downloading). Call
+<code>await ctx.download()</code> to get the file on disk. Filter: <code>extensions</code> (e.g.
+<code>["txt", "csv"]</code>; such handlers win over catch-alls), <code>chats</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fnOrFilter</code> <code>Handler|FileFilter</code>: Handler, or the filter.</li>
+<li><code>filterOrFn</code> <code>Handler|FileFilter</code> (optional): The other one.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<h4 id="bot-on-reminder-due"><code>onReminderDue(fn)</code></h4>
+<p>Called when a reminder in one of the bot's chats is due. <code>ctx.reminder</code> has <code>title</code>,
+<code>note</code>, <code>at_ms</code>, <code>author</code>, <code>mine</code> and <code>late</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-checklist"><code>onChecklist(fn)</code></h4>
+<p>Called when someone ticks / unticks checklist items or items are added.
+<code>ctx.checklist</code> = <code>{msg_id, conv, title, items: [{id, text, done, by, at}], done, total}</code>;
+<code>ctx.changes</code> = <code>[{item, text, done, by}]</code>. Changes made by the bot itself are not reported.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-event"><code>onEvent(name, fn)</code></h4>
+<p>Low-level: receive every raw event <code>name</code> (<code>"message_update"</code>, <code>"typing"</code>, <code>"*"</code> for
+all). <code>ctx.event</code> is the raw object. Runs in addition to other handlers.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>name</code> <code>string</code>: Event name.</li>
+<li><code>fn</code> <code>Handler</code>: Handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<h4 id="bot-middleware"><code>middleware(fn)</code></h4>
+<p>Alias of <code>use</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Middleware</code>: Middleware.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-use"><code>use(fn)</code></h4>
+<p>Wrap every handled update. <code>fn(ctx, next)</code> must <code>await next()</code> to continue; not calling
+it stops the update (bans, per-user limits, logging).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>Middleware</code>: Middleware.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot (chainable).</p>
+<pre class="code"><code data-lang="js">bot.use(async (ctx, next) =&gt; { const t = Date.now(); await next(); bot.log.info(&quot;handled&quot;, { kind: ctx.kind, ms: Date.now() - t }); });</code></pre>
+<h4 id="bot-on-error"><code>onError(fn)</code></h4>
+<p>Called with <code>(ctx, error)</code> when a handler throws. The error is logged anyway.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>(ctx: Context, err: unknown) =&gt; any</code>: Error handler.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h4 id="bot-on-start"><code>onStart(fn)</code></h4>
+<p>Called once the bot is online (and again after an automatic restart).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fn</code> <code>() =&gt; any</code>: Hook.</li>
+</ul>
+<p><strong>Returns</strong> <code>this</code>: The bot.</p>
+<h3 id="bot-sending">Sending messages</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-send"><code>send</code></a></td>
+<td>Send a text message (paced so receivers never see the bot as spam).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-file"><code>sendFile</code></a></td>
+<td>Send a file.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-poll"><code>sendPoll</code></a></td>
+<td>Send a poll (2–10 options, question ≤ 300 chars).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-sticker"><code>sendSticker</code></a></td>
+<td>Send a built-in sticker (<code>pack</code>, <code>sticker</code>) or a custom one by <code>{hash}</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-location"><code>sendLocation</code></a></td>
+<td>Send a location (<code>liveMinutes &gt; 0</code>: live location, update with <code>updateLiveLocation</code>, max 8 h).</td>
+</tr>
+<tr>
+<td><a href="#bot-update-live-location"><code>updateLiveLocation</code></a></td>
+<td>Move a live location, or end it (<code>stop: true</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-contact"><code>sendContact</code></a></td>
+<td>Send a contact card of user <code>peer</code> (or of the bot itself).</td>
+</tr>
+<tr>
+<td><a href="#bot-send-voice"><code>sendVoice</code></a></td>
+<td>Send a voice message (Ogg/Opus file ≤ 32 MB; <code>wave</code>: 0–255 bars for the waveform).</td>
+</tr>
+<tr>
+<td><a href="#bot-broadcast"><code>broadcast</code></a></td>
+<td>Send <code>text</code> to every user (or <code>users</code>), paced (≈ 15 messages/s).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-send"><code>send(conv, text, buttonsOrOptions?, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a text message (paced so receivers never see the bot as spam).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id (<code>d:&lt;peer&gt;</code>, <code>g:&lt;gid&gt;</code>); a bare peer id works too.</li>
+<li><code>text</code> <code>string</code>: Up to 64 KB of UTF-8 text.</li>
+<li><code>buttonsOrOptions</code> <code>Buttons|SendOptions</code> (optional): Buttons, or the options object.</li>
+<li><code>options</code> <code>SendOptions</code> (optional): <code>{buttons, replyTo, silent, mentions, mentionAll, ttlMs}</code>: <code>silent</code> = no sound/notification; <code>mentions</code> = peer ids; <code>ttlMs</code> = disappear after read.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The sent message.</p>
+<pre class="code"><code data-lang="js">await bot.send(conv, &quot;Sale today!&quot;, { silent: true, buttons: [[Button(&quot;Open&quot;, &quot;open&quot;)]] });</code></pre>
+<h4 id="bot-send-file"><code>sendFile(conv, path, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a file. Text/code files get an automatic preview of their first lines.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>path</code> <code>string</code>: Local file path.</li>
+<li><code>options</code> <code>FileOptions</code> (optional): <code>preview</code>: a text snippet (string) or <code>{kind, text, pages, lines}</code> shown before download (text cut to 4 KB); <code>thumb</code>: path to a JPEG/PNG/WebP ≤ 64 KB shown with the file.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;FileEntry&gt;</code>: The file transfer entry.</p>
+<h4 id="bot-send-poll"><code>sendPoll(conv, question, options)</code></h4>
+<p><em>async</em></p>
+<p>Send a poll (2–10 options, question ≤ 300 chars). Votes arrive as <code>message_update</code> events.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>question</code> <code>string</code>: Question.</li>
+<li><code>options</code> <code>string[]</code>: Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-send-sticker"><code>sendSticker(conv, pack?, sticker?, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a built-in sticker (<code>pack</code>, <code>sticker</code>) or a custom one by <code>{hash}</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>pack</code> <code>string</code> (optional): Pack.</li>
+<li><code>sticker</code> <code>string</code> (optional): Sticker id.</li>
+<li><code>options</code> <code>{hash?: string}</code> (optional): Custom sticker hash.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-send-location"><code>sendLocation(conv, lat, lon, label?, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a location (<code>liveMinutes &gt; 0</code>: live location, update with <code>updateLiveLocation</code>, max 8 h).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>lat</code> <code>number</code>: Latitude.</li>
+<li><code>lon</code> <code>number</code>: Longitude.</li>
+<li><code>label</code> <code>string</code> (optional, default <code>""</code>): Label.</li>
+<li><code>options</code> <code>{accuracyM?: number, liveMinutes?: number}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-update-live-location"><code>updateLiveLocation(conv, msgId, lat, lon, options?)</code></h4>
+<p><em>async</em></p>
+<p>Move a live location, or end it (<code>stop: true</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Location message id.</li>
+<li><code>lat</code> <code>number</code>: Latitude.</li>
+<li><code>lon</code> <code>number</code>: Longitude.</li>
+<li><code>options</code> <code>{accuracyM?: number, stop?: boolean}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-send-contact"><code>sendContact(conv, peer)</code></h4>
+<p><em>async</em></p>
+<p>Send a contact card of user <code>peer</code> (or of the bot itself).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-send-voice"><code>sendVoice(conv, path, durationMs, wave?)</code></h4>
+<p><em>async</em></p>
+<p>Send a voice message (Ogg/Opus file ≤ 32 MB; <code>wave</code>: 0–255 bars for the waveform).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>path</code> <code>string</code>: Audio file.</li>
+<li><code>durationMs</code> <code>number</code>: Duration.</li>
+<li><code>wave</code> <code>number[]</code> (optional): Waveform bars.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-broadcast"><code>broadcast(text, buttonsOrOptions?, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send <code>text</code> to every user (or <code>users</code>), paced (≈ 15 messages/s). Failures are logged and skipped.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>text</code> <code>string</code>: Text.</li>
+<li><code>buttonsOrOptions</code> <code>Buttons|BroadcastOptions</code> (optional): Buttons, or the options object.</li>
+<li><code>options</code> <code>BroadcastOptions</code> (optional): <code>{buttons, silent, users, onProgress(done, total)}</code>.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;number&gt;</code>: How many users received it.</p>
+<h3 id="bot-tasks">Checklists and reminders</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-send-checklist"><code>sendChecklist</code></a></td>
+<td>Send a checklist (1–100 items, ≤ 200 chars each).</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist-toggle"><code>checklistToggle</code></a></td>
+<td>Tick (<code>done=true</code>) or untick a checklist item.</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist-add"><code>checklistAdd</code></a></td>
+<td>Add items to a checklist the bot sent.</td>
+</tr>
+<tr>
+<td><a href="#bot-checklist"><code>checklist</code></a></td>
+<td>Current state of a checklist, or null if not found.</td>
+</tr>
+<tr>
+<td><a href="#bot-send-reminder"><code>sendReminder</code></a></td>
+<td>Send a reminder.</td>
+</tr>
+<tr>
+<td><a href="#bot-reminder-cancel"><code>reminderCancel</code></a></td>
+<td>Cancel a reminder the bot sent.</td>
+</tr>
+<tr>
+<td><a href="#bot-reminders"><code>reminders</code></a></td>
+<td>Upcoming reminders known to the bot (soonest first).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-send-checklist"><code>sendChecklist(conv, title, items, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a checklist (1–100 items, ≤ 200 chars each). Anyone in the chat can tick items;
+see <code>onChecklist</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>title</code> <code>string</code>: Title.</li>
+<li><code>items</code> <code>string[]</code>: Items.</li>
+<li><code>options</code> <code>{silent?: boolean}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message; <code>body.items</code> = <code>[{id, text}]</code> (ids start at 1).</p>
+<h4 id="bot-checklist-toggle"><code>checklistToggle(conv, msgId, item, done?)</code></h4>
+<p><em>async</em></p>
+<p>Tick (<code>done=true</code>) or untick a checklist item.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Checklist message id.</li>
+<li><code>item</code> <code>number</code>: Item id.</li>
+<li><code>done</code> <code>boolean</code> (optional, default <code>true</code>): Ticked.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-checklist-add"><code>checklistAdd(conv, msgId, items)</code></h4>
+<p><em>async</em></p>
+<p>Add items to a checklist the bot sent.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Checklist message id.</li>
+<li><code>items</code> <code>string[]</code>: New items.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-checklist"><code>checklist(conv, msgId)</code></h4>
+<p><em>async</em></p>
+<p>Current state of a checklist, or null if not found.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Checklist message id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Checklist|null&gt;</code>: <code>{msg_id, conv, title, items: [{id, text, done, by, at}], done, total}</code>.</p>
+<h4 id="bot-send-reminder"><code>sendReminder(conv, title, at, options?)</code></h4>
+<p><em>async</em></p>
+<p>Send a reminder. Everyone in the chat (and the bot) gets <code>reminder_due</code> at <code>at</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>title</code> <code>string</code>: ≤ 200 chars.</li>
+<li><code>at</code> <code>When</code>: <code>Date</code>, epoch milliseconds, or <code>{ inMs }</code> from now. Must be in the future.</li>
+<li><code>options</code> <code>{note?: string, silent?: boolean}</code> (optional): <code>note</code> ≤ 1000 chars.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The message.</p>
+<h4 id="bot-reminder-cancel"><code>reminderCancel(conv, msgId)</code></h4>
+<p><em>async</em></p>
+<p>Cancel a reminder the bot sent.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Reminder message id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-reminders"><code>reminders()</code></h4>
+<p>Upcoming reminders known to the bot (soonest first).</p>
+<p><strong>Returns</strong> <code>Promise&lt;Reminder[]&gt;</code>: <code>[{conv, msg_id, at_ms, title, note, author}]</code>.</p>
+<h3 id="bot-actions">Message actions</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-edit-message"><code>editMessage</code></a></td>
+<td>Edit the text of one of the bot's messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-delete-message"><code>deleteMessage</code></a></td>
+<td>Delete a message.</td>
+</tr>
+<tr>
+<td><a href="#bot-pin-message"><code>pinMessage</code></a></td>
+<td>Pin (<code>on=true</code>) or unpin a message.</td>
+</tr>
+<tr>
+<td><a href="#bot-pinned-messages"><code>pinnedMessages</code></a></td>
+<td>Pinned messages of a conversation.</td>
+</tr>
+<tr>
+<td><a href="#bot-react"><code>react</code></a></td>
+<td>Add (or remove) an emoji reaction.</td>
+</tr>
+<tr>
+<td><a href="#bot-forward-message"><code>forwardMessage</code></a></td>
+<td>Forward a message to another conversation.</td>
+</tr>
+<tr>
+<td><a href="#bot-messages"><code>messages</code></a></td>
+<td>Recent messages of a conversation, oldest first.</td>
+</tr>
+<tr>
+<td><a href="#bot-typing"><code>typing</code></a></td>
+<td>Show (or hide) "typing…".</td>
+</tr>
+<tr>
+<td><a href="#bot-mark-read"><code>markRead</code></a></td>
+<td>Mark a conversation as read.</td>
+</tr>
+<tr>
+<td><a href="#bot-schedule-message"><code>scheduleMessage</code></a></td>
+<td>Let Lumora send <code>text</code> at <code>at</code> (kept while the bot runs; ≤ 500 pending).</td>
+</tr>
+<tr>
+<td><a href="#bot-scheduled-messages"><code>scheduledMessages</code></a></td>
+<td>Pending scheduled messages.</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel-scheduled"><code>cancelScheduled</code></a></td>
+<td>Cancel a scheduled message.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-edit-message"><code>editMessage(conv, msgId, text)</code></h4>
+<p><em>async</em></p>
+<p>Edit the text of one of the bot's messages.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Message id.</li>
+<li><code>text</code> <code>string</code>: New text.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-delete-message"><code>deleteMessage(conv, msgId, forEveryone?)</code></h4>
+<p><em>async</em></p>
+<p>Delete a message. In groups, deleting others' messages needs admin rights.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Message id.</li>
+<li><code>forEveryone</code> <code>boolean</code> (optional, default <code>true</code>): Delete for everyone.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-pin-message"><code>pinMessage(conv, msgId, on?)</code></h4>
+<p><em>async</em></p>
+<p>Pin (<code>on=true</code>) or unpin a message.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Message id.</li>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): Pin.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-pinned-messages"><code>pinnedMessages(conv)</code></h4>
+<p>Pinned messages of a conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message[]&gt;</code>: Messages.</p>
+<h4 id="bot-react"><code>react(conv, msgId, emoji, on?)</code></h4>
+<p><em>async</em></p>
+<p>Add (or remove) an emoji reaction.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>msgId</code> <code>string</code>: Message id.</li>
+<li><code>emoji</code> <code>string</code>: Emoji.</li>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): Add.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-forward-message"><code>forwardMessage(msgId, toConv)</code></h4>
+<p><em>async</em></p>
+<p>Forward a message to another conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>msgId</code> <code>string</code>: Message id.</li>
+<li><code>toConv</code> <code>string</code>: Target conversation.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message&gt;</code>: The new message.</p>
+<h4 id="bot-messages"><code>messages(conv, options?)</code></h4>
+<p>Recent messages of a conversation, oldest first. File messages carry <code>body.preview</code> and
+<code>file</code> (<code>state</code>, <code>path</code> once downloaded).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>options</code> <code>{limit?: number, before?: number}</code> (optional): <code>limit</code> (default 50), <code>before</code> (hlc).</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Message[]&gt;</code>: Messages.</p>
+<h4 id="bot-typing"><code>typing(conv, on?)</code></h4>
+<p><em>async</em></p>
+<p>Show (or hide) "typing…".</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): Show.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-mark-read"><code>markRead(conv)</code></h4>
+<p><em>async</em></p>
+<p>Mark a conversation as read.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-schedule-message"><code>scheduleMessage(conv, text, at)</code></h4>
+<p>Let Lumora send <code>text</code> at <code>at</code> (kept while the bot runs; ≤ 500 pending).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+<li><code>text</code> <code>string</code>: Text.</li>
+<li><code>at</code> <code>When</code>: When.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;{id: string, conv: string, text: string, at: number</code>: &gt;} The scheduled entry.</p>
+<h4 id="bot-scheduled-messages"><code>scheduledMessages()</code></h4>
+<p>Pending scheduled messages.</p>
+<p><strong>Returns</strong> <code>Promise&lt;Array&lt;{id: string, conv: string, text: string, at: number</code>: &gt;&gt;} Entries.</p>
+<h4 id="bot-cancel-scheduled"><code>cancelScheduled(schedId)</code></h4>
+<p><em>async</em></p>
+<p>Cancel a scheduled message.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>schedId</code> <code>string</code>: Entry id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h3 id="bot-files">Files</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-files"><code>files</code></a></td>
+<td>All file transfers.</td>
+</tr>
+<tr>
+<td><a href="#bot-accept-file"><code>acceptFile</code></a></td>
+<td>Start (or resume) downloading a received file into <code>dir</code> (default: <code>downloadsDir</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel-file"><code>cancelFile</code></a></td>
+<td>Stop a transfer.</td>
+</tr>
+<tr>
+<td><a href="#bot-download-file"><code>downloadFile</code></a></td>
+<td>Download a received file and wait until it is complete.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-files"><code>files()</code></h4>
+<p>All file transfers. <code>state</code>: 0 offered, 1 transferring, 2 done, 3 failed, 4 cancelled, 5 paused.</p>
+<p><strong>Returns</strong> <code>Promise&lt;FileEntry[]&gt;</code>: Transfers.</p>
+<h4 id="bot-accept-file"><code>acceptFile(fileId, dir?)</code></h4>
+<p><em>async</em></p>
+<p>Start (or resume) downloading a received file into <code>dir</code> (default: <code>downloadsDir</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fileId</code> <code>string</code>: File id.</li>
+<li><code>dir</code> <code>string</code> (optional): Folder.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-cancel-file"><code>cancelFile(fileId)</code></h4>
+<p><em>async</em></p>
+<p>Stop a transfer.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fileId</code> <code>string</code>: File id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-download-file"><code>downloadFile(fileId, options?)</code></h4>
+<p><em>async</em></p>
+<p>Download a received file and wait until it is complete. Small files from users are
+downloaded automatically; this also works for those.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>fileId</code> <code>string</code>: File id.</li>
+<li><code>options</code> <code>{dir?: string, timeoutMs?: number}</code> (optional): Folder and timeout (default 300 s).</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;string&gt;</code>: Local path.</p>
+<p><strong>Throws</strong></p>
+<ul>
+<li><code>LumoraError</code>: <code>sdk.download_failed</code> (failed / cancelled) or <code>sdk.timeout</code>.</li>
+</ul>
+<h3 id="bot-groups">Groups</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-groups"><code>groups</code></a></td>
+<td>Groups the bot is in.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-info"><code>groupInfo</code></a></td>
+<td>Details of a group.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-access"><code>groupAccess</code></a></td>
+<td>What the bot may do in a group: <code>{readAll, admin}</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-member-role"><code>memberRole</code></a></td>
+<td>Role of <code>peer</code> in a group.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-ban"><code>groupBan</code></a></td>
+<td>Ban (or unban) a member: removes them and stops them from rejoining.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-unban"><code>groupUnban</code></a></td>
+<td>Lift a ban.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-remove"><code>groupRemove</code></a></td>
+<td>Remove (kick) a member; they may be added again.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-settings"><code>groupSettings</code></a></td>
+<td>Change group settings (admin): <code>slowModeS</code> (seconds between two messages of a member, 0 = off) and <code>adminsOnly</code> (only admins may post).</td>
+</tr>
+<tr>
+<td><a href="#bot-set-slow-mode"><code>setSlowMode</code></a></td>
+<td>Shortcut for <code>groupSettings(group, { slowModeS: seconds })</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-purge-member"><code>groupPurgeMember</code></a></td>
+<td>Delete every message of <code>peer</code> in the group (admin; e.g.</td>
+</tr>
+<tr>
+<td><a href="#bot-group-leave"><code>groupLeave</code></a></td>
+<td>Leave a group.</td>
+</tr>
+<tr>
+<td><a href="#bot-search-groups"><code>searchGroups</code></a></td>
+<td>Find public groups by <code>@handle</code> or <code>@handle·tag</code> (read-only; bots join a group only when one of its admins adds them).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-groups"><code>groups()</code></h4>
+<p>Groups the bot is in.</p>
+<p><strong>Returns</strong> <code>Promise&lt;GroupInfo[]&gt;</code>: Groups.</p>
+<h4 id="bot-group-info"><code>groupInfo(group)</code></h4>
+<p>Details of a group.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or <code>g:</code> conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;GroupInfo&gt;</code>: The group.</p>
+<h4 id="bot-group-access"><code>groupAccess(group)</code></h4>
+<p><em>async</em></p>
+<p>What the bot may do in a group: <code>{readAll, admin}</code>. <code>readAll</code> = an admin allowed "read all
+messages" (full access); <code>admin</code> = the bot is a group admin (needed for ban / slow mode /
+purge / deleting others' messages).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;{readAll: boolean, admin: boolean</code>: &gt;} Access.</p>
+<h4 id="bot-member-role"><code>memberRole(group, peer)</code></h4>
+<p><em>async</em></p>
+<p>Role of <code>peer</code> in a group.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;"owner"|"admin"|"member"|null&gt;</code>: The role, or null.</p>
+<h4 id="bot-group-ban"><code>groupBan(group, peer, ban?)</code></h4>
+<p><em>async</em></p>
+<p>Ban (or unban) a member: removes them and stops them from rejoining. The bot must be a
+group admin with full access.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+<li><code>ban</code> <code>boolean</code> (optional, default <code>true</code>): Ban.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-group-unban"><code>groupUnban(group, peer)</code></h4>
+<p>Lift a ban.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-group-remove"><code>groupRemove(group, peer)</code></h4>
+<p><em>async</em></p>
+<p>Remove (kick) a member; they may be added again. Needs admin rights.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-group-settings"><code>groupSettings(group, settings)</code></h4>
+<p><em>async</em></p>
+<p>Change group settings (admin): <code>slowModeS</code> (seconds between two messages of a member,
+0 = off) and <code>adminsOnly</code> (only admins may post).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>settings</code> <code>{slowModeS?: number, adminsOnly?: boolean}</code>: Settings.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-set-slow-mode"><code>setSlowMode(group, seconds)</code></h4>
+<p>Shortcut for <code>groupSettings(group, { slowModeS: seconds })</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>seconds</code> <code>number</code>: 0 = off.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-group-purge-member"><code>groupPurgeMember(group, peer)</code></h4>
+<p><em>async</em></p>
+<p>Delete every message of <code>peer</code> in the group (admin; e.g. after spam).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-group-leave"><code>groupLeave(group)</code></h4>
+<p><em>async</em></p>
+<p>Leave a group.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>group</code> <code>string</code>: gid or conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-search-groups"><code>searchGroups(query)</code></h4>
+<p>Find public groups by <code>@handle</code> or <code>@handle·tag</code> (read-only; bots join a group only when
+one of its admins adds them).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>query</code> <code>string</code>: Handle.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object[]&gt;</code>: Matches.</p>
+<h3 id="bot-users">Users and profile</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-users"><code>users</code></a></td>
+<td>Everyone who started a chat with the bot.</td>
+</tr>
+<tr>
+<td><a href="#bot-contacts"><code>contacts</code></a></td>
+<td>Full user entries.</td>
+</tr>
+<tr>
+<td><a href="#bot-name-of"><code>nameOf</code></a></td>
+<td>Display name of a user (refreshes the cache when unknown).</td>
+</tr>
+<tr>
+<td><a href="#bot-cached-name"><code>cachedName</code></a></td>
+<td>Display name from the cache (no request); falls back to the first 8 characters of the id.</td>
+</tr>
+<tr>
+<td><a href="#bot-resolve-username"><code>resolveUsername</code></a></td>
+<td>Look up <code>@name</code> / <code>@name·tag</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-block-user"><code>blockUser</code></a></td>
+<td>Block a user: they can no longer message the bot.</td>
+</tr>
+<tr>
+<td><a href="#bot-unblock-user"><code>unblockUser</code></a></td>
+<td>Unblock a user.</td>
+</tr>
+<tr>
+<td><a href="#bot-set-profile"><code>setProfile</code></a></td>
+<td>Update the bot's profile.</td>
+</tr>
+<tr>
+<td><a href="#bot-set-commands"><code>setCommands</code></a></td>
+<td>Publish the command menu again (done automatically at start).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-users"><code>users()</code></h4>
+<p><em>async</em></p>
+<p>Everyone who started a chat with the bot.</p>
+<p><strong>Returns</strong> <code>Promise&lt;string[]&gt;</code>: Peer ids.</p>
+<h4 id="bot-contacts"><code>contacts()</code></h4>
+<p>Full user entries.</p>
+<p><strong>Returns</strong> <code>Promise&lt;Contact[]&gt;</code>: Contacts.</p>
+<h4 id="bot-name-of"><code>nameOf(peer)</code></h4>
+<p><em>async</em></p>
+<p>Display name of a user (refreshes the cache when unknown).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;string&gt;</code>: Name.</p>
+<h4 id="bot-cached-name"><code>cachedName(peer)</code></h4>
+<p>Display name from the cache (no request); falls back to the first 8 characters of the id.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>string</code>: Name.</p>
+<h4 id="bot-resolve-username"><code>resolveUsername(handle)</code></h4>
+<p>Look up <code>@name</code> / <code>@name·tag</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>handle</code> <code>string</code>: Handle.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;Array&lt;{peer: string, handle: string, name?: string, contact: boolean</code>: &gt;&gt;} Matches.</p>
+<h4 id="bot-block-user"><code>blockUser(peer)</code></h4>
+<p><em>async</em></p>
+<p>Block a user: they can no longer message the bot.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-unblock-user"><code>unblockUser(peer)</code></h4>
+<p><em>async</em></p>
+<p>Unblock a user.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="bot-set-profile"><code>setProfile(profile)</code></h4>
+<p>Update the bot's profile. <code>avatar</code>: path to an image (≤ 96 KB).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>profile</code> <code>{name?: string, bio?: string, avatar?: string}</code>: Fields to change.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The profile.</p>
+<h4 id="bot-set-commands"><code>setCommands()</code></h4>
+<p><em>async</em></p>
+<p>Publish the command menu again (done automatically at start).</p>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h3 id="bot-jobs">Jobs (scheduled tasks)</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-every"><code>every</code></a></td>
+<td>Run <code>fn()</code> every <code>seconds</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-daily"><code>daily</code></a></td>
+<td>Run <code>fn()</code> every day at local time <code>"HH:MM"</code>.</td>
+</tr>
+<tr>
+<td><a href="#bot-after"><code>after</code></a></td>
+<td>Run <code>fn()</code> once, <code>seconds</code> from now.</td>
+</tr>
+<tr>
+<td><a href="#bot-cancel"><code>cancel</code></a></td>
+<td>Cancel a job returned by <code>every</code>, <code>daily</code> or <code>after</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-every"><code>every(seconds, fn, options?)</code></h4>
+<p>Run <code>fn()</code> every <code>seconds</code>. Returns the job; <code>bot.cancel(job)</code> stops it.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>seconds</code> <code>number</code>: Interval in seconds.</li>
+<li><code>fn</code> <code>() =&gt; any</code>: Job.</li>
+<li><code>options</code> <code>{firstIn?: number}</code> (optional): First run after <code>firstIn</code> seconds (default: <code>seconds</code>).</li>
+</ul>
+<p><strong>Returns</strong> <code>Job</code>: The job.</p>
+<h4 id="bot-daily"><code>daily(at, fn)</code></h4>
+<p>Run <code>fn()</code> every day at local time <code>"HH:MM"</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>at</code> <code>string</code>: Local time <code>"HH:MM"</code>.</li>
+<li><code>fn</code> <code>() =&gt; any</code>: Job.</li>
+</ul>
+<p><strong>Returns</strong> <code>Job</code>: The job.</p>
+<h4 id="bot-after"><code>after(seconds, fn)</code></h4>
+<p>Run <code>fn()</code> once, <code>seconds</code> from now.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>seconds</code> <code>number</code>: Delay in seconds.</li>
+<li><code>fn</code> <code>() =&gt; any</code>: Job.</li>
+</ul>
+<p><strong>Returns</strong> <code>Job</code>: The job.</p>
+<h4 id="bot-cancel"><code>cancel(job)</code></h4>
+<p>Cancel a job returned by <code>every</code>, <code>daily</code> or <code>after</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>job</code> <code>Job</code>: The job.</li>
+</ul>
+<h3 id="bot-lifecycle">Lifecycle</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-start"><code>start</code></a></td>
+<td>Start Lumora Bot Runner and go online (resolves once online).</td>
+</tr>
+<tr>
+<td><a href="#bot-run"><code>run</code></a></td>
+<td>Start and wait until stopped (Ctrl+C, SIGTERM or <code>stop()</code>).</td>
+</tr>
+<tr>
+<td><a href="#bot-stop"><code>stop</code></a></td>
+<td>Stop gracefully: no new events, wait up to <code>timeoutMs</code> for running handlers, then close Lumora Bot Runner (it saves everything and exits).</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-start"><code>start()</code></h4>
+<p><em>async</em></p>
+<p>Start Lumora Bot Runner and go online (resolves once online). See <code>run</code>.</p>
+<p><strong>Returns</strong> <code>Promise&lt;this&gt;</code>: The bot.</p>
+<h4 id="bot-run"><code>run()</code></h4>
+<p><em>async</em></p>
+<p>Start and wait until stopped (Ctrl+C, SIGTERM or <code>stop()</code>). Shuts down gracefully:
+running handlers finish, then Lumora Bot Runner exits.</p>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>: Resolves after shutdown.</p>
+<h4 id="bot-stop"><code>stop(timeoutMs?)</code></h4>
+<p><em>async</em></p>
+<p>Stop gracefully: no new events, wait up to <code>timeoutMs</code> for running handlers, then close
+Lumora Bot Runner (it saves everything and exits).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>timeoutMs</code> <code>number</code> (optional, default <code>10000</code>): How long to wait for running handlers.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h3 id="bot-lowlevel">Low-level API</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#bot-call"><code>call</code></a></td>
+<td>Run any command of the Lumora JSON API and return its <code>data</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="bot-call"><code>call(cmd, args?, timeoutMs?)</code></h4>
+<p><em>async</em></p>
+<p>Run any command of the Lumora JSON API and return its <code>data</code>. Commands bots may not use
+(remote control, recovery phrase, backups, passwords, calls) reject with
+<code>NotAllowedForBots</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>cmd</code> <code>string</code>: Command name.</li>
+<li><code>args</code> <code>object</code> (optional, default <code>{}</code>): Arguments.</li>
+<li><code>timeoutMs</code> <code>number</code> (optional, default <code>60000</code>): Timeout.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;any&gt;</code>: The command's <code>data</code>.</p>
+<p><strong>Throws</strong></p>
+<ul>
+<li><code>LumoraError</code>: The command failed (<code>.code</code>, <code>.message</code>, <code>.detail</code>).</li>
+<li><code>LumoraTimeout</code>: No answer in time.</li>
+<li><code>RunnerStopped</code>: Runner not running.</li>
+</ul>
+<h3 id="bot-other">Properties and other members</h3>
+<h4 id="bot-log"><code>log</code></h4>
+<p><em>property</em></p>
+<p>The SDK's logger (<code>debug/info/warn/error(msg, fields)</code>); use it in handlers too.</p>
+<h4 id="bot-token"><code>token</code></h4>
+<p><em>property</em></p>
+<p><em>Type:</em> <code>string|undefined</code></p>
+<h4 id="bot-storage"><code>storage</code></h4>
+<p><em>property</em></p>
+<p>Persistent key/value store.</p>
+<p><em>Type:</em> <code>Storage</code></p>
+<h4 id="bot-roles"><code>roles</code></h4>
+<p><em>property</em></p>
+<p>Bot roles.</p>
+<p><em>Type:</em> <code>Roles</code></p>
+<h4 id="bot-admin-peers"><code>adminPeers</code></h4>
+<p><em>property</em></p>
+<p>Resolved bot admins (peer ids).</p>
+<p><em>Type:</em> <code>Set&lt;string&gt;</code></p>
+<h4 id="bot-commands"><code>commands</code></h4>
+<p><em>property</em></p>
+<p>Registered commands: name → <code>{fn, description, hidden, chats}</code>.</p>
+<h4 id="bot-me"><code>me</code></h4>
+<p><em>property</em></p>
+<p>The bot's own account (<code>peer</code>, <code>short_id</code>, <code>name</code>, <code>username</code>, <code>handle</code>, <code>version</code>) once started.</p>
+<h4 id="bot-proc"><code>proc</code></h4>
+<p><em>property</em></p>
+<p>Lumora Bot Runner process (internal).</p>
+<h2 id="context">Context</h2>
+<p><code>new Context(bot, ev, kind?)</code></p>
+<p>What a handler receives: the event plus shortcuts to answer it.</p>
+<p>Fields are empty / <code>null</code> when not relevant: <code>kind</code> (<code>"command"</code>, <code>"message"</code>,
+<code>"callback"</code>, <code>"new_user"</code>, <code>"new_member"</code>, <code>"member_left"</code>, <code>"added_to_group"</code>, <code>"file"</code>,
+<code>"reminder_due"</code>, <code>"checklist"</code>, <code>"job"</code>, <code>"start"</code> or the raw event name), <code>conv</code>, <code>sender</code>,
+<code>text</code>, <code>command</code>, <code>args</code>, <code>match</code>, <code>data</code>, <code>msgId</code>, <code>replyTo</code>, <code>body</code>, <code>msgKind</code>, <code>file</code>,
+<code>reminder</code>, <code>checklist</code>, <code>changes</code>, <code>member</code>, <code>event</code> (raw dict).</p>
+<h4 id="context-bot"><code>bot</code></h4>
+<p><em>property</em></p>
+<p><em>Type:</em> <code>Bot</code></p>
+<h4 id="context-event"><code>event</code></h4>
+<p><em>property</em></p>
+<p>Raw event.</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;</code></p>
+<h4 id="context-kind"><code>kind</code></h4>
+<p><em>property</em></p>
+<p>What happened.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-conv"><code>conv</code></h4>
+<p><em>property</em></p>
+<p>Conversation id (<code>d:&lt;peer&gt;</code> direct chat, <code>g:&lt;gid&gt;</code> group).</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-sender"><code>sender</code></h4>
+<p><em>property</em></p>
+<p>The user who caused the event (peer id).</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-body"><code>body</code></h4>
+<p><em>property</em></p>
+<p>Message body.</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;</code></p>
+<h4 id="context-msg-kind"><code>msgKind</code></h4>
+<p><em>property</em></p>
+<p>Message kind (<code>"text"</code>, <code>"file"</code>, <code>"location"</code>…).</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-text"><code>text</code></h4>
+<p><em>property</em></p>
+<p>Message text.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-data"><code>data</code></h4>
+<p><em>property</em></p>
+<p>Button data (callbacks).</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-msg-id"><code>msgId</code></h4>
+<p><em>property</em></p>
+<p>Message id (for callbacks: the bot's message whose button was pressed).</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-reply-to"><code>replyTo</code></h4>
+<p><em>property</em></p>
+<p>Id of the quoted message, or null.</p>
+<p><em>Type:</em> <code>string|null</code></p>
+<h4 id="context-silent"><code>silent</code></h4>
+<p><em>property</em></p>
+<p>Delivered without sound/notification.</p>
+<p><em>Type:</em> <code>boolean</code></p>
+<h4 id="context-match"><code>match</code></h4>
+<p><em>property</em></p>
+<p>Regex match of <code>onText</code> / <code>onCallback({pattern})</code>.</p>
+<p><em>Type:</em> <code>RegExpExecArray|null</code></p>
+<h4 id="context-file"><code>file</code></h4>
+<p><em>property</em></p>
+<p>File info (<code>onFile</code>): <code>{file_id, name, size, mime, preview, state, path}</code>.</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;|null</code></p>
+<h4 id="context-reminder"><code>reminder</code></h4>
+<p><em>property</em></p>
+<p>Reminder (<code>onReminderDue</code>): <code>{title, note, at_ms, author, mine, late, conv, msg_id}</code>.</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;|null</code></p>
+<h4 id="context-checklist"><code>checklist</code></h4>
+<p><em>property</em></p>
+<p>Checklist state (<code>onChecklist</code>).</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;|null</code></p>
+<h4 id="context-changes"><code>changes</code></h4>
+<p><em>property</em></p>
+<p>Checklist changes (<code>onChecklist</code>): <code>[{item, text, done, by}]</code>.</p>
+<p><em>Type:</em> <code>Array&lt;Record&lt;string, any&gt;&gt;</code></p>
+<h4 id="context-member"><code>member</code></h4>
+<p><em>property</em></p>
+<p>Group member (<code>onNewMember</code>, <code>onMemberLeft</code>): <code>{peer, name, role}</code>.</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;|null</code></p>
+<h4 id="context-command"><code>command</code></h4>
+<p><em>property</em></p>
+<p>Command name without <code>/</code>, or null.</p>
+<p><em>Type:</em> <code>string|null</code></p>
+<h4 id="context-args"><code>args</code></h4>
+<p><em>property</em></p>
+<p>Text after the command.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-handled"><code>handled</code></h4>
+<p><em>property</em></p>
+<p>Whether a handler ran.</p>
+<p><em>Type:</em> <code>boolean</code></p>
+<h4 id="context-is-group"><code>isGroup</code></h4>
+<p><em>property</em></p>
+<p>True when the event happened in a group or community channel.</p>
+<p><em>Type:</em> <code>boolean</code></p>
+<h4 id="context-gid"><code>gid</code></h4>
+<p><em>property</em></p>
+<p>Group id for group events, else null.</p>
+<p><em>Type:</em> <code>string|null</code></p>
+<h4 id="context-sender-name"><code>senderName</code></h4>
+<p><em>property</em></p>
+<p>Display name of the sender (from the bot's cache; falls back to the first 8 characters
+of the id). Use <code>await bot.nameOf(peer)</code> to refresh.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="context-is-admin"><code>isAdmin</code></h4>
+<p><em>property</em></p>
+<p>True when the sender is one of this bot's admins (<code>admins</code> option).</p>
+<p><em>Type:</em> <code>boolean</code></p>
+<h4 id="context-has-role"><code>hasRole(role)</code></h4>
+<p>True when the sender has bot role <code>role</code> (bot admins always do).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>role</code> <code>string</code>: Role.</li>
+</ul>
+<p><strong>Returns</strong> <code>boolean</code>: Whether the sender has it.</p>
+<h4 id="context-is-group-admin"><code>isGroupAdmin()</code></h4>
+<p><em>async</em></p>
+<p>True when the sender is an admin or the owner of the current group.</p>
+<p><strong>Returns</strong> <code>Promise&lt;boolean&gt;</code>: Whether the sender is a group admin.</p>
+<h4 id="context-reply"><code>reply(text, buttonsOrOptions?, options?)</code></h4>
+<p>Send <code>text</code> to the same conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>text</code> <code>string</code>: Message text (max 64 KB).</li>
+<li><code>buttonsOrOptions</code> <code>Buttons|ReplyOptions</code> (optional): Buttons, or the options object.</li>
+<li><code>options</code> <code>ReplyOptions</code> (optional): <code>{buttons, reply, silent, mentions, mentionAll}</code>; <code>reply: true</code> quotes the message being answered.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The sent message.</p>
+<pre class="code"><code data-lang="js">await ctx.reply(&quot;Saved ✅&quot;, { reply: true, silent: true });</code></pre>
+<h4 id="context-reply-file"><code>replyFile(path, options?)</code></h4>
+<p>Send a file to the same conversation (see <code>bot.sendFile</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>path</code> <code>string</code>: File path.</li>
+<li><code>options</code> <code>FileOptions</code> (optional): <code>{preview, thumb}</code>.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The file transfer entry.</p>
+<h4 id="context-send-file"><code>sendFile(path)</code></h4>
+<p>Send a file to the same conversation (kept for older bots; prefer <code>replyFile</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>path</code> <code>string</code>: File path.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The file transfer entry.</p>
+<h4 id="context-reply-checklist"><code>replyChecklist(title, items, options?)</code></h4>
+<p>Send a checklist to the same conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>title</code> <code>string</code>: Title.</li>
+<li><code>items</code> <code>string[]</code>: Items.</li>
+<li><code>options</code> <code>{silent?: boolean}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The message.</p>
+<h4 id="context-reply-reminder"><code>replyReminder(title, at, options?)</code></h4>
+<p>Send a reminder to the same conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>title</code> <code>string</code>: Title.</li>
+<li><code>at</code> <code>When</code>: When.</li>
+<li><code>options</code> <code>{note?: string, silent?: boolean}</code> (optional): Options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The message.</p>
+<h4 id="context-reply-poll"><code>replyPoll(question, options)</code></h4>
+<p>Send a poll to the same conversation.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>question</code> <code>string</code>: Question.</li>
+<li><code>options</code> <code>string[]</code>: 2–10 options.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;object&gt;</code>: The message.</p>
+<h4 id="context-react"><code>react(emoji, on?)</code></h4>
+<p>React to the current message.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>emoji</code> <code>string</code>: Emoji.</li>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): <code>false</code> removes it.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="context-edit"><code>edit(text)</code></h4>
+<p>Edit the current message. For callbacks that is the bot's message whose button was
+pressed, so <code>ctx.edit("Done ✅")</code> updates it in place.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>text</code> <code>string</code>: New text.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="context-delete"><code>delete(forEveryone?)</code></h4>
+<p>Delete the current message (others' messages in groups need admin rights).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>forEveryone</code> <code>boolean</code> (optional, default <code>true</code>): Delete for everyone.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="context-pin"><code>pin(on?)</code></h4>
+<p>Pin (or unpin) the current message.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): Pin.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="context-typing"><code>typing(on?)</code></h4>
+<p>Show (or hide) "typing…" here.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>on</code> <code>boolean</code> (optional, default <code>true</code>): Show.</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;void&gt;</code>:</p>
+<h4 id="context-download"><code>download(options?)</code></h4>
+<p>Download the file of this message (<code>onFile</code>) and return its local path.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>options</code> <code>{dir?: string, timeoutMs?: number}</code> (optional): Folder and timeout (default 300 s).</li>
+</ul>
+<p><strong>Returns</strong> <code>Promise&lt;string&gt;</code>: Local path.</p>
+<h2 id="storage">Storage</h2>
+<p><code>new Storage(path)</code></p>
+<p>Key/value store saved as JSON in the bot's data folder (<code>bot-storage.json</code>).</p>
+<p><code>set</code> / <code>delete</code> / <code>updateKey</code> save the file atomically. If you change a nested value in
+place (<code>storage.get("list").push(x)</code>) call <code>save()</code> afterwards. Values must be
+JSON-serialisable. The file format is shared with the Python SDK.</p>
+<h4 id="storage-data"><code>data</code></h4>
+<p><em>property</em></p>
+<p>The raw object (read-only use recommended).</p>
+<p><em>Type:</em> <code>Record&lt;string, any&gt;</code></p>
+<h4 id="storage-get"><code>get(key, def?)</code></h4>
+<p>Value of <code>key</code>, or <code>def</code> when missing.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>key</code> <code>string</code>: Key.</li>
+<li><code>def</code> <code>any</code> (optional): Default.</li>
+</ul>
+<p><strong>Returns</strong> <code>any</code>: The value.</p>
+<h4 id="storage-has"><code>has(key)</code></h4>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>key</code> <code>string</code>: Key.</li>
+</ul>
+<p><strong>Returns</strong> <code>boolean</code>: Whether the key exists.</p>
+<h4 id="storage-keys"><code>keys()</code></h4>
+<p><strong>Returns</strong> <code>string[]</code>: All keys.</p>
+<h4 id="storage-set"><code>set(key, value)</code></h4>
+<p>Set <code>key</code> and save.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>key</code> <code>string</code>: Key.</li>
+<li><code>value</code> <code>any</code>: JSON-serialisable value.</li>
+</ul>
+<h4 id="storage-delete"><code>delete(key)</code></h4>
+<p>Delete <code>key</code> and save.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>key</code> <code>string</code>: Key.</li>
+</ul>
+<h4 id="storage-update-key"><code>updateKey(key, fn, def?)</code></h4>
+<p>Replace <code>key</code> with <code>fn(old)</code> and save. Returns the new value.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>key</code> <code>string</code>: Key.</li>
+<li><code>fn</code> <code>(old: any) =&gt; any</code>: Updater.</li>
+<li><code>def</code> <code>any</code> (optional): Value passed to <code>fn</code> when the key is missing.</li>
+</ul>
+<p><strong>Returns</strong> <code>any</code>: The new value.</p>
+<pre class="code"><code data-lang="js">bot.storage.updateKey(&quot;visits&quot;, (n) =&gt; n + 1, 0);</code></pre>
+<h4 id="storage-save"><code>save()</code></h4>
+<p>Write the whole store to disk now (atomic replace).</p>
+<h4 id="storage-to-j-s-o-n"><code>toJSON()</code></h4>
+<p><strong>Returns</strong> <code>Record&lt;string, any&gt;</code>: The data.</p>
+<h2 id="roles">Roles</h2>
+<p><code>new Roles(storage)</code></p>
+<p>Bot-level roles (<code>"mod"</code>, <code>"vip"</code>…) kept in storage: user → roles. These are <em>your
+bot's</em> roles, separate from group admins. Bot admins (<code>admins</code> option) pass every check.</p>
+<h4 id="roles-grant"><code>grant(peer, role)</code></h4>
+<p>Give <code>role</code> to user <code>peer</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+<li><code>role</code> <code>string</code>: Role.</li>
+</ul>
+<h4 id="roles-revoke"><code>revoke(peer, role)</code></h4>
+<p>Take <code>role</code> away from <code>peer</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+<li><code>role</code> <code>string</code>: Role.</li>
+</ul>
+<h4 id="roles-of"><code>of(peer)</code></h4>
+<p>Roles of <code>peer</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peer</code> <code>string</code>: Peer id.</li>
+</ul>
+<p><strong>Returns</strong> <code>Set&lt;string&gt;</code>: Roles (empty set when none).</p>
+<h4 id="roles-members"><code>members(role)</code></h4>
+<p>Users that have <code>role</code>.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>role</code> <code>string</code>: Role.</li>
+</ul>
+<p><strong>Returns</strong> <code>string[]</code>: Peer ids.</p>
+<h2 id="lumoraerror">LumoraError</h2>
+<p><code>new LumoraError(message, code?, detail?, cmd?)</code></p>
+<p>Error returned by Lumora (or raised by the SDK).</p>
+<p><code>message</code> is a plain sentence in the bot's language (<code>new Bot({ lang })</code>), safe to show
+to users; <code>code</code> is a stable key (<code>"err.slow_mode"</code>, <code>"err.admin_only"</code>, <code>"internal"</code>, or
+<code>"sdk.*"</code> for errors raised by the SDK itself); <code>detail</code> is the technical cause (log it,
+don't show it); <code>cmd</code> is the command that failed.</p>
+<h4 id="lumoraerror-message"><code>message</code></h4>
+<p><em>property</em></p>
+<p>Plain sentence, safe to show to users.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="lumoraerror-code"><code>code</code></h4>
+<p><em>property</em></p>
+<p>Stable machine key.</p>
+<p><em>Type:</em> <code>string</code></p>
+<h4 id="lumoraerror-detail"><code>detail</code></h4>
+<p><em>property</em></p>
+<p>Technical cause, or null.</p>
+<p><em>Type:</em> <code>string|null</code></p>
+<h4 id="lumoraerror-cmd"><code>cmd</code></h4>
+<p><em>property</em></p>
+<p>The command that failed, or null.</p>
+<p><em>Type:</em> <code>string|null</code></p>
+<h4 id="lumoraerror-to-string"><code>toString()</code></h4>
+<p><code>"&lt;name&gt;: &lt;message&gt; (&lt;detail&gt;)"</code>.</p>
+<p><strong>Returns</strong> <code>string</code>:</p>
+<h4 id="lumoraerror-to-j-s-o-n"><code>toJSON()</code></h4>
+<p><code>{error, code, detail, cmd}</code> for structured logs.</p>
+<p><strong>Returns</strong> <code>{error: string, code: string, detail: string|null, cmd: string|null</code>: }</p>
+<h2 id="lumoratimeout">LumoraTimeout</h2>
+<p>A request got no answer in time (code <code>sdk.timeout</code>).</p>
+<h2 id="runnerstopped">RunnerStopped</h2>
+<p>Lumora Bot Runner is not running, or stopped while a request was pending (code <code>sdk.runner_stopped</code>).</p>
+<h2 id="notallowedforbots">NotAllowedForBots</h2>
+<p>The command is not available to bots (code <code>sdk.not_for_bots</code>).</p>
+<h2 id="helpers">Helpers</h2>
+<h4 id="is-blocked-command"><code>isBlockedCommand(cmd)</code></h4>
+<p>True when <code>cmd</code> is a core command bots may not use (remote control, recovery phrase,
+backups, passwords, calls, BotFather management).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>cmd</code> <code>string</code>: Command name.</li>
+</ul>
+<p><strong>Returns</strong> <code>boolean</code>: Whether the command is blocked.</p>
+<h4 id="gid-of"><code>gidOf(convOrGid)</code></h4>
+<p>Group id (32 hex chars) from a group conversation id (<code>g:&lt;gid&gt;</code> or <code>g:&lt;gid&gt;#channel</code>) or a
+bare gid. Throws <code>TypeError</code> for direct chats.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>convOrGid</code> <code>string</code>: Conversation id or gid.</li>
+</ul>
+<p><strong>Returns</strong> <code>string</code>: The gid.</p>
+<h4 id="conv-of"><code>convOf(peerOrGid)</code></h4>
+<p>Conversation id for a user (<code>d:&lt;peer&gt;</code>) or a group gid (<code>g:&lt;gid&gt;</code>). Conversation ids are
+returned unchanged.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>peerOrGid</code> <code>string</code>: Peer id, gid or conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>string</code>: Conversation id.</p>
+<h4 id="is-group-conv"><code>isGroupConv(conv)</code></h4>
+<p>True for group / community channel conversations (<code>g:…</code>).</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>conv</code> <code>string</code>: Conversation id.</li>
+</ul>
+<p><strong>Returns</strong> <code>boolean</code>: Whether it is a group conversation.</p>
+<h4 id="-button"><code>Button(text, dataOrOptions = "", url = "")</code></h4>
+<p>Make an inline button. Pressing a data button sends a <code>callback</code> to the bot
+(<code>bot.onCallback</code>); a URL button opens the link. <code>text</code> and <code>data</code> are at most 64 chars.</p>
+<p><strong>Parameters</strong></p>
+<ul>
+<li><code>text</code> <code>string</code>: Label.</li>
+<li><code>dataOrOptions</code> <code>string|{data?: string, url?: string}</code> (optional, default <code>""</code>): Callback data, a <code>https://</code> link, or <code>{ data }</code> / <code>{ url }</code>.</li>
+<li><code>url</code> <code>string</code> (optional, default <code>""</code>): Link (alternative to <code>{ url }</code>).</li>
+</ul>
+<p><strong>Returns</strong> <code>{text: string, data: string, url: string</code>: } The button.</p>
+<pre class="code"><code data-lang="js">Button(&quot;Buy&quot;, &quot;buy:42&quot;);  Button(&quot;Site&quot;, { url: &quot;https://example.com&quot; });</code></pre>
+<h2 id="constants">Constants</h2>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Name</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VERSION</code></td>
+<td><code>"1.1.0"</code></td>
+<td>SDK version.</td>
+</tr>
+<tr>
+<td><code>MAX_TEXT_BYTES</code></td>
+<td><code>64 * 1024</code></td>
+<td>Text message size limit enforced by Lumora (UTF-8 bytes).</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_ROWS</code></td>
+<td><code>8</code></td>
+<td>Max rows of inline buttons.</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTONS_PER_ROW</code></td>
+<td><code>8</code></td>
+<td>Max buttons per row.</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_TEXT</code></td>
+<td><code>64</code></td>
+<td>Max characters of a button label.</td>
+</tr>
+<tr>
+<td><code>MAX_BUTTON_DATA</code></td>
+<td><code>64</code></td>
+<td>Max characters of a button's callback data.</td>
+</tr>
+<tr>
+<td><code>MAX_PREVIEW_TEXT_BYTES</code></td>
+<td><code>4 * 1024</code></td>
+<td>File preview text cap (UTF-8 bytes); receivers drop anything bigger.</td>
+</tr>
+<tr>
+<td><code>MAX_PREVIEW_IMAGE_BYTES</code></td>
+<td><code>64 * 1024</code></td>
+<td>File preview picture cap (bytes).</td>
+</tr>
+<tr>
+<td><code>MAX_CHECKLIST_ITEMS</code></td>
+<td><code>100</code></td>
+<td>Max checklist items.</td>
+</tr>
+<tr>
+<td><code>MAX_TASK_TEXT</code></td>
+<td><code>200</code></td>
+<td>Max characters of a checklist item / reminder title.</td>
+</tr>
+<tr>
+<td><code>MAX_REMINDER_NOTE</code></td>
+<td><code>1000</code></td>
+<td>Max characters of a reminder note.</td>
+</tr>
+</tbody>
+</table></div>
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

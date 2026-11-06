@@ -1,0 +1,10 @@
+[book]
+title = "Lumora Documentation"
+authors = ["Lumora Contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = ""

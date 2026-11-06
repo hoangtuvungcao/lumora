@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="vi" data-page="api" data-title-en="JSON API reference — Lumora" data-desc-en="Lumora JSON API reference: commands, events and data shapes for bots and app integrations.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tài liệu JSON API — Lumora</title>
+<meta name="description" content="Tài liệu tham chiếu Lumora JSON API: lệnh, sự kiện và cấu trúc dữ liệu cho bot và ứng dụng.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/api/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Lumora JSON API reference">
+<meta property="og:description" content="Tài liệu tham chiếu Lumora JSON API: lệnh, sự kiện và cấu trúc dữ liệu cho bot và ứng dụng.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/api/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Lumora JSON API reference">
+<meta name="twitter:description" content="Tài liệu tham chiếu Lumora JSON API: lệnh, sự kiện và cấu trúc dữ liệu cho bot và ứng dụng.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/" aria-current="page">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#book-open"/></svg><span class="l-vi">Tài liệu tham chiếu</span><span class="l-en" lang="en">Reference</span></p>
+      <h1 class="hero__title"><span class="l-vi">Tài liệu JSON API</span><span class="l-en" lang="en">JSON API reference</span></h1>
+      <p class="lead-p"><span class="l-vi">Các lệnh và sự kiện mà bot (qua bot.call) và ứng dụng tích hợp có thể dùng. Mỗi yêu cầu là một dòng JSON; phản hồi và sự kiện cũng là các dòng JSON.</span><span class="l-en" lang="en">Commands and events available to bots (through bot.call) and app integrations. Each request is one JSON line; responses and events are JSON lines too.</span></p>
+      <p class="muted small"><span class="l-vi">Nội dung tham chiếu được viết bằng tiếng Anh.</span><span class="l-en" lang="en">The reference itself is written in English.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li class="toc--2"><a href="#transport">Transport</a></li><li class="toc--2"><a href="#request-response">Request / response</a></li><li class="toc--2"><a href="#commands">Commands</a></li><li class="toc--3"><a href="#identity-profile">Identity &amp; profile</a></li><li class="toc--3"><a href="#contacts">Contacts</a></li><li class="toc--3"><a href="#conversations-messages">Conversations &amp; messages</a></li><li class="toc--3"><a href="#checklists-reminders">Checklists &amp; reminders</a></li><li class="toc--3"><a href="#bots">Bots</a></li><li class="toc--3"><a href="#stickers">Stickers</a></li><li class="toc--3"><a href="#stories-24-h">Stories (24 h)</a></li><li class="toc--3"><a href="#groups-communities">Groups &amp; communities</a></li><li class="toc--3"><a href="#files-storage">Files &amp; storage</a></li><li class="toc--3"><a href="#settings">Settings</a></li><li class="toc--3"><a href="#calls">Calls</a></li><li class="toc--3"><a href="#remote-help">Remote help</a></li><li class="toc--3"><a href="#input-events-remote_inputev">Input events (remote_input.ev)</a></li><li class="toc--2"><a href="#events-pushed">Events (pushed)</a></li><li class="toc--2"><a href="#data-shapes">Data shapes</a></li></ul></nav>
+      <article class="prose" lang="en">
+
+<p>The commands and events available to bots (through <code>bot.call(cmd, …)</code> in the SDKs) and to app integrations.</p>
+<h2 id="transport">Transport</h2>
+<p>Lumora Bot Runner reads one JSON request per line and writes responses and events as JSON lines.
+The bot SDKs (<a href="https://getlumora.pages.dev/developers/sdk/python/lumora_bot.py">Python</a>, <a href="https://getlumora.pages.dev/developers/sdk/js/lumora-bot.mjs">JavaScript</a>) start
+the Bot Runner for you and expose <code>bot.call(cmd, **args)</code> / <code>bot.call(cmd, args)</code> for any command below.</p>
+<h2 id="request-response">Request / response</h2>
+<pre class="code"><code data-lang="json">→ {&quot;id&quot;: 7, &quot;cmd&quot;: &quot;send_message&quot;, &quot;conv&quot;: &quot;d:&lt;peer&gt;&quot;, &quot;text&quot;: &quot;hi&quot;}
+← {&quot;id&quot;: 7, &quot;ok&quot;: true, &quot;data&quot;: { ... }}
+← {&quot;id&quot;: 7, &quot;ok&quot;: false, &quot;error&quot;: &quot;Nhóm đang bật chế độ chậm. Bạn có thể gửi lại sau 12 giây.&quot;, &quot;code&quot;: &quot;err.slow_mode&quot;}
+← {&quot;id&quot;: 7, &quot;ok&quot;: false, &quot;error&quot;: &quot;Có lỗi xảy ra. Vui lòng thử lại.&quot;, &quot;code&quot;: &quot;internal&quot;, &quot;detail&quot;: &quot;&lt;technical cause&gt;&quot;}
+</code></pre>
+<p>The top-level <code>id</code> is always the request id; command arguments never use the key <code>id</code>.</p>
+<p><strong>Errors.</strong> <code>error</code> is a plain sentence in the language set with <code>set_lang</code> (safe to show to users), <code>code</code> is a
+stable key (<code>err.*</code>, or <code>internal</code> for unexpected failures) and <code>detail</code> (optional) is the technical cause, for logs.
+The SDKs raise these as <code>LumoraError</code> with <code>.code</code>, <code>.message</code> and <code>.detail</code>.</p>
+<p><strong>Bots.</strong> Bots may use every command below except remote help, calls, the recovery phrase, backups and passwords;
+the SDKs refuse those with <code>sdk.not_for_bots</code>. A bot can only message people who messaged it first
+(<code>err.bot_cannot_start</code>) and joins groups only when a group admin adds it.</p>
+<p><strong>Identifiers.</strong> User ids (<code>peer</code>) are 52-character lowercase strings. <code>short_id</code> is the 9-digit ID shown to users ("123 456 789").
+Usernames are shown as <code>@name·tag</code>: the tag belongs to the account, so a handle cannot be impersonated. Bot usernames end with <code>bot</code>.
+Conversation ids: <code>d:&lt;peer&gt;</code> direct chat, <code>g:&lt;gid hex32&gt;</code> group/community channel, <code>s:me</code> saved messages.
+Message, file, call, session and story ids are 32 hex chars. Timestamps are ms since epoch.</p>
+<h2 id="commands">Commands</h2>
+<h3 id="identity-profile">Identity &amp; profile</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ping</code></td>
+<td>–</td>
+<td><code>"pong"</code></td>
+</tr>
+<tr>
+<td><code>me</code></td>
+<td>–</td>
+<td><code>{peer, short_id, name, username, handle, protection, version}</code></td>
+</tr>
+<tr>
+<td><code>set_name</code></td>
+<td><code>name</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>profile</code></td>
+<td>–</td>
+<td><code>{name, bio, status, avatar}</code></td>
+</tr>
+<tr>
+<td><code>set_profile</code></td>
+<td><code>name?, bio?, status?: "online"|"away"|"dnd"|"invisible", avatar?: base64 (≤ 96 KB)</code></td>
+<td>profile</td>
+</tr>
+<tr>
+<td><code>set_cover</code></td>
+<td><code>cover</code> (base64 image)</td>
+<td>profile</td>
+</tr>
+<tr>
+<td><code>set_username</code></td>
+<td><code>username</code> (3–24 chars <code>a–z 0–9 _</code>, not starting with <code>_</code>; empty = remove)</td>
+<td><code>{username, handle}</code></td>
+</tr>
+<tr>
+<td><code>resolve_username</code></td>
+<td><code>handle</code> (<code>@name</code> or <code>@name·tag</code>)</td>
+<td><code>[{peer, handle, name?, contact}]</code></td>
+</tr>
+<tr>
+<td><code>change_passphrase</code></td>
+<td><code>old?, new?</code></td>
+<td><code>{protection}</code></td>
+</tr>
+<tr>
+<td><code>set_lang</code></td>
+<td><code>lang: "vi"|"en"</code></td>
+<td><code>{lang}</code></td>
+</tr>
+<tr>
+<td><code>i18n_catalog</code></td>
+<td>–</td>
+<td><code>{en:{key:text}, vi:{…}}</code>. System messages are stored as <code>body:{code,args,text}</code>; render <code>code</code> with this catalog</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="contacts">Contacts</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>contacts</code></td>
+<td>–</td>
+<td><code>[Contact]</code></td>
+</tr>
+<tr>
+<td><code>add_contact</code></td>
+<td><code>target</code> (peer, 9-digit short id or <code>@name·tag</code>), <code>note?</code></td>
+<td><code>{peer}</code> (sends a friend request)</td>
+</tr>
+<tr>
+<td><code>lookup</code></td>
+<td><code>short_id</code></td>
+<td><code>[{peer, name}]</code></td>
+</tr>
+<tr>
+<td><code>accept_contact</code> / <code>remove_contact</code> / <code>block_contact</code> / <code>unblock_contact</code></td>
+<td><code>peer</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>rename_contact</code></td>
+<td><code>peer, alias</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>verify_contact</code></td>
+<td><code>peer</code></td>
+<td><code>{safety_number, verified}</code></td>
+</tr>
+<tr>
+<td><code>mark_verified</code></td>
+<td><code>peer, verified: bool</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>contact_avatar</code> / <code>contact_cover</code></td>
+<td><code>peer</code></td>
+<td><code>{avatar}</code> / <code>{cover}</code> (base64 or null)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="conversations-messages">Conversations &amp; messages</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conversations</code></td>
+<td>–</td>
+<td><code>[Conversation]</code> (<code>last_mine</code>: the last message is mine — show "You:")</td>
+</tr>
+<tr>
+<td><code>messages</code></td>
+<td><code>conv, before?: hlc, limit?: 50</code></td>
+<td><code>[Message]</code> (oldest → newest; file messages carry <code>body.preview</code> and local <code>file {state, path}</code>)</td>
+</tr>
+<tr>
+<td><code>send_text</code></td>
+<td><code>conv, text, reply_to?, ttl_ms?, silent?, client_id?</code></td>
+<td><code>Message</code> (every <code>send_*</code> takes <code>client_id</code> ≤ 64 chars: a retry with the same id within 24 h returns the first message instead of a duplicate)</td>
+</tr>
+<tr>
+<td><code>send_message</code></td>
+<td><code>conv, text, reply_to?, ttl_ms?, mentions?: [peer], mention_all?, buttons?: [[Button]], silent?</code></td>
+<td><code>Message</code> (receivers get a <code>mention</code> event). Text ≤ 64 KB (<code>err.message_too_long</code>); <code>silent: true</code> = no sound or notification</td>
+</tr>
+<tr>
+<td><code>edit_message</code></td>
+<td><code>conv, msg_id, text</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>delete_message</code></td>
+<td><code>conv, msg_id, for_everyone?: true</code></td>
+<td>– (<code>false</code> = delete for me: removed on all your devices, with the copy Lumora downloaded; others keep it)</td>
+</tr>
+<tr>
+<td><code>react</code></td>
+<td><code>conv, msg_id, emoji, on</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>forward_message</code></td>
+<td><code>msg_id, to_conv</code></td>
+<td><code>Message</code> (<code>meta.forwarded_from</code>)</td>
+</tr>
+<tr>
+<td><code>pin_message</code> / <code>pinned_messages</code></td>
+<td><code>conv, msg_id, on</code> / <code>conv</code></td>
+<td>– / <code>[Message]</code></td>
+</tr>
+<tr>
+<td><code>send_poll</code> / <code>vote</code></td>
+<td><code>conv, question, options[2..10]</code> / <code>conv, msg_id, option</code></td>
+<td><code>Message</code> / – (votes in <code>reactions.__votes</code>)</td>
+</tr>
+<tr>
+<td><code>schedule_message</code> / <code>scheduled_messages</code> / <code>cancel_scheduled</code></td>
+<td><code>conv, text, at</code> / – / <code>sched_id</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>send_location</code></td>
+<td><code>conv, lat, lon, accuracy_m?, label?, live_minutes?</code></td>
+<td><code>Message</code> (<code>live_minutes &gt; 0</code> = live location)</td>
+</tr>
+<tr>
+<td><code>update_live_location</code></td>
+<td><code>conv, msg_id, lat, lon, accuracy_m?, stop?</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>send_voice</code></td>
+<td><code>conv, path, duration_ms, wave?: [0..255]</code></td>
+<td><code>Message</code></td>
+</tr>
+<tr>
+<td><code>send_contact</code></td>
+<td><code>conv, peer</code></td>
+<td><code>Message</code> (contact card)</td>
+</tr>
+<tr>
+<td><code>mark_read</code></td>
+<td><code>conv</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>typing</code></td>
+<td><code>conv, on</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>seen_by</code></td>
+<td><code>msg_id</code></td>
+<td>readers of a group message</td>
+</tr>
+<tr>
+<td><code>search</code></td>
+<td><code>q</code></td>
+<td><code>[Message]</code></td>
+</tr>
+<tr>
+<td><code>conv_flag</code></td>
+<td><code>conv, flag: "muted"|"pinned"|"archived", value</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>mute</code></td>
+<td><code>conv, until?</code> (ms timestamp; <code>0</code> = unmute; omitted = forever)</td>
+<td><code>{muted, until}</code></td>
+</tr>
+<tr>
+<td><code>set_retention</code> / <code>get_retention</code></td>
+<td><code>conv, mode: "forever"|"session"|"24h"|"7d"|"30d"</code> / <code>conv</code></td>
+<td>– / <code>{mode}</code></td>
+</tr>
+<tr>
+<td><code>clear_history</code></td>
+<td><code>conv, for_everyone?: false</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>delete_conversation</code></td>
+<td><code>conv, for_everyone?: false</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>set_wallpaper</code> / <code>get_wallpaper</code></td>
+<td><code>conv</code> (or <code>"default"</code>), <code>wallpaper</code> / <code>conv</code></td>
+<td>– / <code>{wallpaper}</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="checklists-reminders">Checklists &amp; reminders</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>send_checklist</code></td>
+<td><code>conv, title, items: [text] (1..100, ≤ 200 chars), silent?</code></td>
+<td><code>Message</code> <code>kind: "checklist"</code>, body <code>{title, items: [{id, text}]}</code></td>
+</tr>
+<tr>
+<td><code>checklist_toggle</code></td>
+<td><code>conv, msg_id, item (id), done</code></td>
+<td>– (anyone in the chat; state in <code>reactions.__checks {"&lt;id&gt;": {done, by, at}}</code>, newest wins)</td>
+</tr>
+<tr>
+<td><code>checklist_add</code></td>
+<td><code>conv, msg_id, items: [text]</code></td>
+<td>– (sender only; <code>message_update {body}</code>)</td>
+</tr>
+<tr>
+<td><code>send_reminder</code></td>
+<td><code>conv, title, at_ms (future), note?, silent?</code></td>
+<td><code>Message</code> <code>kind: "reminder"</code>, body <code>{title, at_ms, note}</code></td>
+</tr>
+<tr>
+<td><code>reminder_cancel</code> / <code>reminder_seen</code></td>
+<td><code>conv, msg_id</code></td>
+<td>– (cancel: sender only; <code>reactions.__cancelled</code> / <code>reactions.__seen</code>)</td>
+</tr>
+<tr>
+<td><code>reminders</code></td>
+<td>–</td>
+<td>upcoming <code>[{conv, msg_id, at_ms, title, note, author}]</code> on this device</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="bots">Bots</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>set_bot</code></td>
+<td><code>commands: [{command, description}], group_commands?, about?, auto_accept?: true, allow_groups?: true</code></td>
+<td>– (turns this identity into a bot; clients show the command menu)</td>
+</tr>
+<tr>
+<td><code>send_message</code></td>
+<td><code>…, buttons: [[{text, data?, url?}]]</code></td>
+<td><code>Message</code> (max 8×8 buttons; <code>text</code>/<code>data</code> ≤ 64 chars)</td>
+</tr>
+<tr>
+<td><code>press_button</code></td>
+<td><code>msg_id, data</code></td>
+<td>– (client side: delivers a <code>callback</code> event to the message author)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="stickers">Stickers</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>send_sticker</code></td>
+<td><code>conv, hash</code> (custom) or <code>conv, pack, sticker</code> (built-in)</td>
+<td><code>Message</code></td>
+</tr>
+<tr>
+<td><code>sticker_packs</code></td>
+<td>–</td>
+<td><code>[pack]</code></td>
+</tr>
+<tr>
+<td><code>sticker_pack_create</code> / <code>sticker_pack_delete</code></td>
+<td><code>name</code> / <code>pack</code></td>
+<td>pack / –</td>
+</tr>
+<tr>
+<td><code>sticker_add</code></td>
+<td><code>pack, path, emoji?</code> (PNG/WebP/GIF, animated supported)</td>
+<td>sticker</td>
+</tr>
+<tr>
+<td><code>sticker_remove</code> / <code>sticker_save</code></td>
+<td><code>hash, pack</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>sticker_get</code></td>
+<td><code>hash</code></td>
+<td><code>{mime, data}</code> (base64)</td>
+</tr>
+<tr>
+<td><code>sticker_pack_export</code> / <code>sticker_pack_import</code></td>
+<td><code>pack, path</code> / <code>path</code></td>
+<td>result</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="stories-24-h">Stories (24 h)</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>post_story</code></td>
+<td><code>text?, image_path?, bg?: "aurora"</code></td>
+<td>story</td>
+</tr>
+<tr>
+<td><code>stories</code></td>
+<td>–</td>
+<td><code>[story]</code></td>
+</tr>
+<tr>
+<td><code>story_image</code></td>
+<td><code>story_id</code></td>
+<td><code>{image}</code> (base64)</td>
+</tr>
+<tr>
+<td><code>story_seen</code> / <code>story_viewers</code></td>
+<td><code>story_id</code></td>
+<td>– / viewers</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="groups-communities">Groups &amp; communities</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>create_group</code></td>
+<td><code>name, members[], kind?: 0</code> (<code>0</code> group, <code>1</code> community with channels)</td>
+<td><code>{gid, conv}</code></td>
+</tr>
+<tr>
+<td><code>groups</code> / <code>spaces</code></td>
+<td>–</td>
+<td>groups / communities with channels</td>
+</tr>
+<tr>
+<td><code>group_info</code></td>
+<td><code>gid</code></td>
+<td><code>{gid, name, owner, members:[{peer,name,role}], epoch, my_role, …}</code></td>
+</tr>
+<tr>
+<td><code>group_add</code> / <code>group_remove</code></td>
+<td><code>gid, peer</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_set_role</code></td>
+<td><code>gid, peer, role: "admin"|"member"</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_rename</code></td>
+<td><code>gid, name</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_meta</code> / <code>group_avatar</code></td>
+<td><code>gid, avatar?, description?</code> / <code>gid</code></td>
+<td>– / <code>{avatar}</code></td>
+</tr>
+<tr>
+<td><code>group_channel</code></td>
+<td><code>gid, name, voice?, remove?</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_settings</code></td>
+<td><code>gid, slow_mode_s?, admins_only?</code> (announcement channel)</td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_ban</code></td>
+<td><code>gid, peer, ban?: true</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_purge_member</code></td>
+<td><code>gid, peer</code></td>
+<td>– (delete a member's messages)</td>
+</tr>
+<tr>
+<td><code>group_clear_history</code></td>
+<td><code>gid</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_leave</code></td>
+<td><code>gid</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>group_add_bot</code> / <code>group_bot_policy</code></td>
+<td><code>gid, target (bot @name·tag, id or peer), read_all?: false</code> / <code>gid, peer, read_all</code></td>
+<td><code>{peer}</code> / – (admins; <code>read_all: false</code> = privacy mode: the bot only gets commands, mentions and replies)</td>
+</tr>
+<tr>
+<td><code>group_visibility</code></td>
+<td><code>gid, public, handle?</code></td>
+<td>group info (admins; public groups are found by <code>@handle·tag</code>)</td>
+</tr>
+<tr>
+<td><code>search_groups</code></td>
+<td><code>q</code> (<code>@handle</code> or <code>@handle·tag</code>)</td>
+<td><code>[{gid, title, members, handle, joined}]</code></td>
+</tr>
+<tr>
+<td><code>join_public</code></td>
+<td><code>gid, via</code> (an admin's peer)</td>
+<td><code>{pending}</code> (people only; bots join when an admin adds them)</td>
+</tr>
+<tr>
+<td><code>create_invite</code> / <code>inspect_invite</code> / <code>join_invite</code></td>
+<td><code>gid, hours?: 168</code> / <code>link</code> / <code>link</code></td>
+<td><code>{link}</code> / <code>{name, valid, already_member}</code> / <code>{pending}</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="files-storage">Files &amp; storage</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>send_file</code></td>
+<td><code>conv, path, preview?: {kind, text, pages, lines}, thumb_b64?, width?, height?</code></td>
+<td><code>File</code>. Text files get a preview automatically; <code>preview.text</code> ≤ 4 KB, <code>thumb_b64</code> = JPEG/PNG/WebP ≤ 64 KB shown before download</td>
+</tr>
+<tr>
+<td><code>accept_file</code></td>
+<td><code>file_id, dir?</code></td>
+<td>– (downloads into <code>dir</code> or the downloads folder; done when the <code>file</code> event has <code>state: 2</code>)</td>
+</tr>
+<tr>
+<td><code>pause_file</code> / <code>cancel_file</code></td>
+<td><code>file_id</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>–</td>
+<td><code>[File]</code></td>
+</tr>
+<tr>
+<td><code>storage_stats</code></td>
+<td>–</td>
+<td>usage stats (<code>media_bytes</code>, <code>db_bytes</code>, <code>by_conv</code>, <code>policy</code>, …)</td>
+</tr>
+<tr>
+<td><code>storage_policy</code> / <code>set_storage_policy</code></td>
+<td>– / <code>max_cache?, media_days?, auto_direct?, auto_group?, community_days?</code></td>
+<td>policy</td>
+</tr>
+<tr>
+<td><code>clear_media</code></td>
+<td><code>conv?: "*"</code></td>
+<td>result</td>
+</tr>
+<tr>
+<td><code>maintain</code></td>
+<td>–</td>
+<td>runs storage cleanup</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="settings">Settings</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>settings_get</code></td>
+<td>–</td>
+<td><code>{read_receipts, typing, p2p_only, downloads_dir, …}</code></td>
+</tr>
+<tr>
+<td><code>settings_set</code></td>
+<td><code>read_receipts?, typing?, p2p_only?, downloads_dir?</code></td>
+<td>– (<code>p2p_only</code>: never use a bridge; does <strong>not</strong> hide your IP)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="calls">Calls</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>call_start</code></td>
+<td><code>conv, video</code></td>
+<td><code>{call_id}</code></td>
+</tr>
+<tr>
+<td><code>call_answer</code></td>
+<td><code>call_id, accept</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>call_end</code></td>
+<td><code>call_id</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>call_set</code></td>
+<td><code>call_id, mic?, cam?, screen?</code></td>
+<td>– (<code>screen</code> = screen sharing)</td>
+</tr>
+<tr>
+<td><code>voice_join</code> / <code>voice_leave</code></td>
+<td><code>conv</code> (voice channel)</td>
+<td><code>{call_id}</code> / –</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="remote-help">Remote help</h3>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>cmd</th>
+<th>args</th>
+<th>data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>remote_trust</code></td>
+<td><code>peer, trusted?: true</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_recent</code> / <code>remote_recent_remove</code></td>
+<td>– / <code>peer?</code></td>
+<td>recent devices / –</td>
+</tr>
+<tr>
+<td><code>remote_connect</code></td>
+<td><code>target</code> (short id or peer), <code>password</code>, <code>view_only</code></td>
+<td><code>{session}</code></td>
+</tr>
+<tr>
+<td><code>remote_respond</code></td>
+<td><code>session, accept, control</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_input</code></td>
+<td><code>session, ev</code> (see Input events)</td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_quality</code></td>
+<td><code>session, preset: "smooth"|"balanced"|"sharp"|"saver"</code></td>
+<td><code>{max_kbps}</code></td>
+</tr>
+<tr>
+<td><code>remote_display</code></td>
+<td><code>session, index</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_clipboard</code></td>
+<td><code>session, text</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_power</code> / <code>remote_allow_power</code></td>
+<td><code>session, action: "lock"|"restart"|"logout"</code> / <code>allow</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>remote_end</code></td>
+<td><code>session</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td><code>diagnostics</code></td>
+<td>–</td>
+<td><code>{platform, checks:[{id, ok, title, detail, fix_steps[]}]}</code> (screen-capture / input permissions)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="input-events-remote_inputev">Input events (<code>remote_input.ev</code>)</h3>
+<pre class="code"><code data-lang="json">{&quot;t&quot;:&quot;move&quot;,&quot;x&quot;:0.5,&quot;y&quot;:0.25}
+{&quot;t&quot;:&quot;button&quot;,&quot;b&quot;:&quot;left&quot;,&quot;down&quot;:true}
+{&quot;t&quot;:&quot;wheel&quot;,&quot;dx&quot;:0,&quot;dy&quot;:-1}
+{&quot;t&quot;:&quot;key&quot;,&quot;code&quot;:&quot;KeyA&quot;,&quot;down&quot;:true}
+{&quot;t&quot;:&quot;text&quot;,&quot;s&quot;:&quot;Xin chào&quot;}
+</code></pre>
+<p><code>x</code>/<code>y</code> are normalised 0..1, <code>b</code> is <code>left|right|middle</code>, <code>code</code> uses W3C <code>KeyboardEvent.code</code> names, <code>text</code> sends unicode (IME).</p>
+<h2 id="events-pushed">Events (pushed)</h2>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>event</th>
+<th>payload</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ready</code></td>
+<td><code>{peer, short_id}</code></td>
+</tr>
+<tr>
+<td><code>presence</code></td>
+<td><code>{peer, online}</code></td>
+</tr>
+<tr>
+<td><code>contact</code></td>
+<td><code>Contact</code> (added/updated)</td>
+</tr>
+<tr>
+<td><code>friend_request</code></td>
+<td><code>{peer, name, note}</code></td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>Message</code> (new, incoming or outgoing echo)</td>
+</tr>
+<tr>
+<td><code>message_update</code></td>
+<td><code>{conv, id, status?, body?, edited?, deleted?, reactions?, pinned?}</code></td>
+</tr>
+<tr>
+<td><code>mention</code></td>
+<td><code>{conv, id, author}</code></td>
+</tr>
+<tr>
+<td><code>callback</code></td>
+<td><code>{conv, msg_conv, msg_id, from, data}</code>: a button on your message was pressed (bots); <code>msg_conv</code> is where the message is</td>
+</tr>
+<tr>
+<td><code>bot_user</code></td>
+<td><code>{peer, name}</code>: a new user added your bot</td>
+</tr>
+<tr>
+<td><code>reminder_due</code></td>
+<td><code>{conv, msg_id, title, note, at_ms, author, mine, late}</code>: a reminder is due (on every device holding it)</td>
+</tr>
+<tr>
+<td><code>conversation</code> / <code>conversation_removed</code></td>
+<td><code>Conversation</code> / <code>{conv}</code></td>
+</tr>
+<tr>
+<td><code>typing</code></td>
+<td><code>{conv, peer, on}</code></td>
+</tr>
+<tr>
+<td><code>group</code></td>
+<td>group_info payload</td>
+</tr>
+<tr>
+<td><code>story</code> / <code>story_view</code></td>
+<td><code>{id, author}</code> / <code>{id, viewer}</code></td>
+</tr>
+<tr>
+<td><code>file</code></td>
+<td><code>File</code> (progress / state changes)</td>
+</tr>
+<tr>
+<td><code>call</code></td>
+<td><code>{call_id, conv, peer, state: "ringing"|"incoming"|"active"|"ended", video, participants[]}</code></td>
+</tr>
+<tr>
+<td><code>video_stream</code></td>
+<td><code>{call_id, peer, stream}</code></td>
+</tr>
+<tr>
+<td><code>remote_request</code></td>
+<td><code>{session, peer, name, view_only}</code></td>
+</tr>
+<tr>
+<td><code>remote_state</code></td>
+<td><code>{session, peer, state: "connecting"|"active"|"ended"|"denied", width, height, role: "viewer"|"host", stream}</code></td>
+</tr>
+<tr>
+<td><code>clipboard</code></td>
+<td><code>{peer, text}</code></td>
+</tr>
+<tr>
+<td><code>storage_low</code></td>
+<td><code>{message}</code></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>{message}</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="data-shapes">Data shapes</h2>
+<pre class="code"><code data-lang="json">Contact      {peer, short_id, name, alias, username, handle, status(0 none,1 sent,2 received,3 friend,4 blocked),
+              added, last_seen, verified, bio, presence, has_avatar, bot, online}
+Conversation {id, kind(0 direct,1 group), title, last_ts, unread, muted, pinned, last_text}
+Message      {id, conv, author, hlc, ts, kind(&quot;text&quot;|&quot;file&quot;|&quot;sticker&quot;|&quot;voice&quot;|&quot;location&quot;|&quot;contact&quot;|&quot;call&quot;|&quot;system&quot;|&quot;poll&quot;|
+              &quot;checklist&quot;|&quot;reminder&quot;), body, status(0 pending,1 sent,2 delivered,3 read,9 failed), edited, deleted, reply_to,
+              reactions:{emoji:[peer], __votes?, __checks?, __seen?, __cancelled?}, expires, pinned, silent,
+              meta:{mentions, mention_all, forwarded_from, buttons, silent}, mine, file?:{state, progress, size, path, direction}}
+File body    {file_id, name, size, mime, hash, thumb (base64|null), width, height, preview?:{kind, text, pages, lines}}
+Button       {text, data, url}
+File         {id, conv, peer, name, size, hash, path, direction(0 out,1 in),
+              state(0 offered,1 transferring,2 done,3 failed,4 cancelled,5 paused), progress(bytes), created, speed_bps?}
+</code></pre>
+      </article>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

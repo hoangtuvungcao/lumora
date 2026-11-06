@@ -1,0 +1,128 @@
+# Fuzz harness for the parsers that see attacker-controlled bytes (see README in src/lib.rs).
+#
+# Kept OUT of the core workspace on purpose (own [workspace], own target dir, own lockfile):
+# it needs nightly + sanitizer flags for `cargo fuzz`, and must never affect release builds.
+#
+#   nightly:  cd core/fuzz && cargo +nightly fuzz run <target> -- -max_total_time=600
+#   stable :  cd core/fuzz && cargo test --release        (regressions + seeded random inputs)
+[package]
+name = "lumora-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "LicenseRef-Lumora-Proprietary"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+members = ["."]
+
+[lib]
+name = "lumora_fuzz"
+path = "src/lib.rs"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = "1"
+lumora-core = { path = "../crates/lumora-core", default-features = false, features = ["fuzzing"] }
+lumora-push = { path = "../crates/lumora-push", default-features = false }
+rmp-serde = "1.3.1"
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+serde_json = "1"
+data-encoding = "2"
+hex = "0.4"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "time", "macros"] }
+tempfile = "3"
+parking_lot = "0.12"
+
+[profile.release]
+debug = 1
+# keep overflow checks on: an overflow on attacker input is a bug we want to see
+overflow-checks = true
+debug-assertions = true
+
+[[bin]]
+name = "peer_frame"
+path = "fuzz_targets/peer_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "chat_group"
+path = "fuzz_targets/chat_group.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "group_fold"
+path = "fuzz_targets/group_fold.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "file_preview"
+path = "fuzz_targets/file_preview.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bot_token"
+path = "fuzz_targets/bot_token.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "invite"
+path = "fuzz_targets/invite.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "recovery_phrase"
+path = "fuzz_targets/recovery_phrase.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "relay_proto"
+path = "fuzz_targets/relay_proto.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stun"
+path = "fuzz_targets/stun.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "nostr"
+path = "fuzz_targets/nostr.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "api_json"
+path = "fuzz_targets/api_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "push_bridge"
+path = "fuzz_targets/push_bridge.rs"
+test = false
+doc = false
+bench = false

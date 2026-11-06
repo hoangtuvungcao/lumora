@@ -1,0 +1,42 @@
+# Lumora relay — Cloudflare Worker + SQLite-backed Durable Object (free-tier friendly).
+# Deploy: npm install && npx wrangler login && npx wrangler deploy
+name = "lumora-relay"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+# Optional custom domain (zone must be on your Cloudflare account):
+# routes = [{ pattern = "relay.example.com", custom_domain = true }]
+
+[vars]
+# Peers must share a hub to reach each other. One hub = one Durable Object.
+HUB = "global"
+# Optional placement hint for the hub: wnam enam sam weur eeur apac oc afr me
+# LOCATION_HINT = "weur"
+MAX_CLIENTS = "5000"
+MAX_FRAME = "65536"
+SIGNAL_RATE = "20"            # SIGNAL frames/s per client
+DATA_RATE = "2097152"         # DATA bytes/s per client
+DATA_BURST = "4194304"
+# Hard daily cap of relayed DATA bytes for the whole hub (UTC day). Once reached,
+# DATA frames get an ERROR and the app falls back to other paths. 0 = unlimited.
+DATA_BUDGET_BYTES = "209715200"
+MAILBOX = "true"
+MAILBOX_MAX_ITEMS = "200"
+MAILBOX_MAX_ITEM = "65536"
+MAILBOX_TTL_SECS = "604800"
+MAILBOX_TOTAL_BYTES = "67108864"
+# Private relay: comma-separated allowed keys (64-hex or Lumora base32 peer ids).
+# Prefer `npx wrangler secret put ALLOW` so the list is not in git.
+# ALLOW = ""
+
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "RelayHub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayHub"]
+
+[observability]
+enabled = true

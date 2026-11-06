@@ -1,0 +1,1 @@
+{"app":"lumora-sync","version":"1.4.0","album":"~/Pictures/Đà Lạt 2026","chunk_kb":256,"retry":5,"verify":true,"devices":[{"name":"Laptop của An","os":"linux","trusted":true},{"name":"Điện thoại Bình","os":"android","trusted":true},{"name":"PC văn phòng","os":"windows","trusted":false}],"schedule":{"every_minutes":30,"only_on_wifi":true,"quiet_hours":["22:00","07:00"]}}

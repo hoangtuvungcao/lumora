@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="vi" data-page="dev-guides" data-title-en="Guides — Lumora" data-desc-en="Lumora bot guides: commands, buttons, groups and privacy mode, permissions, storage, files, checklists, reminders, scheduled broadcasts, errors.">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn — Lumora</title>
+<meta name="description" content="Hướng dẫn tạo bot Lumora: lệnh, nút bấm, nhóm và chế độ riêng tư, quyền, lưu trữ, tệp, danh sách việc, nhắc hẹn, gửi theo lịch, xử lý lỗi.">
+<meta name="theme-color" content="#FBF8F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1020" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://getlumora.pages.dev/developers/guides/">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/BeVietnamPro-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Lumora">
+<meta property="og:title" content="Hướng dẫn — Lumora">
+<meta property="og:description" content="Hướng dẫn tạo bot Lumora: lệnh, nút bấm, nhóm và chế độ riêng tư, quyền, lưu trữ, tệp, danh sách việc, nhắc hẹn, gửi theo lịch, xử lý lỗi.">
+<meta property="og:url" content="https://getlumora.pages.dev/developers/guides/">
+<meta property="og:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.">
+<meta property="og:locale" content="vi_VN">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hướng dẫn — Lumora">
+<meta name="twitter:description" content="Hướng dẫn tạo bot Lumora: lệnh, nút bấm, nhóm và chế độ riêng tư, quyền, lưu trữ, tệp, danh sách việc, nhắc hẹn, gửi theo lịch, xử lý lỗi.">
+<meta name="twitter:image" content="https://getlumora.pages.dev/assets/img/og-image.png">
+<script src="/assets/js/theme-init.js"></script>
+<link rel="stylesheet" href="/assets/css/styles.css">
+<script src="/assets/js/dev.js" defer></script>
+<script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+<div class="aurora" aria-hidden="true"><i class="aurora__a"></i><i class="aurora__b"></i><i class="aurora__c"></i></div>
+<a class="skip" href="#main" data-i18n="a11y.skip">Bỏ qua đến nội dung</a>
+
+<header class="nav" id="top">
+  <div class="container nav__inner">
+    <a class="brand" href="/" aria-label="Lumora">
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="hdr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#hdr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+      <span class="brand__name">Lumora</span>
+    </a>
+    <nav class="nav__links" id="nav-links" aria-label="Chính" data-i18n-attr="aria-label:a11y.nav">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+    </nav>
+    <div class="nav__actions">
+      <button class="icon-btn lang-btn" type="button" id="lang-toggle" aria-label="Switch to English" data-i18n-attr="aria-label:a11y.lang">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#globe"/></svg><span class="lang-btn__code" data-i18n="nav.langCode">EN</span>
+      </button>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Đổi giao diện sáng/tối" data-i18n-attr="aria-label:a11y.theme">
+        <svg class="ic ic--sun" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sun"/></svg>
+        <svg class="ic ic--moon" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#moon"/></svg>
+      </button>
+      <a class="btn btn--primary btn--sm nav__cta" href="/download/" data-i18n="nav.download">Tải về</a>
+      <button class="icon-btn nav__menu" type="button" id="menu-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Mở menu" data-i18n-attr="aria-label:a11y.menu">
+        <svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#menu"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head page-head--left page-head--docs">
+    <div class="container">
+      <nav class="devnav" aria-label="Developers"><a href="/developers/"><span class="l-vi">Tổng quan</span><span class="l-en" lang="en">Overview</span></a><a href="/developers/quickstart/"><span class="l-vi">Bắt đầu nhanh</span><span class="l-en" lang="en">Quickstart</span></a><a href="/developers/guides/" aria-current="page"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></a><a href="/developers/reference/"><span class="l-vi">Tham chiếu SDK</span><span class="l-en" lang="en">SDK reference</span></a><a href="/developers/api/">JSON API</a><a href="/developers/examples/"><span class="l-vi">Ví dụ</span><span class="l-en" lang="en">Examples</span></a><a href="/developers/production/"><span class="l-vi">Vận hành</span><span class="l-en" lang="en">Production</span></a></nav>
+      <p class="badge-gold"><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#compass"/></svg><span class="l-vi">Hướng dẫn theo tính năng</span><span class="l-en" lang="en">Feature guides</span></p>
+      <h1 class="hero__title"><span class="l-vi">Hướng dẫn</span><span class="l-en" lang="en">Guides</span></h1>
+      <p class="lead-p"><span class="l-vi">Ví dụ chép-dán cho từng tính năng, Python và JavaScript.</span><span class="l-en" lang="en">Copy-paste examples for every feature, in Python and JavaScript.</span></p>
+    </div>
+  </section>
+  <section class="section section--tight">
+    <div class="container api-layout">
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#commands"><span class="l-vi">Lệnh</span><span class="l-en" lang="en">Commands</span></a></li><li><a href="#text"><span class="l-vi">Tin nhắn và bộ lọc</span><span class="l-en" lang="en">Messages and filters</span></a></li><li><a href="#buttons"><span class="l-vi">Nút bấm</span><span class="l-en" lang="en">Buttons</span></a></li><li><a href="#groups"><span class="l-vi">Nhóm và chế độ riêng tư</span><span class="l-en" lang="en">Groups and privacy mode</span></a></li><li><a href="#roles"><span class="l-vi">Quản trị viên và vai trò</span><span class="l-en" lang="en">Admins and roles</span></a></li><li><a href="#storage"><span class="l-vi">Lưu trữ</span><span class="l-en" lang="en">Storage</span></a></li><li><a href="#files"><span class="l-vi">Tệp và xem trước</span><span class="l-en" lang="en">Files and previews</span></a></li><li><a href="#checklists"><span class="l-vi">Danh sách việc</span><span class="l-en" lang="en">Checklists</span></a></li><li><a href="#reminders"><span class="l-vi">Nhắc hẹn</span><span class="l-en" lang="en">Reminders</span></a></li><li><a href="#more"><span class="l-vi">Các loại tin khác</span><span class="l-en" lang="en">More message types</span></a></li><li><a href="#broadcasts"><span class="l-vi">Gửi theo lịch và giới hạn tốc độ</span><span class="l-en" lang="en">Scheduled broadcasts and rate limits</span></a></li><li><a href="#errors"><span class="l-vi">Xử lý lỗi</span><span class="l-en" lang="en">Error handling</span></a></li><li><a href="#middleware"><span class="l-vi">Middleware và log</span><span class="l-en" lang="en">Middleware and logging</span></a></li><li><a href="#async"><span class="l-vi">Python bất đồng bộ (tùy chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></a></li></ul></nav>
+      <article class="prose prose--docs">
+<section class="doc-sec" id="commands"><h2><span class="l-vi">Lệnh</span><span class="l-en" lang="en">Commands</span></h2>
+<div class="l-vi"><p>Lệnh là tin bắt đầu bằng <code>/</code>. Mô tả của lệnh hiện trong menu lệnh của ứng dụng (gõ <code>/</code>) và trong <code>/help</code>, SDK tự tạo <code>/help</code> nếu bạn không viết. Phần chữ sau lệnh nằm trong <code>ctx.args</code>.</p>
+<p><code>chats="private"</code> chỉ nhận lệnh trong tin nhắn riêng, <code>chats="group"</code> chỉ trong nhóm. Trong nhóm, người dùng có thể gõ <code>/lenh@tenbot</code>; lệnh gửi cho bot khác (<code>/lenh@botkhac</code>) được bỏ qua.</p></div>
+<div class="l-en" lang="en"><p>Commands are messages starting with <code>/</code>. Their descriptions appear in the app's command menu (type <code>/</code>) and in <code>/help</code>, which the SDK writes for you unless you define it. The text after the command is in <code>ctx.args</code>.</p>
+<p><code>chats="private"</code> only accepts the command in direct chats, <code>chats="group"</code> only in groups. In groups people may type <code>/command@yourbot</code>; commands meant for another bot (<code>/command@otherbot</code>) are ignored.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-4-0" aria-controls="panel-4-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-4-1" aria-controls="panel-4-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-4-0" aria-labelledby="tab-4-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.command(&quot;start&quot;, &quot;Bắt đầu&quot;)
+def start(ctx):
+    ctx.reply(&quot;Chào bạn! Gõ /price &lt;tên món&gt; để xem giá.&quot;)
+
+@bot.command(&quot;price&quot;, &quot;Xem giá: /price cà phê&quot;, chats=&quot;private&quot;)
+def price(ctx):
+    item = ctx.args.strip().lower() or &quot;cà phê&quot;
+    ctx.reply(f&quot;{item}: 25.000đ&quot;)</code></pre></div><div role="tabpanel" id="panel-4-1" aria-labelledby="tab-4-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.command(&quot;start&quot;, &quot;Bắt đầu&quot;, (ctx) =&gt; ctx.reply(&quot;Chào bạn! Gõ /price &lt;tên món&gt; để xem giá.&quot;));
+
+bot.command(&quot;price&quot;, &quot;Xem giá: /price cà phê&quot;, (ctx) =&gt; {
+  const item = ctx.args.trim().toLowerCase() || &quot;cà phê&quot;;
+  return ctx.reply(`${item}: 25.000đ`);
+}, { chats: &quot;private&quot; });</code></pre></div></div>
+</section>
+<section class="doc-sec" id="text"><h2><span class="l-vi">Tin nhắn và bộ lọc</span><span class="l-en" lang="en">Messages and filters</span></h2>
+<div class="l-vi"><ul>
+<li><code>on_text(regex)</code> / <code>onText(regex)</code>: tin chữ khớp biểu thức; kết quả khớp nằm trong <code>ctx.match</code>.</li>
+<li><code>on_message</code>: mọi tin chữ không phải lệnh. Thêm <code>kinds=[...]</code> để nhận loại khác: <code>"file"</code>, <code>"voice"</code>, <code>"sticker"</code>, <code>"location"</code>, <code>"contact"</code>, <code>"poll"</code>, <code>"checklist"</code>, <code>"reminder"</code> (<code>None</code>/<code>null</code> = tất cả).</li>
+<li>Bộ lọc cụ thể (regex, dữ liệu nút, đuôi tệp) chạy trước và <strong>chỉ hàm khớp đầu tiên chạy</strong>; các hàm "nhận tất cả" chỉ chạy khi không bộ lọc nào khớp.</li>
+<li>Tin của cùng một cuộc trò chuyện được xử lý lần lượt theo thứ tự; các cuộc trò chuyện khác nhau chạy song song.</li>
+</ul></div>
+<div class="l-en" lang="en"><ul>
+<li><code>on_text(regex)</code> / <code>onText(regex)</code>: text messages matching a regular expression; the match is in <code>ctx.match</code>.</li>
+<li><code>on_message</code>: every text message that is not a command. Add <code>kinds=[...]</code> for other kinds: <code>"file"</code>, <code>"voice"</code>, <code>"sticker"</code>, <code>"location"</code>, <code>"contact"</code>, <code>"poll"</code>, <code>"checklist"</code>, <code>"reminder"</code> (<code>None</code>/<code>null</code> = all).</li>
+<li>Specific filters (regex, button data, file extension) run first and <strong>only the first match runs</strong>; catch-all handlers run only when no specific filter matched.</li>
+<li>Messages of one conversation are handled one at a time, in order; different conversations run in parallel.</li>
+</ul></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-5-0" aria-controls="panel-5-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-5-1" aria-controls="panel-5-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-5-0" aria-labelledby="tab-5-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.on_text(r&quot;(?i)\b(giờ mở cửa|opening hours)\b&quot;)
+def hours(ctx):
+    ctx.reply(&quot;7:00–22:00 mỗi ngày&quot;)
+
+@bot.on_message(kinds=[&quot;location&quot;])
+def where(ctx):
+    ctx.reply(f&quot;📍 {ctx.body[&#x27;lat&#x27;]:.4f}, {ctx.body[&#x27;lon&#x27;]:.4f}&quot;)
+
+@bot.on_message                      # mọi tin chữ khác / every other text
+def fallback(ctx):
+    ctx.reply(&quot;Mình chưa hiểu, gõ /help nhé.&quot;)</code></pre></div><div role="tabpanel" id="panel-5-1" aria-labelledby="tab-5-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.onText(/\b(giờ mở cửa|opening hours)\b/i, (ctx) =&gt; ctx.reply(&quot;7:00–22:00 mỗi ngày&quot;));
+
+bot.onMessage({ kinds: [&quot;location&quot;] }, (ctx) =&gt;
+  ctx.reply(`📍 ${ctx.body.lat.toFixed(4)}, ${ctx.body.lon.toFixed(4)}`));
+
+bot.onMessage((ctx) =&gt; ctx.reply(&quot;Mình chưa hiểu, gõ /help nhé.&quot;));   // mọi tin chữ khác</code></pre></div></div>
+</section>
+<section class="doc-sec" id="buttons"><h2><span class="l-vi">Nút bấm</span><span class="l-en" lang="en">Buttons</span></h2>
+<div class="l-vi"><p>Gắn nút dưới tin nhắn: mỗi hàng là một danh sách, tối đa 8 hàng × 8 nút, chữ và dữ liệu mỗi nút tối đa 64 ký tự. Nút có <code>url</code> mở trang web; nút có <code>data</code> gửi về bot một <em>callback</em>.</p>
+<ul>
+<li><code>on_callback(data="mua:*")</code>: dữ liệu bắt đầu bằng <code>mua:</code>; <code>pattern=</code> để dùng regex.</li>
+<li><code>ctx.edit("…")</code> sửa ngay tin nhắn chứa nút (tiện cho menu, bình chọn, phân trang).</li>
+<li>Trong nhóm, <code>ctx.reply</code> trả lời ngay trong nhóm đó.</li>
+</ul></div>
+<div class="l-en" lang="en"><p>Attach buttons under a message: each row is a list, at most 8 rows × 8 buttons, text and data up to 64 characters each. A button with a <code>url</code> opens a web page; a button with <code>data</code> sends the bot a <em>callback</em>.</p>
+<ul>
+<li><code>on_callback(data="buy:*")</code>: data starting with <code>buy:</code>; use <code>pattern=</code> for a regex.</li>
+<li><code>ctx.edit("…")</code> updates the message that holds the button (handy for menus, votes, paging).</li>
+<li>In a group, <code>ctx.reply</code> answers in that group.</li>
+</ul></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-6-0" aria-controls="panel-6-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-6-1" aria-controls="panel-6-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-6-0" aria-labelledby="tab-6-0" class="tabs__panel"><pre class="code"><code data-lang="py">from lumora_bot import Button
+
+@bot.command(&quot;menu&quot;, &quot;Thực đơn&quot;)
+def menu(ctx):
+    ctx.reply(&quot;Hôm nay có gì?&quot;, buttons=[
+        [Button(&quot;☕ Cà phê 25k&quot;, data=&quot;buy:cafe&quot;), Button(&quot;🧋 Trà sữa 30k&quot;, data=&quot;buy:tea&quot;)],
+        [Button(&quot;🌐 Trang web&quot;, url=&quot;https://getlumora.pages.dev&quot;)],
+    ])
+
+@bot.on_callback(data=&quot;buy:*&quot;)
+def buy(ctx):
+    item = ctx.data.split(&quot;:&quot;, 1)[1]
+    ctx.edit(f&quot;✅ Đã nhận đơn: {item}&quot;)</code></pre></div><div role="tabpanel" id="panel-6-1" aria-labelledby="tab-6-1" class="tabs__panel"><pre class="code"><code data-lang="js">import { Bot, Button } from &quot;lumora-bot&quot;;
+
+bot.command(&quot;menu&quot;, &quot;Thực đơn&quot;, (ctx) =&gt; ctx.reply(&quot;Hôm nay có gì?&quot;, [
+  [Button(&quot;☕ Cà phê 25k&quot;, &quot;buy:cafe&quot;), Button(&quot;🧋 Trà sữa 30k&quot;, &quot;buy:tea&quot;)],
+  [Button(&quot;🌐 Trang web&quot;, { url: &quot;https://getlumora.pages.dev&quot; })],
+]));
+
+bot.onCallback({ data: &quot;buy:*&quot; }, (ctx) =&gt; ctx.edit(`✅ Đã nhận đơn: ${ctx.data.split(&quot;:&quot;)[1]}`));</code></pre></div></div>
+</section>
+<section class="doc-sec" id="groups"><h2><span class="l-vi">Nhóm và chế độ riêng tư</span><span class="l-en" lang="en">Groups and privacy mode</span></h2>
+<div class="l-vi"><p>Bot không tự vào nhóm và không tự nhắn cho ai: <strong>quản trị viên nhóm</strong> thêm bot (Thông tin nhóm → Bot → thêm @tenbot). Khi thêm, quản trị viên chọn một trong hai chế độ:</p>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th></th>
+<th>Chế độ riêng tư (mặc định)</th>
+<th>Cho phép đọc mọi tin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bot thấy</td>
+<td>lệnh <code>/…</code>, tin nhắc @bot, tin trả lời bot</td>
+<td>mọi tin trong nhóm</td>
+</tr>
+<tr>
+<td>Gửi tin, nút bấm, danh sách việc, nhắc hẹn</td>
+<td>có</td>
+<td>có</td>
+</tr>
+<tr>
+<td>Sửa, xóa, ghim, thả cảm xúc trong nhóm</td>
+<td>không</td>
+<td>có</td>
+</tr>
+<tr>
+<td>Biết thành viên mới (<code>on_new_member</code>)</td>
+<td>không</td>
+<td>có</td>
+</tr>
+<tr>
+<td>Việc của quản trị viên (cấm, chế độ chậm, xóa tin)</td>
+<td>không</td>
+<td>có, khi bot là quản trị viên</td>
+</tr>
+</tbody>
+</table></div>
+<p>Lưu ý hiện tại:</p>
+<ul>
+<li>Chọn chế độ <strong>ngay lúc thêm bot</strong>. Đổi chế độ sau đó chưa có tác dụng với bot đã ở trong nhóm.</li>
+<li>Ở chế độ riêng tư, người vào nhóm <em>sau</em> khi bot được thêm chưa dùng được lệnh của bot. Nhóm có thành viên mới thường xuyên nên dùng chế độ "đọc mọi tin".</li>
+<li>Nhóm bật chế độ chậm áp dụng cả cho bot (trừ khi bot là quản trị viên): lỗi <code>err.slow_mode</code>.</li>
+</ul>
+<p><code>bot.group_access(conv)</code> cho biết bot đang có quyền gì trong một nhóm. Có thể tắt hẳn việc vào nhóm bằng <code>Bot(allow_groups=False)</code>.</p></div>
+<div class="l-en" lang="en"><p>Bots never join groups or message people on their own: a <strong>group admin</strong> adds the bot (Group info → Bots → add @yourbot). While adding it, the admin picks one of two modes:</p>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th></th>
+<th>Privacy mode (default)</th>
+<th>Read all messages</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The bot sees</td>
+<td><code>/commands</code>, messages that @mention it, replies to it</td>
+<td>every message</td>
+</tr>
+<tr>
+<td>Send messages, buttons, checklists, reminders</td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Edit, delete, pin, react in the group</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Hears about new members (<code>on_new_member</code>)</td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Admin actions (ban, slow mode, purge)</td>
+<td>no</td>
+<td>yes, when the bot is an admin</td>
+</tr>
+</tbody>
+</table></div>
+<p>Current limitations:</p>
+<ul>
+<li>Pick the mode <strong>when adding the bot</strong>. Changing it later has no effect on a bot that is already in the group.</li>
+<li>In privacy mode, people who join <em>after</em> the bot was added can't use its commands yet. Groups that often get new members should use "Read all messages".</li>
+<li>A group's slow mode applies to the bot too (unless it is an admin): error <code>err.slow_mode</code>.</li>
+</ul>
+<p><code>bot.group_access(conv)</code> tells you what the bot may do in a group. Turn groups off entirely with <code>Bot(allow_groups=False)</code>.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-7-0" aria-controls="panel-7-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-7-1" aria-controls="panel-7-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-7-0" aria-labelledby="tab-7-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.on_added_to_group
+def hello(ctx):
+    access = bot.group_access(ctx.conv)            # {&quot;read_all&quot;: bool, &quot;admin&quot;: bool}
+    ctx.reply(&quot;Xin chào nhóm! Gõ /rules để xem nội quy.&quot;)
+
+@bot.on_new_member                                 # cần &quot;đọc mọi tin&quot; / needs &quot;read all&quot;
+def welcome(ctx):
+    ctx.reply(&quot;👋 Chào mừng bạn mới!&quot;, mentions=[ctx.sender], silent=True)
+
+@bot.command(&quot;rules&quot;, &quot;Nội quy&quot;, chats=&quot;group&quot;)
+def rules(ctx):
+    ctx.reply(&quot;1. Tôn trọng nhau  2. Không spam&quot;)</code></pre></div><div role="tabpanel" id="panel-7-1" aria-labelledby="tab-7-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.onAddedToGroup(async (ctx) =&gt; {
+  const access = await bot.groupAccess(ctx.conv);  // { readAll, admin }
+  await ctx.reply(&quot;Xin chào nhóm! Gõ /rules để xem nội quy.&quot;);
+});
+
+bot.onNewMember((ctx) =&gt; ctx.reply(&quot;👋 Chào mừng bạn mới!&quot;, { mentions: [ctx.sender], silent: true }));
+
+bot.command(&quot;rules&quot;, &quot;Nội quy&quot;, (ctx) =&gt; ctx.reply(&quot;1. Tôn trọng nhau  2. Không spam&quot;), { chats: &quot;group&quot; });</code></pre></div></div>
+</section>
+<section class="doc-sec" id="roles"><h2><span class="l-vi">Quản trị viên và vai trò</span><span class="l-en" lang="en">Admins and roles</span></h2>
+<div class="l-vi"><p>Có hai loại quyền, đừng nhầm:</p>
+<ul>
+<li><strong>Quản trị viên của bot</strong> (<code>Bot(admins=[...])</code>): người điều hành bot, ghi bằng <code>@tên·mã</code> hoặc mã người dùng. Dùng được lệnh <code>admin_only=True</code> (lệnh này được ẩn khỏi menu) và mọi vai trò. Kiểm tra bằng <code>ctx.is_admin</code>.</li>
+<li><strong>Vai trò của bot</strong> (<code>bot.roles</code>): nhãn tùy ý như <code>"mod"</code>, <code>"vip"</code>, lưu trong bộ nhớ của bot. Dùng <code>role="mod"</code> trên lệnh hoặc <code>ctx.has_role("mod")</code>.</li>
+<li><strong>Quản trị viên nhóm</strong>: quyền trong một nhóm cụ thể, kiểm tra bằng <code>ctx.is_group_admin</code> (JS: <code>await ctx.isGroupAdmin()</code>).</li>
+</ul>
+<p>Việc quản trị nhóm (<code>group_ban</code>, <code>group_remove</code>, <code>set_slow_mode</code>, <code>group_settings</code>, <code>group_purge_member</code>, xóa tin của người khác) chỉ làm được khi bot là quản trị viên nhóm và có quyền đọc mọi tin; nếu không sẽ có lỗi <code>err.admin_only</code> hoặc <code>err.group_syncing</code>.</p></div>
+<div class="l-en" lang="en"><p>There are two kinds of permission; don't mix them up:</p>
+<ul>
+<li><strong>Bot admins</strong> (<code>Bot(admins=[...])</code>): the people who run the bot, given as <code>@name·tag</code> or user ids. They may use <code>admin_only=True</code> commands (hidden from the menu) and pass every role check. Check with <code>ctx.is_admin</code>.</li>
+<li><strong>Bot roles</strong> (<code>bot.roles</code>): any labels such as <code>"mod"</code> or <code>"vip"</code>, saved in the bot's storage. Use <code>role="mod"</code> on a command or <code>ctx.has_role("mod")</code>.</li>
+<li><strong>Group admins</strong>: rights inside one group, checked with <code>ctx.is_group_admin</code> (JS: <code>await ctx.isGroupAdmin()</code>).</li>
+</ul>
+<p>Group admin actions (<code>group_ban</code>, <code>group_remove</code>, <code>set_slow_mode</code>, <code>group_settings</code>, <code>group_purge_member</code>, deleting other people's messages) only work when the bot is a group admin with "Read all messages"; otherwise you get <code>err.admin_only</code> or <code>err.group_syncing</code>.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-8-0" aria-controls="panel-8-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-8-1" aria-controls="panel-8-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-8-0" aria-labelledby="tab-8-0" class="tabs__panel"><pre class="code"><code data-lang="py">bot = Bot(admins=[&quot;@chu_shop·k7q2xz&quot;])
+
+@bot.command(&quot;addmod&quot;, &quot;Cấp quyền mod&quot;, admin_only=True)
+def addmod(ctx):
+    found = bot.resolve_username(ctx.args.strip())      # &quot;@ten·ma&quot;
+    if len(found) != 1:
+        return ctx.reply(&quot;Không tìm thấy người này.&quot;)
+    bot.roles.grant(found[0][&quot;peer&quot;], &quot;mod&quot;)
+    ctx.reply(&quot;Đã cấp quyền mod.&quot;)
+
+@bot.command(&quot;slow&quot;, &quot;Bật chế độ chậm 30 giây&quot;, chats=&quot;group&quot;, hidden=True)
+def slow(ctx):
+    if not (ctx.is_group_admin or ctx.has_role(&quot;mod&quot;)):
+        return ctx.reply(&quot;⛔ Chỉ quản trị viên.&quot;)
+    bot.set_slow_mode(ctx.conv, 30)
+    ctx.reply(&quot;🐢 Đã bật chế độ chậm 30 giây.&quot;)</code></pre></div><div role="tabpanel" id="panel-8-1" aria-labelledby="tab-8-1" class="tabs__panel"><pre class="code"><code data-lang="js">const bot = new Bot({ admins: [&quot;@chu_shop·k7q2xz&quot;] });
+
+bot.command(&quot;addmod&quot;, &quot;Cấp quyền mod&quot;, async (ctx) =&gt; {
+  const found = await bot.resolveUsername(ctx.args.trim());
+  if (found.length !== 1) return ctx.reply(&quot;Không tìm thấy người này.&quot;);
+  bot.roles.grant(found[0].peer, &quot;mod&quot;);
+  return ctx.reply(&quot;Đã cấp quyền mod.&quot;);
+}, { adminOnly: true });
+
+bot.command(&quot;slow&quot;, &quot;Bật chế độ chậm 30 giây&quot;, async (ctx) =&gt; {
+  if (!((await ctx.isGroupAdmin()) || ctx.hasRole(&quot;mod&quot;))) return ctx.reply(&quot;⛔ Chỉ quản trị viên.&quot;);
+  await bot.setSlowMode(ctx.conv, 30);
+  return ctx.reply(&quot;🐢 Đã bật chế độ chậm 30 giây.&quot;);
+}, { chats: &quot;group&quot;, hidden: true });</code></pre></div></div>
+</section>
+<section class="doc-sec" id="storage"><h2><span class="l-vi">Lưu trữ</span><span class="l-en" lang="en">Storage</span></h2>
+<div class="l-vi"><p><code>bot.storage</code> là một bộ nhớ khóa → giá trị, tự lưu ra tệp <code>bot-storage.json</code> trong thư mục dữ liệu mỗi khi bạn gán một khóa. Giá trị phải chuyển được sang JSON (số, chữ, danh sách, đối tượng). Python và JavaScript dùng chung định dạng tệp.</p>
+<p>Nếu sửa một giá trị lồng bên trong (thêm vào danh sách), hãy dùng <code>update_key</code> (an toàn khi nhiều tin đến cùng lúc) hoặc gọi <code>save()</code> sau khi sửa. Cần nhiều dữ liệu hơn (hàng chục nghìn bản ghi)? Dùng cơ sở dữ liệu riêng như SQLite trong cùng thư mục.</p></div>
+<div class="l-en" lang="en"><p><code>bot.storage</code> is a key → value store saved to <code>bot-storage.json</code> in the data folder whenever you set a key. Values must be JSON-friendly (numbers, strings, lists, objects). Python and JavaScript share the same file format.</p>
+<p>When you change a nested value (append to a list), use <code>update_key</code> (safe when many messages arrive at once) or call <code>save()</code> afterwards. Need more (tens of thousands of records)? Use your own database such as SQLite in the same folder.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-9-0" aria-controls="panel-9-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-9-1" aria-controls="panel-9-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-9-0" aria-labelledby="tab-9-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.on_callback(data=&quot;buy:*&quot;)
+def order(ctx):
+    bot.storage.update_key(&quot;orders&quot;, lambda orders: (orders or []) + [{&quot;who&quot;: ctx.sender, &quot;item&quot;: ctx.data[4:]}], [])
+    visits = bot.storage.update_key(&quot;visits&quot;, lambda n: n + 1, 0)
+    ctx.reply(f&quot;Đã nhận đơn #{visits}&quot;)
+
+subscribers = bot.storage.get(&quot;subscribers&quot;, [])</code></pre></div><div role="tabpanel" id="panel-9-1" aria-labelledby="tab-9-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.onCallback({ data: &quot;buy:*&quot; }, (ctx) =&gt; {
+  bot.storage.updateKey(&quot;orders&quot;, (orders) =&gt; [...(orders || []), { who: ctx.sender, item: ctx.data.slice(4) }], []);
+  const visits = bot.storage.updateKey(&quot;visits&quot;, (n) =&gt; n + 1, 0);
+  return ctx.reply(`Đã nhận đơn #${visits}`);
+});
+
+const subscribers = bot.storage.get(&quot;subscribers&quot;, []);</code></pre></div></div>
+</section>
+<section class="doc-sec" id="files"><h2><span class="l-vi">Tệp và xem trước</span><span class="l-en" lang="en">Files and previews</span></h2>
+<div class="l-vi"><ul>
+<li><strong>Nhận tệp:</strong> <code>on_file(extensions=["txt", "csv"])</code>. <code>ctx.file</code> có <code>name</code>, <code>size</code>, <code>mime</code> và <code>preview</code> (vài dòng đầu của tệp chữ, số trang PDF…) <strong>trước khi tải</strong>. <code>ctx.download()</code> tải về và trả lại đường dẫn.</li>
+<li>Tệp nhỏ từ người dùng được tải tự động (tin riêng ≤ 25 MB, nhóm ≤ 2 MB); <code>ctx.download()</code> dùng được cho mọi cỡ. Tệp nằm trong <code>&lt;thư mục dữ liệu&gt;/downloads</code> (đổi bằng <code>downloads_dir=</code>).</li>
+<li><strong>Gửi tệp:</strong> <code>ctx.reply_file(path)</code> / <code>bot.send_file(conv, path)</code>. Tệp chữ tự có xem trước. Tự đặt xem trước bằng <code>preview="…"</code> (tối đa 4 KB chữ) hoặc <code>thumb="anh.jpg"</code> (JPEG/PNG/WebP ≤ 64 KB).</li>
+<li>Chỉ đọc tệp bạn tin là an toàn: kiểm tra cỡ tệp, đừng chạy tệp người khác gửi.</li>
+</ul></div>
+<div class="l-en" lang="en"><ul>
+<li><strong>Receiving:</strong> <code>on_file(extensions=["txt", "csv"])</code>. <code>ctx.file</code> has <code>name</code>, <code>size</code>, <code>mime</code> and a <code>preview</code> (first lines of a text file, PDF page count…) <strong>before downloading</strong>. <code>ctx.download()</code> fetches it and returns the path.</li>
+<li>Small files from users download automatically (direct chats ≤ 25 MB, groups ≤ 2 MB); <code>ctx.download()</code> works for any size. Files go to <code>&lt;data folder&gt;/downloads</code> (change with <code>downloads_dir=</code>).</li>
+<li><strong>Sending:</strong> <code>ctx.reply_file(path)</code> / <code>bot.send_file(conv, path)</code>. Text files get a preview automatically. Set your own with <code>preview="…"</code> (up to 4 KB of text) or <code>thumb="image.jpg"</code> (JPEG/PNG/WebP ≤ 64 KB).</li>
+<li>Treat received files as untrusted: check the size and never execute them.</li>
+</ul></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-10-0" aria-controls="panel-10-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-10-1" aria-controls="panel-10-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-10-0" aria-labelledby="tab-10-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.on_file(extensions=[&quot;txt&quot;, &quot;csv&quot;])
+def count_lines(ctx):
+    if ctx.file[&quot;size&quot;] &gt; 5_000_000:
+        return ctx.reply(&quot;Tệp lớn quá (tối đa 5 MB).&quot;)
+    path = ctx.download(timeout=120)
+    with open(path, encoding=&quot;utf-8&quot;, errors=&quot;replace&quot;) as f:
+        n = sum(1 for _ in f)
+    ctx.reply(f&quot;{ctx.file[&#x27;name&#x27;]}: {n} dòng&quot;, reply=True)
+
+@bot.command(&quot;report&quot;, &quot;Gửi báo cáo&quot;)
+def report(ctx):
+    ctx.reply_file(&quot;report.csv&quot;, preview=&quot;Doanh thu tuần: 12.500.000đ\nĐơn hàng: 143&quot;)</code></pre></div><div role="tabpanel" id="panel-10-1" aria-labelledby="tab-10-1" class="tabs__panel"><pre class="code"><code data-lang="js">import { readFile } from &quot;node:fs/promises&quot;;
+
+bot.onFile({ extensions: [&quot;txt&quot;, &quot;csv&quot;] }, async (ctx) =&gt; {
+  if (ctx.file.size &gt; 5_000_000) return ctx.reply(&quot;Tệp lớn quá (tối đa 5 MB).&quot;);
+  const path = await ctx.download({ timeoutMs: 120_000 });
+  const lines = (await readFile(path, &quot;utf8&quot;)).split(&quot;\n&quot;).length;
+  return ctx.reply(`${ctx.file.name}: ${lines} dòng`, { reply: true });
+});
+
+bot.command(&quot;report&quot;, &quot;Gửi báo cáo&quot;, (ctx) =&gt;
+  ctx.replyFile(&quot;report.csv&quot;, { preview: &quot;Doanh thu tuần: 12.500.000đ\nĐơn hàng: 143&quot; }));</code></pre></div></div>
+</section>
+<section class="doc-sec" id="checklists"><h2><span class="l-vi">Danh sách việc</span><span class="l-en" lang="en">Checklists</span></h2>
+<div class="l-vi"><p>Danh sách việc là một tin nhắn có ô đánh dấu; ai trong cuộc trò chuyện cũng tích được. Tối đa 100 mục, mỗi mục 200 ký tự. Bot nhận thay đổi qua <code>on_checklist</code>: <code>ctx.checklist</code> là trạng thái đầy đủ (<code>items</code>, <code>done</code>, <code>total</code>), <code>ctx.changes</code> là những gì vừa đổi và ai đổi. Thay đổi do chính bot làm không được báo lại.</p>
+<p><code>checklist_add</code> thêm mục vào danh sách do bot gửi; <code>checklist_toggle</code> để bot tự tích một mục; <code>bot.checklist(conv, msg_id)</code> đọc trạng thái hiện tại.</p></div>
+<div class="l-en" lang="en"><p>A checklist is a message with tick boxes that anyone in the chat can tick. Up to 100 items of 200 characters. The bot hears about changes through <code>on_checklist</code>: <code>ctx.checklist</code> is the full state (<code>items</code>, <code>done</code>, <code>total</code>), <code>ctx.changes</code> says what just changed and who did it. Changes made by the bot itself are not reported back.</p>
+<p><code>checklist_add</code> adds items to a list the bot sent; <code>checklist_toggle</code> lets the bot tick an item; <code>bot.checklist(conv, msg_id)</code> reads the current state.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-11-0" aria-controls="panel-11-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-11-1" aria-controls="panel-11-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-11-0" aria-labelledby="tab-11-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.command(&quot;todo&quot;, &quot;Tạo danh sách việc: /todo Phát hành: viết ghi chú; đóng gói&quot;)
+def todo(ctx):
+    title, _, rest = ctx.args.partition(&quot;:&quot;)
+    ctx.reply_checklist(title.strip() or &quot;Việc cần làm&quot;, [i.strip() for i in rest.split(&quot;;&quot;) if i.strip()])
+
+@bot.on_checklist
+def progress(ctx):
+    who = bot.name_of(ctx.changes[-1][&quot;by&quot;])
+    if ctx.checklist[&quot;done&quot;] == ctx.checklist[&quot;total&quot;]:
+        ctx.reply(f&quot;🎉 {ctx.checklist[&#x27;title&#x27;]}: xong hết! (mục cuối do {who})&quot;)</code></pre></div><div role="tabpanel" id="panel-11-1" aria-labelledby="tab-11-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.command(&quot;todo&quot;, &quot;Tạo danh sách việc: /todo Phát hành: viết ghi chú; đóng gói&quot;, (ctx) =&gt; {
+  const [title, rest = &quot;&quot;] = ctx.args.split(&quot;:&quot;);
+  return ctx.replyChecklist(title.trim() || &quot;Việc cần làm&quot;, rest.split(&quot;;&quot;).map((s) =&gt; s.trim()).filter(Boolean));
+});
+
+bot.onChecklist(async (ctx) =&gt; {
+  const who = await bot.nameOf(ctx.changes.at(-1).by);
+  if (ctx.checklist.done === ctx.checklist.total)
+    await ctx.reply(`🎉 ${ctx.checklist.title}: xong hết! (mục cuối do ${who})`);
+});</code></pre></div></div>
+</section>
+<section class="doc-sec" id="reminders"><h2><span class="l-vi">Nhắc hẹn</span><span class="l-en" lang="en">Reminders</span></h2>
+<div class="l-vi"><p><code>send_reminder</code> gửi một lời nhắc; đến giờ, ứng dụng của mọi người trong cuộc trò chuyện báo nhắc và bot nhận <code>on_reminder_due</code>. Thời gian có thể là <code>datetime</code>, <code>timedelta</code> (từ bây giờ) hoặc mili-giây; JavaScript dùng <code>Date</code>, mili-giây hoặc <code>{ inMs }</code>. Thời gian phải ở tương lai (nếu không: lỗi <code>err.reminder_past</code>).</p>
+<p><code>ctx.reminder</code> có <code>title</code>, <code>note</code>, <code>at_ms</code>, <code>mine</code> (bot tạo) và <code>late</code> (bot đang tắt đúng giờ nhắc nên báo trễ). Bot phải đang chạy để nhận <code>on_reminder_due</code>; nhắc trễ quá 24 giờ bị bỏ qua. <code>reminder_cancel</code> hủy lời nhắc do bot tạo, <code>reminders()</code> liệt kê lời nhắc sắp tới.</p></div>
+<div class="l-en" lang="en"><p><code>send_reminder</code> sends a reminder; when it is due, everyone's app in the chat raises it and the bot gets <code>on_reminder_due</code>. The time can be a <code>datetime</code>, a <code>timedelta</code> (from now) or epoch milliseconds; JavaScript takes a <code>Date</code>, milliseconds or <code>{ inMs }</code>. It must be in the future (otherwise <code>err.reminder_past</code>).</p>
+<p><code>ctx.reminder</code> has <code>title</code>, <code>note</code>, <code>at_ms</code>, <code>mine</code> (the bot made it) and <code>late</code> (the bot was off at the due time and is catching up). The bot must be running to get <code>on_reminder_due</code>; reminders more than 24 hours late are skipped. <code>reminder_cancel</code> cancels one the bot made, <code>reminders()</code> lists upcoming ones.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-12-0" aria-controls="panel-12-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-12-1" aria-controls="panel-12-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-12-0" aria-labelledby="tab-12-0" class="tabs__panel"><pre class="code"><code data-lang="py">import datetime as dt
+
+@bot.command(&quot;hop&quot;, &quot;Nhắc họp sau 30 phút&quot;)
+def meeting(ctx):
+    ctx.reply_reminder(&quot;Họp nhóm&quot;, dt.timedelta(minutes=30), note=&quot;Phòng 2 · mang laptop&quot;)
+
+@bot.on_reminder_due
+def due(ctx):
+    if ctx.reminder[&quot;mine&quot;]:
+        ctx.reply(f&quot;⏰ Đến giờ: {ctx.reminder[&#x27;title&#x27;]}&quot;)</code></pre></div><div role="tabpanel" id="panel-12-1" aria-labelledby="tab-12-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.command(&quot;hop&quot;, &quot;Nhắc họp sau 30 phút&quot;, (ctx) =&gt;
+  ctx.replyReminder(&quot;Họp nhóm&quot;, { inMs: 30 * 60_000 }, { note: &quot;Phòng 2 · mang laptop&quot; }));
+
+bot.onReminderDue((ctx) =&gt; {
+  if (ctx.reminder.mine) return ctx.reply(`⏰ Đến giờ: ${ctx.reminder.title}`);
+});</code></pre></div></div>
+</section>
+<section class="doc-sec" id="more"><h2><span class="l-vi">Các loại tin khác</span><span class="l-en" lang="en">More message types</span></h2>
+<div class="l-vi"><p>Mọi hàm gửi đều nhận <code>silent=True</code> (gửi không âm báo). Ngoài tin chữ, bot gửi được bình chọn, sticker, vị trí (cả vị trí trực tiếp), danh thiếp và tin nhắn thoại; bot cũng nhắc tên (<code>mentions=[peer]</code>), trả lời (<code>reply_to</code>), chuyển tiếp, sửa, xóa, ghim và thả cảm xúc.</p></div>
+<div class="l-en" lang="en"><p>Every send accepts <code>silent=True</code> (no sound or notification). Besides text, bots can send polls, stickers, locations (including live location), contact cards and voice messages; they can also mention people (<code>mentions=[peer]</code>), reply (<code>reply_to</code>), forward, edit, delete, pin and react.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-13-0" aria-controls="panel-13-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-13-1" aria-controls="panel-13-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-13-0" aria-labelledby="tab-13-0" class="tabs__panel"><pre class="code"><code data-lang="py">m = bot.send(conv, &quot;Bảo trì lúc 22:00&quot;, silent=True)
+bot.pin_message(conv, m[&quot;id&quot;])
+bot.send_poll(conv, &quot;Ăn trưa ở đâu?&quot;, [&quot;Phở&quot;, &quot;Cơm tấm&quot;, &quot;Bún chả&quot;])
+bot.send_location(conv, 21.0285, 105.8542, &quot;Hồ Gươm&quot;)
+bot.send_contact(conv, bot.me[&quot;peer&quot;])
+bot.send(conv, &quot;Ai trực hôm nay?&quot;, mentions=[user_peer], reply_to=msg_id)
+bot.react(conv, msg_id, &quot;👍&quot;)
+bot.edit_message(conv, m[&quot;id&quot;], &quot;Bảo trì lúc 23:00&quot;)
+bot.forward_message(m[&quot;id&quot;], other_conv)</code></pre></div><div role="tabpanel" id="panel-13-1" aria-labelledby="tab-13-1" class="tabs__panel"><pre class="code"><code data-lang="js">const m = await bot.send(conv, &quot;Bảo trì lúc 22:00&quot;, { silent: true });
+await bot.pinMessage(conv, m.id);
+await bot.sendPoll(conv, &quot;Ăn trưa ở đâu?&quot;, [&quot;Phở&quot;, &quot;Cơm tấm&quot;, &quot;Bún chả&quot;]);
+await bot.sendLocation(conv, 21.0285, 105.8542, &quot;Hồ Gươm&quot;);
+await bot.sendContact(conv, bot.me.peer);
+await bot.send(conv, &quot;Ai trực hôm nay?&quot;, { mentions: [userPeer], replyTo: msgId });
+await bot.react(conv, msgId, &quot;👍&quot;);
+await bot.editMessage(conv, m.id, &quot;Bảo trì lúc 23:00&quot;);
+await bot.forwardMessage(m.id, otherConv);</code></pre></div></div>
+</section>
+<section class="doc-sec" id="broadcasts"><h2><span class="l-vi">Gửi theo lịch và giới hạn tốc độ</span><span class="l-en" lang="en">Scheduled broadcasts and rate limits</span></h2>
+<div class="l-vi"><p>Bot chỉ nhắn được cho người <strong>đã nhắn bot trước</strong> (danh sách <code>bot.users()</code>) và cho nhóm có bot. <code>broadcast</code> gửi cho tất cả người dùng; <code>every(giây)</code>, <code>daily("HH:MM")</code> và <code>after(giây)</code> chạy việc theo lịch (theo giờ máy chạy bot).</p>
+<p>SDK tự giãn tốc độ cho mọi tin gửi đi: tối đa 15 tin/giây tổng cộng, mỗi cuộc trò chuyện 5 tin liền rồi 1 tin/giây. Gửi cho 1.000 người mất khoảng 70 giây; hàm vẫn chạy trong khi bot tiếp tục trả lời tin khác. Dùng <code>silent=True</code> cho tin không gấp và tôn trọng người muốn hủy nhận tin.</p></div>
+<div class="l-en" lang="en"><p>Bots can only message people who <strong>messaged the bot first</strong> (<code>bot.users()</code>) and groups the bot is in. <code>broadcast</code> sends to every user; <code>every(seconds)</code>, <code>daily("HH:MM")</code> and <code>after(seconds)</code> run jobs on a schedule (in the local time of the computer running the bot).</p>
+<p>The SDK paces every outgoing message: at most 15 messages/s overall and, per chat, 5 in a row then 1/s. Sending to 1,000 users takes about 70 seconds while the bot keeps answering other chats. Use <code>silent=True</code> for anything that is not urgent and respect people who unsubscribe.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-14-0" aria-controls="panel-14-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-14-1" aria-controls="panel-14-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-14-0" aria-labelledby="tab-14-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.command(&quot;subscribe&quot;, &quot;Nhận bản tin sáng&quot;)
+def subscribe(ctx):
+    bot.storage.update_key(&quot;subs&quot;, lambda s: sorted(set(s or []) | {ctx.sender}), [])
+    ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để hủy.&quot;)
+
+@bot.command(&quot;unsubscribe&quot;, &quot;Hủy bản tin&quot;)
+def unsubscribe(ctx):
+    bot.storage.update_key(&quot;subs&quot;, lambda s: [p for p in (s or []) if p != ctx.sender], [])
+    ctx.reply(&quot;Đã hủy.&quot;)
+
+@bot.daily(&quot;07:30&quot;)
+def morning():
+    sent = bot.broadcast(&quot;☀️ Chào buổi sáng! Hôm nay giảm 10%.&quot;, users=bot.storage.get(&quot;subs&quot;, []), silent=True)
+    bot.log.info(&quot;morning news sent to %d users&quot;, sent)</code></pre></div><div role="tabpanel" id="panel-14-1" aria-labelledby="tab-14-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.command(&quot;subscribe&quot;, &quot;Nhận bản tin sáng&quot;, (ctx) =&gt; {
+  bot.storage.updateKey(&quot;subs&quot;, (s) =&gt; [...new Set([...(s || []), ctx.sender])], []);
+  return ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để hủy.&quot;);
+});
+
+bot.command(&quot;unsubscribe&quot;, &quot;Hủy bản tin&quot;, (ctx) =&gt; {
+  bot.storage.updateKey(&quot;subs&quot;, (s) =&gt; (s || []).filter((p) =&gt; p !== ctx.sender), []);
+  return ctx.reply(&quot;Đã hủy.&quot;);
+});
+
+bot.daily(&quot;07:30&quot;, async () =&gt; {
+  const sent = await bot.broadcast(&quot;☀️ Chào buổi sáng! Hôm nay giảm 10%.&quot;, { users: bot.storage.get(&quot;subs&quot;, []), silent: true });
+  bot.log.info(&quot;morning news sent&quot;, { sent });
+});</code></pre></div></div>
+</section>
+<section class="doc-sec" id="errors"><h2><span class="l-vi">Xử lý lỗi</span><span class="l-en" lang="en">Error handling</span></h2>
+<div class="l-vi"><p>Mọi lỗi từ Lumora là <code>LumoraError</code> với:</p>
+<ul>
+<li><code>code</code>: mã ổn định để so sánh trong mã nguồn, ví dụ <code>err.slow_mode</code>;</li>
+<li><code>message</code>: câu dễ hiểu theo ngôn ngữ của bot (<code>Bot(lang="vi"|"en")</code>), hiện được cho người dùng;</li>
+<li><code>detail</code>: nguyên nhân kỹ thuật, chỉ ghi log.</li>
+</ul>
+<p>Lỗi trong hàm xử lý không làm bot dừng: SDK ghi log rồi gọi <code>on_error</code>. <code>NotAllowedForBots</code> báo lệnh bot không được dùng; <code>RunnerStopped</code> và <code>LumoraTimeout</code> báo Lumora Bot Runner đang khởi động lại (SDK tự khởi động lại, thử lại sau vài giây là được). Bảng mã lỗi thường gặp có ở <a href="https://getlumora.pages.dev/developers/reference/#errors">tham chiếu SDK</a>.</p></div>
+<div class="l-en" lang="en"><p>Every error from Lumora is a <code>LumoraError</code> with:</p>
+<ul>
+<li><code>code</code>: a stable key to compare in code, e.g. <code>err.slow_mode</code>;</li>
+<li><code>message</code>: a plain sentence in the bot's language (<code>Bot(lang="vi"|"en")</code>), fine to show to users;</li>
+<li><code>detail</code>: the technical cause, for logs only.</li>
+</ul>
+<p>An error in a handler never stops the bot: the SDK logs it and calls <code>on_error</code>. <code>NotAllowedForBots</code> means the command is not available to bots; <code>RunnerStopped</code> and <code>LumoraTimeout</code> mean Lumora Bot Runner is restarting (the SDK restarts it; retry after a few seconds). Common codes are listed in the <a href="https://getlumora.pages.dev/developers/reference/#errors">SDK reference</a>.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-15-0" aria-controls="panel-15-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-15-1" aria-controls="panel-15-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-15-0" aria-labelledby="tab-15-0" class="tabs__panel"><pre class="code"><code data-lang="py">import datetime as dt
+from lumora_bot import LumoraError
+
+@bot.command(&quot;remind&quot;, &quot;Nhắc việc&quot;)
+def remind(ctx):
+    try:
+        ctx.reply_reminder(&quot;Gọi khách&quot;, dt.timedelta(minutes=int(ctx.args or 10)))
+    except LumoraError as e:
+        if e.code == &quot;err.reminder_past&quot;:
+            return ctx.reply(&quot;Hãy chọn thời gian ở tương lai.&quot;)
+        raise                                    # để on_error xử lý / let on_error handle it
+
+@bot.on_error
+def report(ctx, err):
+    bot.log.error(&quot;failed in %s: %s&quot;, ctx.kind, err)
+    if ctx.conv:
+        ctx.reply(&quot;😵 Có lỗi xảy ra, thử lại sau nhé.&quot;)</code></pre></div><div role="tabpanel" id="panel-15-1" aria-labelledby="tab-15-1" class="tabs__panel"><pre class="code"><code data-lang="js">import { LumoraError } from &quot;lumora-bot&quot;;
+
+bot.command(&quot;remind&quot;, &quot;Nhắc việc&quot;, async (ctx) =&gt; {
+  try {
+    await ctx.replyReminder(&quot;Gọi khách&quot;, { inMs: Number(ctx.args || 10) * 60_000 });
+  } catch (e) {
+    if (e instanceof LumoraError &amp;&amp; e.code === &quot;err.reminder_past&quot;) return ctx.reply(&quot;Hãy chọn thời gian ở tương lai.&quot;);
+    throw e;                                     // để onError xử lý / let onError handle it
+  }
+});
+
+bot.onError((ctx, err) =&gt; {
+  bot.log.error(&quot;handler failed&quot;, { kind: ctx.kind, code: err.code, detail: err.detail });
+  if (ctx.conv) return ctx.reply(&quot;😵 Có lỗi xảy ra, thử lại sau nhé.&quot;);
+});</code></pre></div></div>
+</section>
+<section class="doc-sec" id="middleware"><h2><span class="l-vi">Middleware và log</span><span class="l-en" lang="en">Middleware and logging</span></h2>
+<div class="l-vi"><p>Middleware chạy quanh mọi cập nhật (lệnh, tin nhắn, nút bấm…): gọi <code>next()</code> để đi tiếp, không gọi là dừng. Hợp để chặn người dùng, giới hạn tần suất mỗi người, đo thời gian xử lý.</p>
+<p>Log của SDK ra stderr. Đặt <code>LUMORA_BOT_LOG_FORMAT=json</code> để có log dạng JSON (mỗi dòng một sự kiện, kèm <code>event</code>, <code>code</code>, <code>conv</code>…), <code>LUMORA_BOT_LOG_LEVEL=DEBUG</code> để xem chi tiết. Log riêng của Lumora Bot Runner nằm ở <code>&lt;thư mục dữ liệu&gt;/runner.log</code>. Đừng ghi nội dung tin nhắn của người dùng vào log.</p></div>
+<div class="l-en" lang="en"><p>Middleware wraps every update (commands, messages, button presses…): call <code>next()</code> to continue, don't call it to stop. Good for blocking users, per-user rate limits, timing.</p>
+<p>The SDK logs to stderr. Set <code>LUMORA_BOT_LOG_FORMAT=json</code> for JSON lines (one event per line with <code>event</code>, <code>code</code>, <code>conv</code>…) and <code>LUMORA_BOT_LOG_LEVEL=DEBUG</code> for details. Lumora Bot Runner's own log is in <code>&lt;data folder&gt;/runner.log</code>. Don't log the content of users' messages.</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-16-0" aria-controls="panel-16-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-16-1" aria-controls="panel-16-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-16-0" aria-labelledby="tab-16-0" class="tabs__panel"><pre class="code"><code data-lang="py">import time
+
+@bot.middleware
+def guard(ctx, next):
+    if ctx.sender in bot.storage.get(&quot;blocked&quot;, []):
+        return                                   # dừng / stop here
+    started = time.monotonic()
+    result = next()
+    bot.log.debug(&quot;%s handled in %.0f ms&quot;, ctx.kind, (time.monotonic() - started) * 1000)
+    return result</code></pre></div><div role="tabpanel" id="panel-16-1" aria-labelledby="tab-16-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.use(async (ctx, next) =&gt; {
+  if (bot.storage.get(&quot;blocked&quot;, []).includes(ctx.sender)) return;   // dừng / stop here
+  const started = Date.now();
+  await next();
+  bot.log.debug(&quot;handled&quot;, { kind: ctx.kind, ms: Date.now() - started });
+});</code></pre></div></div>
+</section>
+<section class="doc-sec" id="async"><h2><span class="l-vi">Python bất đồng bộ (tùy chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></h2>
+<div class="l-vi"><p>SDK Python chạy đồng bộ trên một nhóm luồng nhỏ, vừa đơn giản vừa đủ nhanh cho đa số bot. Nếu bạn quen <code>asyncio</code>, hàm xử lý có thể là <code>async def</code>; trong đó dùng <code>await bot.aio.send(...)</code>, <code>await ctx.aio.reply(...)</code> hoặc <code>await bot.acall(...)</code>.</p></div>
+<div class="l-en" lang="en"><p>The Python SDK is synchronous on a small thread pool: simple, and fast enough for most bots. If you prefer <code>asyncio</code>, handlers may be <code>async def</code>; inside them use <code>await bot.aio.send(...)</code>, <code>await ctx.aio.reply(...)</code> or <code>await bot.acall(...)</code>.</p></div>
+<pre class="code"><code data-lang="py">import aiohttp
+
+@bot.command(&quot;weather&quot;, &quot;Thời tiết&quot;)
+async def weather(ctx):
+    async with aiohttp.ClientSession() as s:
+        async with s.get(&quot;https://wttr.in/Hanoi?format=3&quot;) as r:
+            text = await r.text()
+    await ctx.aio.reply(text)</code></pre>
+</section>
+
+      </article>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <a class="brand" href="/" aria-label="Lumora">
+        <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><defs><linearGradient id="ftr-g" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#6C5CE7"/><stop offset="1" stop-color="#00C2D1"/></linearGradient></defs><g fill="url(#ftr-g)"><path d="M20.5 11V37A10 10 0 0 0 22.27 42.68L13.72 51.23A22 22 0 0 1 8.5 37V11A6 6 0 0 1 20.5 11Z"/><path d="M24.82 45.23A10 10 0 0 0 30.5 47H49.5A6 6 0 0 1 49.5 59H30.5A22 22 0 0 1 16.27 53.78Z"/><path d="M37.57 17.43C39.57 27.93 39.57 27.93 50.07 29.93C39.57 31.93 39.57 31.93 37.57 42.43C35.57 31.93 35.57 31.93 25.07 29.93C35.57 27.93 35.57 27.93 37.57 17.43Z"/></g></svg>
+        <span class="brand__name">Lumora</span>
+      </a>
+      <p data-i18n="footer.tag">Kết nối trực tiếp. Riêng tư theo cách của bạn.</p>
+    </div>
+    <nav class="footer__links" aria-label="Footer">
+      <a href="/#features" data-i18n="nav.features">Tính năng</a>
+      <a href="/#for-who" data-i18n="nav.who">Dành cho ai</a>
+      <a href="/#privacy" data-i18n="nav.privacy">Riêng tư</a>
+      <a href="/download/" data-i18n="nav.download">Tải về</a>
+      <a href="/#faq" data-i18n="nav.faq">Hỏi đáp</a>
+      <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
+      <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
+      <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+    </nav>
+    <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,938 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Release hardening (see docs/src/dev/release.md): Dart code is obfuscated and its symbol
+  # maps are uploaded only as PRIVATE workflow artifacts (symbols-*), never to a release.
+  FLUTTER_HARDEN: --obfuscate --split-debug-info=build/symbols
+  # Same Flutter as the local SDK the app is developed with (pubspec: sdk ^3.10.8).
+  FLUTTER_VERSION: "3.38.9"
+
+# Third-party actions are pinned to commit SHAs (tag in the comment).
+jobs:
+  core-tests:
+    runs-on: ubuntu-24.04
+    # libvpx: x86_64 builds must use its assembly (VP8/VP9 ~3x faster); fail instead of
+    # silently falling back to intrinsics when nasm is missing
+    env: { LUMORA_VPX_REQUIRE_ASM: "1" }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core }
+      - run: sudo apt-get update && sudo apt-get install -y clang nasm libpipewire-0.3-dev libspa-0.2-dev libopus-dev libasound2-dev libxdo-dev libxtst-dev libdbus-1-dev libgbm-dev libegl-dev
+      - run: cargo test --workspace --locked
+        working-directory: core
+      - name: video codecs (dev-only source-built OpenH264 exercises the H.264 path + H.264 → VP8 switch)
+        run: cargo test --locked -p lumora-media --features openh264-source --lib -- codec video
+        working-directory: core
+      - name: release dependency graphs never contain OpenH264 (H.264 only from the OS; VP8/VP9 = bundled libvpx)
+        working-directory: core
+        run: |
+          for t in x86_64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
+            for p in "lumora-ffi --features media" "lumora-cli --features media"; do
+              if cargo tree --locked -e normal,build --target "$t" -p $p | grep -i openh264; then
+                echo "::error::OpenH264 in the release graph of $p ($t)"; exit 1
+              fi
+            done
+          done
+      - name: lumorad with the dev-only H.264 (video_e2e's H.264 and H.264 → VP8 switch scenarios)
+        working-directory: core
+        run: |
+          cargo build --locked -p lumora-cli --features lumora-core/openh264-source
+          cp target/debug/lumorad "$RUNNER_TEMP/lumorad-h264dev"
+      - run: cargo build -p lumora-cli -p lumora-relay
+        working-directory: core
+      - run: python3 core/tests/e2e.py
+      - name: linked devices (phone + computer on one account, history sync, unlink)
+        run: python3 core/tests/multidevice_e2e.py
+      - name: IP privacy (strangers never learn addresses; friends, own devices and groups do)
+        run: python3 core/tests/ip_privacy_e2e.py
+      - name: video calls (VP8, H.264, H.264 → VP8 switch; first frame < 1.5 s after answering)
+        run: python3 core/tests/video_e2e.py --h264-bin "$RUNNER_TEMP/lumorad-h264dev"
+      - name: iPhone features on Linux (Bonjour/mDNS discovery, push wake-ups through lumora-push)
+        run: |
+          python3 -c "import cryptography" 2>/dev/null || sudo apt-get install -y python3-cryptography
+          (cd core && cargo build -p lumora-push)
+          python3 core/tests/apple_e2e.py
+      - name: iOS screen-frame ring (C, shared by the ReplayKit extension and the app)
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pthread app/ios/Shared/lumora_ring.c app/ios/Shared/tests/ring_test.c -o "$RUNNER_TEMP/ring_test"
+          "$RUNNER_TEMP/ring_test"
+
+  desktop:
+    # Linux + Windows. macOS has its own job below (universal core, signing, notarization, .dmg).
+    needs: core-tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, target: linux, lib: liblumora_ffi.so }
+          - { os: windows-latest, target: windows, lib: lumora_ffi.dll }
+    runs-on: ${{ matrix.os }}
+    env: { LUMORA_VPX_REQUIRE_ASM: "1" }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core }
+      - if: matrix.target == 'windows'
+        name: NASM (libvpx x86_64 assembly)
+        shell: pwsh
+        run: |
+          choco install nasm -y --no-progress
+          echo "C:\Program Files\NASM" >> $env:GITHUB_PATH
+      - if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y clang nasm cmake ninja-build libgtk-3-dev libpipewire-0.3-dev libspa-0.2-dev libopus-dev libasound2-dev libxdo-dev libxtst-dev libdbus-1-dev libgbm-dev libegl-dev
+      - name: no build-machine paths in shipped binaries
+        shell: bash
+        # Rust: remap source paths (panic locations). C: vendored OpenSSL compiles its build
+        # directory into ENGINESDIR/MODULESDIR, so build scripts run in a neutral build-dir
+        # (cargo >= 1.91; final artifacts stay in core/target). No -ffile-prefix-map in
+        # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
+        run: |
+          ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
+          echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
+      - if: matrix.target == 'windows'
+        name: use Strawberry Perl for vendored OpenSSL (SQLCipher)
+        shell: pwsh
+        # openssl-src's Configure breaks with Git-for-Windows' msys perl if that one wins on PATH.
+        run: echo "OPENSSL_SRC_PERL=C:\Strawberry\perl\bin\perl.exe" >> $env:GITHUB_ENV
+      - run: cargo build --release -p lumora-ffi --features media
+        working-directory: core
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with: { channel: stable, flutter-version: "${{ env.FLUTTER_VERSION }}", cache: true }
+      # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
+      - run: flutter pub get && dart run pdfrx:remove_wasm_modules
+        working-directory: app
+      - name: version (tag vX.Y.Z → build name X.Y.Z, build number X*10000 + Y*100 + Z)
+        id: ver
+        shell: bash
+        # Android's versionCode must grow with every release: vMAJOR.MINOR.PATCH → MAJOR*10000 +
+        # MINOR*100 + PATCH (MINOR and PATCH < 100). Branch/PR builds are 0.0.0 (build number 1).
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v="${GITHUB_REF_NAME#v}"
+            if ! [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH"; exit 1
+            fi
+            ma=$((10#${BASH_REMATCH[1]})); mi=$((10#${BASH_REMATCH[2]})); pa=$((10#${BASH_REMATCH[3]}))
+            if [ "$mi" -ge 100 ] || [ "$pa" -ge 100 ]; then echo "::error::MINOR and PATCH must be below 100"; exit 1; fi
+            code=$((ma * 10000 + mi * 100 + pa))
+            if [ "$code" -lt 1 ]; then echo "::error::v0.0.0 cannot be released"; exit 1; fi
+          else
+            v=0.0.0; code=1
+          fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "version $v (build $code)"
+      - run: flutter build ${{ matrix.target }} --release $FLUTTER_HARDEN/${{ matrix.target }} --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ steps.ver.outputs.code }}"
+        shell: bash
+        working-directory: app
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: "symbols-${{ matrix.target }}", path: app/build/symbols, retention-days: 90, if-no-files-found: error }
+      - name: bundle native library
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            linux)   cp core/target/release/${{ matrix.lib }} app/build/linux/x64/release/bundle/lib/ ;;
+            windows) cp core/target/release/${{ matrix.lib }} app/build/windows/x64/runner/Release/ ;;
+          esac
+      - if: matrix.target == 'windows'
+        name: build lumorad.exe (CLI daemon, shipped for diagnostics)
+        run: cargo build --release -p lumora-cli --features media
+        working-directory: core
+      - if: matrix.target == 'windows'
+        name: bundle VC++ runtime (app-local, so no vc_redist is needed)
+        shell: pwsh
+        run: |
+          $dst = "app/build/windows/x64/runner/Release"
+          foreach ($f in "msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll") {
+            Copy-Item "$env:SystemRoot\System32\$f" $dst
+          }
+      - if: matrix.target == 'windows'
+        name: build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          # Inno Setup 6 is preinstalled on windows-latest; install it only if missing.
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) {
+            $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe", "$env:ProgramFiles\Inno Setup *\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe", "$env:ProgramFiles\Inno Setup *\ISCC.exe" | Select-Object -First 1 -ExpandProperty FullName
+          }
+          $ver = if ("${{ github.ref_type }}" -eq "tag") { "${{ steps.ver.outputs.name }}" } else { "0.0.0-dev" }
+          & $iscc /Qp "/DAppVersion=$ver" packaging/windows/lumora.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: check for leaked build paths
+        shell: bash
+        run: |
+          f=core/target/release/${{ matrix.lib }}
+          if grep -a -q -E 'runner/work|/home/runner|runneradmin|\\a\\lumora' "$f"; then
+            grep -a -o -E 'runner/work|/home/runner|runneradmin|\\a\\lumora' "$f" | sort | uniq -c
+            echo "::error::build paths leaked into $f"; exit 1
+          fi
+      - if: matrix.target == 'linux'
+        name: package .tar.gz, .deb and AppImage (packaging/linux/package.sh)
+        # Made here, not in the release job: workflow artifacts drop the executable bit.
+        run: packaging/linux/package.sh app/build/linux/x64/release/bundle "${{ steps.ver.outputs.name }}" "$RUNNER_TEMP/linux-packages"
+      - if: matrix.target == 'linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: lumora-linux-packages, path: "${{ runner.temp }}/linux-packages/*", if-no-files-found: error }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lumora-${{ matrix.target }}
+          # one path, so the artifact root is the bundle itself
+          path: ${{ matrix.target == 'linux' && 'app/build/linux/x64/release/bundle' || 'app/build/windows/x64/runner/Release' }}
+          if-no-files-found: error
+      - if: matrix.target == 'windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lumora-windows-installer
+          path: packaging/windows/Output/*.exe
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ macOS
+  # Universal (Apple Silicon + Intel) app, packaged as a .dmg. Always produces an
+  # unsigned (ad-hoc) build; when the Developer ID secrets exist it is signed with
+  # the hardened runtime, notarized and stapled. See docs/src/platforms/apple.md.
+  macos:
+    needs: core-tests
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # Same minimum as the website and docs (macOS 11 Big Sur).
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      HAS_DEVELOPER_ID: ${{ secrets.APPLE_CERT_P12 != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: select the newest stable Xcode (App Store uploads require a current SDK)
+        run: |
+          X="$(printf '%s\n' /Applications/Xcode_[0-9]*.app | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -s "$X/Contents/Developer"
+          xcodebuild -version
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { targets: "aarch64-apple-darwin,x86_64-apple-darwin" }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core, key: apple-macos }
+      - name: no build-machine paths in shipped binaries
+        shell: bash
+        # Rust: remap source paths (panic locations). C: vendored OpenSSL compiles its build
+        # directory into ENGINESDIR/MODULESDIR, so build scripts run in a neutral build-dir
+        # (cargo >= 1.91; final artifacts stay in core/target). No -ffile-prefix-map in
+        # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
+        run: |
+          ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
+          echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
+      - name: iOS and macOS share one camera source file
+        run: cmp app/ios/Runner/LumoraCamera.swift app/macos/Runner/LumoraCamera.swift
+      - name: NASM (libvpx assembly for the x86_64 slice; Apple's own nasm is too old)
+        run: brew install nasm
+      - name: build universal core (liblumora_ffi.dylib, arm64 + x86_64)
+        env: { LUMORA_VPX_REQUIRE_ASM: "1" }
+        run: app/tool/apple/build_core.sh macos
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with: { channel: stable, flutter-version: "${{ env.FLUTTER_VERSION }}", cache: true }
+      - name: version
+        id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0"; fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+          echo "label=${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.run_number) }}" >> "$GITHUB_OUTPUT"
+      # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
+      - run: flutter pub get && dart run pdfrx:remove_wasm_modules
+        working-directory: app
+      - run: flutter build macos --release $FLUTTER_HARDEN/macos --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ github.run_number }}"
+        working-directory: app
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: symbols-macos, path: app/build/symbols, retention-days: 90, if-no-files-found: error }
+      - name: verify the app bundle
+        run: |
+          APP="$(find app/build/macos/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          LIB="$APP/Contents/Frameworks/liblumora_ffi.dylib"
+          test -f "$LIB" || { echo "::error::core library not embedded in $APP"; exit 1; }
+          lipo "$LIB" -verify_arch arm64 x86_64
+          nm -gU "$LIB" | grep -q ' _lumora_start$'
+          # Video-call camera (LumoraCamera.swift resolves it with dlsym at run time).
+          nm -gU "$LIB" | grep -q ' _lumora_push_camera_yuv$' || { echo "::error::_lumora_push_camera_yuv missing (core built without media?)"; exit 1; }
+          /usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' "$APP/Contents/Info.plist"
+          test -f "$APP/Contents/Resources/vi.lproj/InfoPlist.strings"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'com.apple.security.device.audio-input'
+          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'com.apple.security.device.camera'
+      - name: sign with Developer ID (hardened runtime)
+        if: env.HAS_DEVELOPER_ID == 'true'
+        env:
+          APPLE_CERT_P12: ${{ secrets.APPLE_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY="$(app/tool/apple/import_cert.sh APPLE_CERT_P12 "Developer ID Application")"
+          sign() { codesign --force --timestamp --options runtime --sign "$IDENTITY" "$@"; }
+          # Inside-out: nested code first, the app last (never --deep for signing).
+          find "$APP/Contents/Frameworks" -depth -name '*.dylib' -print0 | while IFS= read -r -d '' f; do sign "$f"; done
+          find "$APP/Contents/Frameworks" -depth -name '*.framework' -print0 | while IFS= read -r -d '' f; do sign "$f"; done
+          sign --entitlements app/macos/Runner/Release.entitlements "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E "TeamIdentifier=${APPLE_TEAM_ID}$"
+          codesign -dvv "$APP" 2>&1 | grep -q 'flags=.*runtime'
+      - name: package .dmg
+        run: |
+          # Same name signed or not: unsigned DMGs are published too (how to open them:
+          # docs/src/platforms/apple.md); the release notes say which kind it is.
+          DMG="Lumora-${{ steps.ver.outputs.label }}-macos-universal.dmg"
+          STAGE="$RUNNER_TEMP/dmg"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          ditto "$APP" "$STAGE/$(basename "$APP")"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname Lumora -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG"
+          hdiutil verify "$DMG"
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+      - name: sign + notarize + staple the .dmg
+        if: env.HAS_DEVELOPER_ID == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY="$(security find-identity -v -p codesigning | sed -nE 's/.*"(Developer ID Application[^"]*)"$/\1/p' | head -1)"
+          codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+          out="$(xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" \
+                   --team-id "$APPLE_TEAM_ID" --wait --timeout 45m --output-format json)"
+          echo "$out"
+          id="$(echo "$out" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+          status="$(echo "$out" | /usr/bin/python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+          if [ "$status" != Accepted ]; then
+            xcrun notarytool log "$id" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+            echo "::error::notarization $status"; exit 1
+          fi
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+      - if: env.HAS_DEVELOPER_ID != 'true'
+        run: echo "::notice::macOS build is unsigned (no APPLE_CERT_P12/APPLE_TEAM_ID secrets). Users must allow it in System Settings › Privacy & Security."
+      - name: record the signing state for the release notes
+        run: |
+          if [ "$HAS_DEVELOPER_ID" = true ] && [ "$HAS_NOTARY" = true ]; then echo notarized; elif [ "$HAS_DEVELOPER_ID" = true ]; then echo signed; else echo unsigned; fi > macos-signing.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lumora-macos
+          path: |
+            ${{ env.DMG }}
+            macos-signing.txt
+          if-no-files-found: error
+      - if: always()
+        name: remove the signing keychain
+        run: security delete-keychain "$RUNNER_TEMP/lumora-signing.keychain-db" 2>/dev/null || true
+
+  # -------------------------------------------------------------------- iOS
+  # Always: core static libs (device + simulator) as an xcframework, and an
+  # unsigned Runner.app/.ipa (proves the whole app compiles and links; install it
+  # only after re-signing). With the signing secrets: a signed App Store IPA, and
+  # on version tags an upload to TestFlight.
+  ios:
+    needs: core-tests
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      IPHONEOS_DEPLOYMENT_TARGET: "13.0"
+      HAS_IOS_SIGNING: ${{ secrets.IOS_CERT_P12 != '' && secrets.IOS_PROVISION_PROFILE != '' && secrets.IOS_PROVISION_PROFILE_BROADCAST != '' && secrets.IOS_PROVISION_PROFILE_NSE != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_UPLOAD: ${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: select the newest stable Xcode (App Store uploads require a current SDK)
+        run: |
+          X="$(printf '%s\n' /Applications/Xcode_[0-9]*.app | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -s "$X/Contents/Developer"
+          xcodebuild -version
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { targets: "aarch64-apple-ios,aarch64-apple-ios-sim" }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core, key: apple-ios }
+      - name: no build-machine paths in shipped binaries
+        shell: bash
+        # Rust: remap source paths (panic locations). C: vendored OpenSSL compiles its build
+        # directory into ENGINESDIR/MODULESDIR, so build scripts run in a neutral build-dir
+        # (cargo >= 1.91; final artifacts stay in core/target). No -ffile-prefix-map in
+        # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
+        run: |
+          ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
+          echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
+      - name: build core static libs (iPhone + Simulator) and LumoraFFI.xcframework
+        run: app/tool/apple/build_core.sh ios
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with: { channel: stable, flutter-version: "${{ env.FLUTTER_VERSION }}", cache: true }
+      - name: version
+        id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0"; fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+          echo "label=${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.run_number) }}" >> "$GITHUB_OUTPUT"
+      # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
+      - run: flutter pub get && dart run pdfrx:remove_wasm_modules
+        working-directory: app
+      - run: flutter build ios --release --no-codesign $FLUTTER_HARDEN/ios --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ github.run_number }}"
+        working-directory: app
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: symbols-ios, path: app/build/symbols, retention-days: 90, if-no-files-found: error }
+      - name: verify Runner.app
+        run: |
+          APP=app/build/ios/iphoneos/Runner.app
+          # The core is linked statically and found at run time via dlsym: its C API must survive linking.
+          for s in lumora_start lumora_request lumora_next_event lumora_free lumora_stop lumora_push_screen_frame lumora_push_camera_yuv; do
+            nm -gU "$APP/Runner" | grep -q " _${s}\$" || { echo "::error::_${s} missing from Runner"; exit 1; }
+          done
+          lipo "$APP/Runner" -verify_arch arm64
+          for k in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription NSPhotoLibraryUsageDescription NSBonjourServices; do
+            /usr/libexec/PlistBuddy -c "Print :$k" "$APP/Info.plist" >/dev/null || { echo "::error::$k missing"; exit 1; }
+          done
+          test -f "$APP/vi.lproj/InfoPlist.strings" && test -f "$APP/en.lproj/InfoPlist.strings"
+          test -f "$APP/PrivacyInfo.xcprivacy"
+          # app extensions: ReplayKit screen broadcast + notification service (decrypts previews)
+          for x in LumoraBroadcast:com.apple.broadcast-services-upload LumoraNotificationService:com.apple.usernotifications.service; do
+            ext="$APP/PlugIns/${x%%:*}.appex"
+            test -d "$ext" || { echo "::error::${x%%:*}.appex not embedded"; exit 1; }
+            [ "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$ext/Info.plist")" = "${x#*:}" ]
+            [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ext/Info.plist")" = "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist")" ]
+          done
+          test -f "$APP/vi.lproj/Localizable.strings" && test -f "$APP/PlugIns/LumoraNotificationService.appex/vi.lproj/Localizable.strings"
+          du -sh "$APP"
+      - name: package unsigned .ipa + xcframework
+        run: |
+          OUT="$RUNNER_TEMP/out"; mkdir -p "$OUT/Payload"
+          ditto app/build/ios/iphoneos/Runner.app "$OUT/Payload/Runner.app"
+          (cd "$OUT" && zip -qry "Lumora-${{ steps.ver.outputs.label }}-ios-unsigned.ipa" Payload && rm -rf Payload)
+          (cd core/target/apple && zip -qry "$OUT/LumoraFFI-${{ steps.ver.outputs.label }}.xcframework.zip" LumoraFFI.xcframework)
+          ls -la "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lumora-ios-unsigned
+          path: ${{ env.OUT }}
+          if-no-files-found: error
+      - name: signed App Store IPA
+        if: env.HAS_IOS_SIGNING == 'true'
+        env:
+          IOS_CERT_P12: ${{ secrets.IOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+          IOS_PROVISION_PROFILE: ${{ secrets.IOS_PROVISION_PROFILE }}
+          IOS_PROVISION_PROFILE_BROADCAST: ${{ secrets.IOS_PROVISION_PROFILE_BROADCAST }}
+          IOS_PROVISION_PROFILE_NSE: ${{ secrets.IOS_PROVISION_PROFILE_NSE }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          IDENTITY="$(app/tool/apple/import_cert.sh IOS_CERT_P12 "Apple Distribution")"
+          # install a base64 profile, print its name
+          install_profile() {
+            local prof="$RUNNER_TEMP/$1.mobileprovision"
+            printf '%s' "$2" | base64 --decode > "$prof"
+            security cms -D -i "$prof" > "$RUNNER_TEMP/$1.plist"
+            local uuid
+            uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/$1.plist")"
+            for d in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+              mkdir -p "$d" && cp "$prof" "$d/$uuid.mobileprovision"
+            done
+            /usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/$1.plist"
+          }
+          NAME="$(install_profile app "$IOS_PROVISION_PROFILE")"
+          NAME_BC="$(install_profile broadcast "$IOS_PROVISION_PROFILE_BROADCAST")"
+          NAME_NSE="$(install_profile nse "$IOS_PROVISION_PROFILE_NSE")"
+          # Manual signing per target (Runner: Flutter/Lumora.xcconfig; extensions: Flutter/<Target>.xcconfig).
+          # Never global build settings: the CocoaPods targets must not get a profile.
+          signing() {
+            echo "CODE_SIGN_STYLE = Manual"
+            echo "DEVELOPMENT_TEAM = $APPLE_TEAM_ID"
+            echo "CODE_SIGN_IDENTITY = $IDENTITY"
+            echo "CODE_SIGN_IDENTITY[sdk=iphoneos*] = $IDENTITY"
+            echo "PROVISIONING_PROFILE_SPECIFIER = $1"
+          }
+          signing "$NAME" > app/ios/Flutter/LumoraSigning.generated.xcconfig
+          signing "$NAME_BC" > app/ios/Flutter/LumoraSigning-LumoraBroadcast.generated.xcconfig
+          signing "$NAME_NSE" > app/ios/Flutter/LumoraSigning-LumoraNotificationService.generated.xcconfig
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key><dict>
+              <key>vn.lumora.lumora</key><string>$NAME</string>
+              <key>vn.lumora.lumora.ScreenBroadcast</key><string>$NAME_BC</string>
+              <key>vn.lumora.lumora.NotificationService</key><string>$NAME_NSE</string>
+            </dict>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          EOF
+          cd app
+          flutter build ipa --release $FLUTTER_HARDEN/ipa --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ github.run_number }}" \
+            --export-options-plist="$RUNNER_TEMP/ExportOptions.plist"
+          IPA="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' | head -1)"
+          unzip -q -o "$IPA" -d "$RUNNER_TEMP/ipa-check"
+          codesign --verify --deep --strict "$RUNNER_TEMP"/ipa-check/Payload/*.app
+          nm -gU "$RUNNER_TEMP"/ipa-check/Payload/Runner.app/Runner | grep -q ' _lumora_start$'
+          # push + App Group + shared keychain must be in the signed app (profile capabilities)
+          codesign -d --entitlements - --xml "$RUNNER_TEMP"/ipa-check/Payload/Runner.app 2>/dev/null | grep -q aps-environment
+          echo "IPA=app/$IPA" >> "$GITHUB_ENV"
+      - if: env.HAS_IOS_SIGNING == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: symbols-ipa, path: app/build/symbols/ipa, retention-days: 90 }
+      - if: env.HAS_IOS_SIGNING == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: lumora-ios-appstore
+          path: ${{ env.IPA }}
+          if-no-files-found: error
+      - name: upload to TestFlight (version tags only)
+        if: env.HAS_IOS_SIGNING == 'true' && env.HAS_UPLOAD == 'true' && github.ref_type == 'tag'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: xcrun altool --upload-app --type ios --file "$IPA" --username "$APPLE_ID" --password "$APPLE_APP_PASSWORD"
+      - if: env.HAS_IOS_SIGNING != 'true'
+        run: echo "::notice::iOS build is unsigned (needs IOS_CERT_P12, IOS_PROVISION_PROFILE, IOS_PROVISION_PROFILE_BROADCAST, IOS_PROVISION_PROFILE_NSE, APPLE_TEAM_ID). It cannot be installed on an iPhone until it is signed."
+      - if: always()
+        name: remove the signing keychain and generated signing config
+        run: |
+          security delete-keychain "$RUNNER_TEMP/lumora-signing.keychain-db" 2>/dev/null || true
+          rm -f app/ios/Flutter/LumoraSigning*.generated.xcconfig "$RUNNER_TEMP"/*.mobileprovision
+
+  android:
+    needs: core-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android" }
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core }
+      - name: no build-machine paths in shipped binaries
+        shell: bash
+        # Rust: remap source paths (panic locations). C: vendored OpenSSL compiles its build
+        # directory into ENGINESDIR/MODULESDIR, so build scripts run in a neutral build-dir
+        # (cargo >= 1.91; final artifacts stay in core/target). No -ffile-prefix-map in
+        # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
+        run: |
+          ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
+          echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
+      - run: cargo install cargo-ndk --locked
+      - name: NASM (libvpx assembly for the x86_64 ABI)
+        run: sudo apt-get update && sudo apt-get install -y nasm
+      # media: calls (audio, video, camera via CameraCapture.kt → JNI) and remote desktop.
+      # Its audio backend links AAudio (API 26 = minSdk) and libc++_shared.
+      - run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -P 26 --link-libcxx-shared -o ../app/android/app/src/main/jniLibs build --release -p lumora-ffi --features media
+        working-directory: core
+        env: { LUMORA_VPX_REQUIRE_ASM: "1" }
+      - name: camera entry point present (no media = no calls video)
+        run: |
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "app/android/app/src/main/jniLibs/$abi/liblumora_ffi.so" | grep -q ' T Java_vn_lumora_lumora_LumoraNative_pushCameraYuv$' \
+              || { echo "::error::$abi core lacks the camera JNI entry"; exit 1; }
+          done
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with: { channel: stable, flutter-version: "${{ env.FLUTTER_VERSION }}", cache: true }
+      # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
+      - run: flutter pub get && dart run pdfrx:remove_wasm_modules
+        working-directory: app
+      - name: version (tag vX.Y.Z → build name X.Y.Z, build number X*10000 + Y*100 + Z)
+        id: ver
+        # Android's versionCode must grow with every release: vMAJOR.MINOR.PATCH → MAJOR*10000 +
+        # MINOR*100 + PATCH (MINOR and PATCH < 100). Branch/PR builds are 0.0.0 (build number 1).
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v="${GITHUB_REF_NAME#v}"
+            if ! [[ "$v" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH"; exit 1
+            fi
+            ma=$((10#${BASH_REMATCH[1]})); mi=$((10#${BASH_REMATCH[2]})); pa=$((10#${BASH_REMATCH[3]}))
+            if [ "$mi" -ge 100 ] || [ "$pa" -ge 100 ]; then echo "::error::MINOR and PATCH must be below 100"; exit 1; fi
+            code=$((ma * 10000 + mi * 100 + pa))
+            if [ "$code" -lt 1 ]; then echo "::error::v0.0.0 cannot be released"; exit 1; fi
+          else
+            v=0.0.0; code=1
+          fi
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "version $v (build $code)"
+      - name: release signing key (docs/src/ops/release.md › Android signing key)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            ks="$RUNNER_TEMP/lumora-release.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ks"
+            keytool -list -keystore "$ks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null \
+              || { echo "::error::the keystore, its password or the key alias in the secrets do not match"; exit 1; }
+            echo "ANDROID_KEYSTORE_PATH=$ks" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "::error::release tag without the Android signing secrets (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD): users could never update from such an APK"
+            exit 1
+          else
+            echo "::notice::no Android signing secrets: this branch build is signed with a throwaway debug key (not installable over a release)"
+          fi
+          # version tags must never fall back to the debug key (build.gradle.kts checks this)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then echo "LUMORA_REQUIRE_RELEASE_SIGNING=1" >> "$GITHUB_ENV"; fi
+      # Universal APK (all three ABIs, for people who do not know their phone's ABI) first, then
+      # one smaller APK per ABI. Each build keeps its own Dart symbol maps.
+      - name: build APKs (universal + per ABI)
+        working-directory: app
+        env:   # read by android/app/build.gradle.kts together with ANDROID_KEYSTORE_PATH
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          bn=(--build-name "${{ steps.ver.outputs.name }}" --build-number "${{ steps.ver.outputs.code }}")
+          out="$RUNNER_TEMP/apk"; mkdir -p "$out"
+          flutter build apk --release $FLUTTER_HARDEN/android-universal "${bn[@]}"
+          cp build/app/outputs/flutter-apk/app-release.apk "$out/app-universal-release.apk"
+          flutter build apk --release --split-per-abi $FLUTTER_HARDEN/android "${bn[@]}"
+          for abi in arm64-v8a armeabi-v7a x86_64; do cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$out/"; done
+          ls -la "$out"
+      - name: verify APK signatures
+        run: |
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          for f in "$RUNNER_TEMP"/apk/*.apk; do
+            certs="$("$apksigner" verify --print-certs "$f")" || { echo "::error::$f: bad signature"; exit 1; }
+            if [ "$GITHUB_REF_TYPE" = tag ] && grep -q 'CN=Android Debug' <<<"$certs"; then
+              echo "::error::$f is signed with the debug key"; exit 1
+            fi
+            echo "$(basename "$f"): $(grep -m1 'certificate SHA-256 digest' <<<"$certs")"
+          done
+      - name: check for leaked build paths
+        run: |
+          if grep -a -q -E 'runner/work|/home/runner' app/android/app/src/main/jniLibs/*/liblumora_ffi.so; then
+            grep -a -o -E 'runner/work|/home/runner' app/android/app/src/main/jniLibs/*/liblumora_ffi.so | sort | uniq -c
+            echo "::error::build paths leaked into liblumora_ffi.so"; exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: symbols-android, path: app/build/symbols, retention-days: 90, if-no-files-found: error }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: lumora-android, path: "${{ runner.temp }}/apk/*.apk", if-no-files-found: error }
+      - if: always()
+        name: remove the decoded keystore
+        run: rm -f "$RUNNER_TEMP/lumora-release.jks"
+
+  push-image:
+    # optional APNs wake-up bridge for iPhones (docs/src/ops/push.md)
+    needs: core-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build -f relay/push/Dockerfile -t lumora-push core
+      - name: smoke test (dry run, no Apple key)
+        run: |
+          docker run -d --name push -p 127.0.0.1:8099:8099 lumora-push --apns-log /data/apns.jsonl
+          for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8099/health && break; sleep 1; done
+          curl -sf http://127.0.0.1:8099/pubkey | grep -q public_key
+          docker rm -f push
+
+  relay-image:
+    needs: core-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build -f relay/vps/Dockerfile -t lumora-relay core
+
+  bot-runner:
+    # "Lumora Bot Runner" = the headless lumorad binary, shipped for bot developers
+    needs: core-tests
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-24.04, out: lumora-bot-runner-linux-x86_64, bin: lumorad }
+          - { os: windows-latest, out: lumora-bot-runner-windows-x86_64.exe, bin: lumorad.exe }
+          - { os: macos-14, out: lumora-bot-runner-macos-universal, bin: lumorad }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with: { targets: "${{ startsWith(matrix.os, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}" }
+      - name: no build-machine paths in shipped binaries
+        shell: bash
+        # Rust: remap source paths (panic locations). C: vendored OpenSSL compiles its build
+        # directory into ENGINESDIR/MODULESDIR, so build scripts run in a neutral build-dir
+        # (cargo >= 1.91; final artifacts stay in core/target). No -ffile-prefix-map in
+        # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
+        run: |
+          ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
+          echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
+      - if: matrix.os == 'ubuntu-24.04'
+        run: sudo apt-get update && sudo apt-get install -y clang libdbus-1-dev
+      - if: matrix.os == 'windows-latest'
+        name: use Strawberry Perl for vendored OpenSSL (SQLCipher)
+        shell: pwsh
+        # openssl-src's Configure breaks with Git-for-Windows' msys perl if that one wins on PATH.
+        run: echo "OPENSSL_SRC_PERL=C:\Strawberry\perl\bin\perl.exe" >> $env:GITHUB_ENV
+      - if: "!startsWith(matrix.os, 'macos')"
+        run: cargo build --release -p lumora-cli
+        working-directory: core
+      - if: "!startsWith(matrix.os, 'macos')"
+        shell: bash
+        run: cp core/target/release/${{ matrix.bin }} ${{ matrix.out }}
+      - if: startsWith(matrix.os, 'macos')
+        name: universal binary (arm64 + x86_64), as the artifact name promises
+        env: { MACOSX_DEPLOYMENT_TARGET: "11.0" }
+        run: |
+          for t in aarch64-apple-darwin x86_64-apple-darwin; do
+            (cd core && cargo build --release -p lumora-cli --target "$t")
+          done
+          lipo -create core/target/aarch64-apple-darwin/release/lumorad core/target/x86_64-apple-darwin/release/lumorad -output "${{ matrix.out }}"
+          lipo "${{ matrix.out }}" -verify_arch arm64 x86_64
+      - name: check for leaked build paths
+        shell: bash
+        run: |
+          if grep -a -q -E 'runner/work|/home/runner|/Users/runner|runneradmin' "${{ matrix.out }}"; then
+            grep -a -o -E 'runner/work|/home/runner|/Users/runner|runneradmin' "${{ matrix.out }}" | sort | uniq -c
+            echo "::error::build paths leaked into ${{ matrix.out }}"; exit 1
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: "${{ matrix.out }}", path: "${{ matrix.out }}" }
+
+  # ------------------------------------------------------------------ app, SDK, website checks
+  app-tests:
+    # Flutter UI against the mock core: static analysis + every widget/unit test. The screenshot
+    # suites (*screenshots_test.dart) only render PNGs for manual review and are left out.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with: { channel: stable, flutter-version: "${{ env.FLUTTER_VERSION }}", cache: true }
+      - run: flutter pub get
+        working-directory: app
+      - run: flutter analyze
+        working-directory: app
+      - name: flutter test (without the screenshot suites)
+        working-directory: app
+        run: |
+          mapfile -t tests < <(find test -name '*_test.dart' ! -name '*screenshots_test.dart' | sort)
+          echo "${#tests[@]} test files"
+          flutter test "${tests[@]}"
+
+  sdk:
+    # Bot SDK static checks: generated API references up to date, pacing maths, every docs
+    # snippet / example compiles, same version + LICENSE/CHANGELOG copies in both packages.
+    # (The end-to-end SDK suite, sdk/tests/test_features.py, needs lumorad: run it locally.)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: python3 sdk/tools/gen_reference.py --check
+      - name: static checks of sdk/tests/test_features.py
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "sdk/tests")
+          import test_features as t
+          for check in (t.check_references, t.check_pacer, t.check_snippets, t.check_versions):
+              check()
+              print("ok", check.__name__)
+          PY
+
+  website:
+    # The site is static and committed: regenerating it must not change anything, and the
+    # published copy (dist/landing) must pass the link / CSP / wording checks.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: python3 -m pip install --user --break-system-packages "markdown==3.11.2"
+      - run: python3 branding/tools/build_pages.py
+      - name: generated pages are up to date (run branding/tools/build_pages.py and commit)
+        run: |
+          changes="$(git status --porcelain -- landing sdk)"
+          if [ -n "$changes" ]; then
+            echo "$changes"; git --no-pager diff --stat -- landing sdk
+            echo "::error::landing/ or sdk/ differ from what build_pages.py generates"; exit 1
+          fi
+      - run: bash branding/tools/make_dist.sh
+      - run: python3 branding/tools/check_dist.py dist/landing
+
+  # ------------------------------------------------------------------ fuzz regressions
+  # Stable Rust: replays every stored crash input (core/fuzz/regressions) and runs a short
+  # seeded random search over all 12 targets. Long libFuzzer runs: docs/src/dev/testing.md.
+  fuzz-regressions:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with: { workspaces: core/fuzz }
+      - run: sudo apt-get update && sudo apt-get install -y clang
+      - run: cargo test --release --locked
+        working-directory: core/fuzz
+
+  # ------------------------------------------------------------------ release (tags only)
+  # Collects the public artifacts of every platform job into one DRAFT release in the public
+  # binaries-only repo (hoangtuvungcao/get_lumora), with SHA256SUMS, a Sigstore (cosign
+  # keyless, GitHub OIDC) signature of SHA256SUMS and GitHub build-provenance attestations.
+  # Never published here: symbols-* (Dart symbol maps), iOS builds (unsigned IPA, App Store IPA
+  # → TestFlight), the xcframework. The exact file list below is what landing/releases.json and
+  # branding/tools/update_releases.py expect. How users verify: docs/src/ops/release.md.
+  release:
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    # iOS is not published here (TestFlight), so it does not gate the release.
+    needs: [core-tests, app-tests, sdk, website, desktop, macos, android, bot-runner]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write       # Sigstore keyless signing + attestations (OIDC)
+      attestations: write
+    env:
+      TAG: ${{ github.ref_name }}
+      PUBLIC_REPO: hoangtuvungcao/get_lumora
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with: { sparse-checkout: packaging/release-repo }
+      - name: legal texts are final (no draft markers or notes for the owner)
+        run: |
+          bad=0
+          for f in packaging/release-repo/LICENSE.md packaging/release-repo/THIRD_PARTY_NOTICES.md; do
+            test -s "$f" || { echo "::error::$f is missing"; bad=1; continue; }
+            # case-sensitive TODO/DRAFT: license texts legitimately say "the drafter"
+            if grep -nE '\bTODO\b|\bDRAFT\b|BẢN NHÁP|[Bb]ản nháp|\bTBD\b' "$f" || grep -niE 'notes for the owner|ghi chú cho chủ' "$f"; then
+              echo "::error::$f still contains draft markers"; bad=1
+            fi
+          done
+          exit "$bad"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { path: artifacts, pattern: "lumora-*" }
+      - name: package the public files
+        run: |
+          set -euo pipefail
+          A=artifacts; D=dist; V="${TAG#v}"; mkdir -p "$D"
+          find "$A" -maxdepth 2 | sort | head -100
+          one() { # exactly one existing file matching the glob in $1
+            local m=() f
+            for f in $1; do [ -e "$f" ] && m+=("$f"); done
+            [ "${#m[@]}" -eq 1 ] || { echo "::error::expected exactly one file for $1, found ${#m[@]}" >&2; return 1; }
+            printf '%s' "${m[0]}"
+          }
+          # Linux: .tar.gz, .deb and AppImage were packaged in the desktop job (executable bits kept)
+          for f in "linux-x86_64.tar.gz" "linux-amd64.deb" "linux-x86_64.AppImage"; do
+            cp "$(one "$A/lumora-linux-packages/Lumora-$TAG-$f")" "$D/"
+          done
+          # Windows: installer + portable zip (one top-level folder)
+          cp "$(one "$A/lumora-windows-installer/*.exe")" "$D/Lumora-$TAG-windows-x86_64-setup.exe"
+          test -f "$A/lumora-windows/lumora.exe"
+          mkdir -p "$RUNNER_TEMP/zip" && cp -a "$A/lumora-windows" "$RUNNER_TEMP/zip/Lumora-$TAG-windows-x86_64"
+          (cd "$RUNNER_TEMP/zip" && zip -qr9 "$GITHUB_WORKSPACE/$D/Lumora-$TAG-windows-x86_64-portable.zip" "Lumora-$TAG-windows-x86_64")
+          # macOS: universal .dmg (signed + notarized when the Apple secrets exist, else unsigned)
+          cp "$(one "$A/lumora-macos/*.dmg")" "$D/Lumora-$TAG-macos-universal.dmg"
+          MAC_SIGNING="$(cat "$A/lumora-macos/macos-signing.txt")"
+          echo "MAC_SIGNING=$MAC_SIGNING" >> "$GITHUB_ENV"
+          # Android: universal + one APK per ABI
+          for abi in universal arm64-v8a armeabi-v7a x86_64; do
+            cp "$(one "$A/lumora-android/app-$abi-release.apk")" "$D/Lumora-$TAG-android-$abi.apk"
+          done
+          # Lumora Bot Runner (headless lumorad)
+          for p in linux-x86_64 windows-x86_64.exe macos-universal; do
+            cp "$(one "$A/lumora-bot-runner-$p/lumora-bot-runner-$p")" "$D/Lumora-bot-runner-$TAG-$p"
+          done
+          cp packaging/release-repo/LICENSE.md packaging/release-repo/THIRD_PARTY_NOTICES.md "$D/"
+          # exactly the published file list (landing/releases.json uses these names)
+          expected="$(printf '%s\n' \
+            "Lumora-$TAG-windows-x86_64-setup.exe" "Lumora-$TAG-windows-x86_64-portable.zip" \
+            "Lumora-$TAG-macos-universal.dmg" \
+            "Lumora-$TAG-linux-x86_64.AppImage" "Lumora-$TAG-linux-amd64.deb" "Lumora-$TAG-linux-x86_64.tar.gz" \
+            "Lumora-$TAG-android-universal.apk" "Lumora-$TAG-android-arm64-v8a.apk" \
+            "Lumora-$TAG-android-armeabi-v7a.apk" "Lumora-$TAG-android-x86_64.apk" \
+            "Lumora-bot-runner-$TAG-linux-x86_64" "Lumora-bot-runner-$TAG-windows-x86_64.exe" \
+            "Lumora-bot-runner-$TAG-macos-universal" \
+            LICENSE.md THIRD_PARTY_NOTICES.md | LC_ALL=C sort)"
+          actual="$(find "$D" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+          if [ "$expected" != "$actual" ]; then
+            diff <(echo "$expected") <(echo "$actual") || true
+            echo "::error::dist/ does not match the expected release files"; exit 1
+          fi
+          # nothing private may slip in (belt and braces; the list above is exact)
+          if find "$D" -mindepth 1 -printf '%f\n' | grep -Ei 'symbols|xcframework|\.ipa$|-ios[-.]|\.(map|sym|pdb|dSYM)$'; then
+            echo "::error::private file in dist"; exit 1
+          fi
+          for f in "$D"/*; do test -s "$f" || { echo "::error::$f is empty"; exit 1; }; done
+          (cd "$D" && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
+          echo "V=$V" >> "$GITHUB_ENV"
+      - name: build provenance attestation (SLSA, GitHub)
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        # Attestations in a PRIVATE repo need GitHub Enterprise Cloud; on other plans this step
+        # fails and the cosign signature below is the provenance proof users check.
+        continue-on-error: true
+        with: { subject-path: "dist/*" }
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - name: sign SHA256SUMS (cosign keyless, no key to manage)
+        run: |
+          cd dist
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+      - name: release notes
+        run: |
+          case "$MAC_SIGNING" in
+            notarized) MAC_VI="đã ký và được Apple công chứng (notarized)"; MAC_EN="signed with Developer ID and notarized by Apple" ;;
+            signed)    MAC_VI="đã ký Developer ID nhưng chưa công chứng: lần đầu mở, vào Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Vẫn mở"; MAC_EN="signed with Developer ID, not notarized: on first launch go to System Settings › Privacy & Security › Open Anyway" ;;
+            *)         MAC_VI="chưa ký: lần đầu mở, vào Cài đặt hệ thống › Quyền riêng tư & Bảo mật › Vẫn mở"; MAC_EN="unsigned: on first launch go to System Settings › Privacy & Security › Open Anyway" ;;
+          esac
+          cat > notes.md <<NOTES
+          Lumora $TAG
+
+          | | Tiếng Việt | English |
+          |---|---|---|
+          | Windows 10/11 | \`Lumora-$TAG-windows-x86_64-setup.exe\` (cài đặt; cài im lặng: \`/VERYSILENT /SUPPRESSMSGBOXES\`) hoặc bản \`portable.zip\` | \`…-setup.exe\` (installer; silent: \`/VERYSILENT /SUPPRESSMSGBOXES\`) or the \`portable.zip\` |
+          | macOS 11+ | \`Lumora-$TAG-macos-universal.dmg\` – $MAC_VI | \`…-macos-universal.dmg\` – $MAC_EN |
+          | Linux x86_64 (glibc 2.39+: Ubuntu 24.04, Debian 13, Fedora 40 trở lên / or newer) | \`.deb\` (Debian/Ubuntu), \`.AppImage\` (các bản phân phối khác) hoặc \`.tar.gz\` | \`.deb\` (Debian/Ubuntu), \`.AppImage\` (other distros) or \`.tar.gz\` |
+          | Android 8+ | \`android-arm64-v8a.apk\` cho hầu hết điện thoại; không chắc thì chọn \`android-universal.apk\` | \`android-arm64-v8a.apk\` for most phones; if unsure, \`android-universal.apk\` |
+          | Bot developers | \`Lumora-bot-runner-$TAG-*\` | \`Lumora-bot-runner-$TAG-*\` |
+
+          License: [LICENSE.md](LICENSE.md) (proprietary freeware) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+
+          ### Verify your download / Kiểm tra tệp tải về
+          \`\`\`bash
+          sha256sum -c SHA256SUMS --ignore-missing          # macOS: shasum -a 256 -c SHA256SUMS --ignore-missing
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \\
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/build.yml@${GITHUB_REF}" \\
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
+          \`\`\`
+          The signature proves SHA256SUMS was produced by the official Lumora build workflow for $TAG.
+          Chữ ký chứng minh SHA256SUMS do quy trình build chính thức của Lumora tạo ra cho bản $TAG.
+          NOTES
+      - name: create the draft release in the public repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::error::secret RELEASE_REPO_TOKEN is not set (fine-grained PAT: contents read/write on $PUBLIC_REPO)"; exit 1; fi
+          if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$PUBLIC_REPO" --clobber
+          else
+            gh release create "$TAG" dist/* --repo "$PUBLIC_REPO" --draft --title "Lumora $TAG" --notes-file notes.md
+          fi
+          echo "::notice::draft release $TAG created in $PUBLIC_REPO; review and publish it there"

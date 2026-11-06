@@ -1,0 +1,53 @@
+# Lumora relay + Caddy (automatic HTTPS). Run from this folder:
+#   cp .env.example .env && $EDITOR .env && docker compose up -d --build
+name: lumora-relay
+
+services:
+  relay:
+    build:
+      context: ../../core
+      dockerfile: ../relay/vps/Dockerfile
+    image: lumora-relay:local
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LUMORA_RELAY_LISTEN: 0.0.0.0:8443
+      LUMORA_RELAY_STUN_PORT: "3478"
+      LUMORA_RELAY_TRUST_PROXY: "true"   # only Caddy can reach :8443
+      LUMORA_RELAY_MAILBOX_FILE: /data/mailbox.bin
+    expose:
+      - "8443"
+    ports:
+      - "${STUN_PORT:-3478}:3478/udp"    # STUN goes straight to the relay (Caddy is TCP/HTTP only)
+    volumes:
+      - relay-data:/data
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [relay]
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:

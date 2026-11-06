@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">Kết nối nền</string>
+    <string name="notif_connected">Lumora đang kết nối</string>
+    <string name="notif_connected_text">Giữ tin nhắn và cuộc gọi luôn kết nối khi chạy nền</string>
+    <string name="notif_sharing">Lumora đang chia sẻ màn hình</string>
+    <string name="notif_sharing_text">Phiên điều khiển từ xa bạn đã chấp nhận đang hoạt động. Mở Lumora để kết thúc.</string>
+    <string name="notif_call">Đang trong cuộc gọi</string>
+    <string name="notif_call_text">Lumora giữ cuộc gọi tiếp tục khi ứng dụng chạy nền.</string>
+    <string name="notif_consent">Cho phép chia sẻ màn hình</string>
+    <string name="notif_consent_text">Phiên điều khiển từ xa bạn đã chấp nhận đang chờ xem màn hình. Chạm để mở Lumora và cho phép.</string>
+    <string name="a11y_service_label">Lumora – Điều khiển từ xa</string>
+    <string name="a11y_service_description">Cho phép người bạn đã đồng ý trong Lumora chạm, vuốt và gõ chữ trên điện thoại này trong phiên hỗ trợ từ xa. Lumora chỉ thao tác khi có phiên bạn đã chấp nhận, và không bao giờ đọc hay lưu nội dung màn hình của bạn.</string>
+    <string name="a11y_title">Cho phép điều khiển từ xa</string>
+    <string name="a11y_why">Android chỉ cho ứng dụng chạm và gõ chữ thay bạn thông qua dịch vụ Trợ năng. Hãy bật “Lumora – Điều khiển từ xa” để người đang kết nối có thể thao tác trên điện thoại này. Chỉ xem màn hình thì không cần bật.</string>
+    <string name="a11y_steps_title">Cách bật</string>
+    <string name="a11y_step1">Bấm “Mở Cài đặt Trợ năng” bên dưới.</string>
+    <string name="a11y_step2">Mở mục “Ứng dụng đã cài đặt” (hoặc “Ứng dụng đã tải xuống”) rồi chọn “Lumora – Điều khiển từ xa”.</string>
+    <string name="a11y_step3">Gạt công tắc sang Bật và xác nhận “Cho phép”.</string>
+    <string name="a11y_step4">Quay lại Lumora – màn hình này sẽ tự đóng.</string>
+    <string name="a11y_restricted">Nếu công tắc bị mờ (“Cài đặt bị hạn chế”, Android 13+ với ứng dụng không cài từ cửa hàng): mở Thông tin ứng dụng → menu ⋮ → “Cho phép cài đặt bị hạn chế”, rồi thử lại.</string>
+    <string name="a11y_privacy">Quyền riêng tư: chỉ nhận thao tác từ người xem của phiên bạn đã đồng ý, qua kết nối mã hoá đầu cuối. Bạn có thể tắt dịch vụ bất cứ lúc nào.</string>
+    <string name="a11y_open_settings">Mở Cài đặt Trợ năng</string>
+    <string name="a11y_open_app_info">Mở Thông tin ứng dụng</string>
+    <string name="a11y_later">Để sau</string>
+    <string name="a11y_enabled">Đã bật điều khiển từ xa ✓</string>
+    <string name="notif_ch_messages">Tin nhắn</string>
+    <string name="notif_ch_alerts">Cuộc gọi và yêu cầu</string>
+</resources>

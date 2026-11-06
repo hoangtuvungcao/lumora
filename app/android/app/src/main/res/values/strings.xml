@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notif_channel">Background connection</string>
+    <string name="notif_connected">Lumora is staying connected</string>
+    <string name="notif_connected_text">Keeping chats and calls connected in the background</string>
+    <string name="notif_sharing">Lumora is sharing your screen</string>
+    <string name="notif_sharing_text">A remote session you accepted is active. Open Lumora to end it.</string>
+    <string name="notif_call">Call in progress</string>
+    <string name="notif_call_text">Lumora keeps your call going while the app is in the background.</string>
+    <string name="notif_consent">Allow screen sharing</string>
+    <string name="notif_consent_text">A remote session you accepted is waiting to see your screen. Tap to open Lumora and allow it.</string>
+    <string name="a11y_service_label">Lumora – Remote control</string>
+    <string name="a11y_service_description">Lets a person you approved in Lumora tap, swipe and type on this phone during a remote-support session. Lumora only acts while a session you accepted is active, and never reads or stores what is on your screen.</string>
+    <string name="a11y_title">Allow remote control</string>
+    <string name="a11y_why">Android only lets apps perform taps and typing for you through an Accessibility service. Turn on “Lumora – Remote control” so the person you are connected with can operate this phone. Screen viewing works without it.</string>
+    <string name="a11y_steps_title">How to turn it on</string>
+    <string name="a11y_step1">Tap “Open Accessibility settings” below.</string>
+    <string name="a11y_step2">Open “Installed apps” (or “Downloaded apps”) and choose “Lumora – Remote control”.</string>
+    <string name="a11y_step3">Switch it on and confirm with “Allow”.</string>
+    <string name="a11y_step4">Come back to Lumora – this screen closes by itself.</string>
+    <string name="a11y_restricted">If the switch is greyed out (“Restricted setting”, Android 13+ for apps not installed from a store): open App info → ⋮ menu → “Allow restricted settings”, then try again.</string>
+    <string name="a11y_privacy">Privacy: input is only accepted from the viewer of a session you approved, over an end-to-end encrypted connection. You can turn the service off at any time.</string>
+    <string name="a11y_open_settings">Open Accessibility settings</string>
+    <string name="a11y_open_app_info">Open App info</string>
+    <string name="a11y_later">Not now</string>
+    <string name="a11y_enabled">Remote control is enabled ✓</string>
+    <string name="notif_ch_messages">Messages</string>
+    <string name="notif_ch_alerts">Calls and requests</string>
+</resources>

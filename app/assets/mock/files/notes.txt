@@ -1,0 +1,20 @@
+Ghi chú họp nhóm — thứ Năm 05/11
+
+Tham dự: An, Bình, Chi, Dũng
+
+1. Bản phát hành 1.4
+   - Xem trước PDF và mã nguồn trước khi tải: xong phần lõi.
+   - Trình xem trong ứng dụng: còn phần tìm kiếm trong PDF.
+   - Ngày phát hành dự kiến: 20/11.
+
+2. Hiệu năng
+   - Gửi tệp 2 GB qua mạng LAN: 46 MB/s (tăng 38%).
+   - Cần đo thêm trên Android 10 trở xuống.
+
+3. Việc cần làm
+   [ ] An: viết hướng dẫn sử dụng trình xem tệp
+   [ ] Bình: kiểm thử trên Windows 11 ARM
+   [x] Chi: thiết kế lại thẻ tệp trong khung chat
+   [ ] Dũng: rà soát bảo mật (không chạy JavaScript trong PDF)
+
+Buổi họp tiếp theo: thứ Hai 09/11, 9:30.

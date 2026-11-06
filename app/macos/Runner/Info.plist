@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Privacy strings (English base; Vietnamese in vi.lproj/InfoPlist.strings). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Lumora uses the microphone for calls and voice messages.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Lumora uses the camera so the other person can see you during video calls.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Lumora shares your location only when you choose to send it to a contact.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Lumora shares your location only when you choose to send it to a contact.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Lumora connects directly to your contacts' devices on the same network, so messages, calls and files stay fast and never leave your network.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Lumora uses System Events only when someone you allowed to control this Mac asks to log out or restart it.</string>
+	<!-- Screen Recording and Accessibility have no Info.plist key: macOS asks in
+	     System Settings › Privacy & Security the first time Lumora shares the
+	     screen or is remote-controlled (see docs/src/platforms/apple.md). -->
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>vi</string>
+	</array>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string></string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSMainNibFile</key>
+	<string>MainMenu</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

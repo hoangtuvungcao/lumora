@@ -1,0 +1,8 @@
+/* Chuỗi quyền riêng tư iOS hiển thị (Tiếng Việt). Giữ đồng bộ với en.lproj và Info.plist. */
+"CFBundleDisplayName" = "Lumora";
+"NSCameraUsageDescription" = "Lumora dùng camera để người kia thấy bạn trong cuộc gọi video, và để quét mã QR khi liên kết thiết bị.";
+"NSMicrophoneUsageDescription" = "Lumora dùng micrô cho cuộc gọi và tin nhắn thoại.";
+"NSLocalNetworkUsageDescription" = "Lumora kết nối thẳng tới thiết bị của bạn bè trong cùng mạng Wi-Fi, để tin nhắn, cuộc gọi và tệp đi nhanh và không rời khỏi mạng nhà bạn.";
+"NSPhotoLibraryUsageDescription" = "Lumora cho phép bạn chọn ảnh và video để gửi cho bạn bè.";
+"NSPhotoLibraryAddUsageDescription" = "Lumora lưu ảnh và video bạn nhận được vào thư viện khi bạn yêu cầu.";
+"NSLocationWhenInUseUsageDescription" = "Lumora chỉ chia sẻ vị trí khi bạn chọn gửi cho một người liên hệ.";
