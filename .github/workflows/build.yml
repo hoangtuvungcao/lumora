@@ -112,6 +112,13 @@ jobs:
         # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
         run: |
           ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          # Opus (built from source with CMake) keeps __FILE__ in its hardening checks, so the
+          # registry path of every crate built from C sources lands in the binary: give cargo a
+          # neutral home (a real directory; a symlink gets resolved back to the runner path).
+          if [ "$RUNNER_OS" = Windows ]; then
+            if [ "$RUNNER_OS" = Windows ]; then nh='C:\c'; mkdir -p /c/c; else nh=/tmp/c; mkdir -p "$nh"; fi
+            echo "CARGO_HOME=$nh" >> "$GITHUB_ENV"; echo "$nh/bin" >> "$GITHUB_PATH"; ch="$nh"
+          fi
           echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
           echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
@@ -551,6 +558,13 @@ jobs:
         # CFLAGS: OpenSSL also embeds its CFLAGS ("compiler: …"), which would leak the path.
         run: |
           ws="$GITHUB_WORKSPACE"; ch="${CARGO_HOME:-$HOME/.cargo}"; rh="${RUSTUP_HOME:-$HOME/.rustup}"
+          # Opus (built from source with CMake) keeps __FILE__ in its hardening checks, so the
+          # registry path of every crate built from C sources lands in the binary: give cargo a
+          # neutral home (a real directory; a symlink gets resolved back to the runner path).
+          if true; then
+            if [ "$RUNNER_OS" = Windows ]; then nh='C:\c'; mkdir -p /c/c; else nh=/tmp/c; mkdir -p "$nh"; fi
+            echo "CARGO_HOME=$nh" >> "$GITHUB_ENV"; echo "$nh/bin" >> "$GITHUB_PATH"; ch="$nh"
+          fi
           echo "RUSTFLAGS=--remap-path-prefix=$ws=/lumora --remap-path-prefix=$ch=/cargo --remap-path-prefix=$rh=/rustup" >> "$GITHUB_ENV"
           if [ "$RUNNER_OS" = Windows ]; then bd='C:\lumora-build'; else bd=/tmp/lumora-build; fi
           echo "CARGO_BUILD_BUILD_DIR=$bd" >> "$GITHUB_ENV"
