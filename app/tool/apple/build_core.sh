@@ -75,6 +75,20 @@ build() {
 
 out_of() { echo "$TARGET_DIR/$1/$PROFILE/$2"; }
 
+# aec-rs-sys links speexdsp as a plain `-lspeexdsp` (not `static=`), so rustc does not bundle
+# it into a staticlib and Xcode cannot find it: fold its libspeexdsp.a into ours instead.
+bundle_speexdsp() { # <rust-target> <liblumora_ffi.a>
+  local tgt="$1" lib="$2" speex=""
+  for d in "${CARGO_BUILD_BUILD_DIR:-}" "$TARGET_DIR"; do
+    [ -n "$d" ] && [ -d "$d/$tgt/$PROFILE/build" ] || continue
+    speex="$(find "$d/$tgt/$PROFILE/build" -path '*aec-rs-sys-*/out/lib/libspeexdsp.a' -print 2>/dev/null | head -n 1)"
+    [ -n "$speex" ] && break
+  done
+  [ -n "$speex" ] || die "libspeexdsp.a for $tgt not found (aec-rs-sys build output)"
+  libtool -static -o "$lib.tmp" "$lib" "$speex" && mv "$lib.tmp" "$lib"
+  echo "==> bundled $(basename "$speex") into $lib"
+}
+
 require_symbols() { # <binary> : the Dart bindings look these up by name
   local bin="$1" missing=0 syms
   # list once: `nm | grep -q` under pipefail fails on big static archives (grep exits at the
@@ -98,12 +112,14 @@ ios)
   build "$DEVICE" staticlib
   dev_lib="$(out_of "$DEVICE" liblumora_ffi.a)"
   [ -f "$dev_lib" ] || die "missing $dev_lib"
+  bundle_speexdsp "$DEVICE" "$dev_lib"
   lipo -info "$dev_lib"
   require_symbols "$dev_lib"
 
   sim_libs=()
   for t in "${SIMS[@]}"; do
     build "$t" staticlib
+    bundle_speexdsp "$t" "$(out_of "$t" liblumora_ffi.a)"
     sim_libs+=("$(out_of "$t" liblumora_ffi.a)")
   done
   sim_lib="$TARGET_DIR/apple-ios-sim/$PROFILE/liblumora_ffi.a"
@@ -122,6 +138,7 @@ ios)
   #    code stripping would drop them from the app.
   native="$(grep -o 'native-static-libs: .*' "$TARGET_DIR/apple-logs/$DEVICE.log" | tail -1 | sed 's/^native-static-libs: //')"
   [ -n "$native" ] || die "rustc did not report native-static-libs"
+  native="$(sed -E 's/(^| )-lspeexdsp( |$)/ /g; s/  +/ /g; s/^ //; s/ $//' <<<"$native")" # bundled above
   # (nm exits non-zero on the archive's compiler_builtins member: take its listing anyway)
   dev_syms="$(nm -gU "$dev_lib" 2>/dev/null || true)"
   keep="$(awk '$2 == "T" && $3 ~ /^_lumora_/ { print "-Wl,-u," $3 }' <<<"$dev_syms" | sort -u | tr '\n' ' ')"

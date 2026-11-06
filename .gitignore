@@ -56,3 +56,4 @@ keystore.json
 .idea/
 .DS_Store
 *.swp
+*detect_compiler_family.o

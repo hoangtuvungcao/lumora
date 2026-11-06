@@ -528,6 +528,16 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
+      # three release ABIs of the Rust core + Gradle + Flutter overflow the runner's free disk:
+      # drop preinstalled toolchains this job never uses (keeps the Android SDK and Java)
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost /usr/local/lib/node_modules /usr/local/share/powershell /usr/share/miniconda \
+            /opt/az /usr/local/share/chromium /opt/microsoft /opt/google/chrome /usr/lib/firefox
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with: { targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android" }

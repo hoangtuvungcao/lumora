@@ -53,7 +53,7 @@ declare -A PKG=(
   [libstdc++.so.6]=libstdc++6 [libgcc_s.so.1]=libgcc-s1
   [libgtk-3.so.0]="libgtk-3-0t64 | libgtk-3-0" [libgdk-3.so.0]="libgtk-3-0t64 | libgtk-3-0"
   [libpangocairo-1.0.so.0]="libpangocairo-1.0-0" [libpango-1.0.so.0]="libpango-1.0-0"
-  [libatk-1.0.so.0]="libatk1.0-0t64 | libatk1.0-0" [libcairo.so.2]=libcairo2
+  [libatk-1.0.so.0]="libatk1.0-0t64 | libatk1.0-0" [libcairo.so.2]=libcairo2 [libcairo-gobject.so.2]=libcairo-gobject2
   [libgdk_pixbuf-2.0.so.0]="libgdk-pixbuf-2.0-0"
   [libgio-2.0.so.0]="libglib2.0-0t64 | libglib2.0-0" [libgobject-2.0.so.0]="libglib2.0-0t64 | libglib2.0-0"
   [libglib-2.0.so.0]="libglib2.0-0t64 | libglib2.0-0" [libgmodule-2.0.so.0]="libglib2.0-0t64 | libglib2.0-0"

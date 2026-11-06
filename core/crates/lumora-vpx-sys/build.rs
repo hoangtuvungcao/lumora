@@ -72,6 +72,13 @@ fn main() {
         let (isa, file) = line.split_once(' ').unwrap();
         groups.entry(isa.to_string()).or_default().push(src.join(file));
     }
+    // Win64 has no inline asm: vpx_ports/x86.h calls the x87 control-word helpers that
+    // libvpx's own configure adds only for Windows (vpx_winx64_fldcw / vpx_winx64_fstcw).
+    if os == "windows" {
+        if let Some(asm) = groups.get_mut("asm") {
+            asm.push(src.join("vpx_ports/float_control_word.asm"));
+        }
+    }
 
     let base = || {
         let mut b = cc::Build::new();
