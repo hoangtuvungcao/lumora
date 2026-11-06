@@ -11,7 +11,8 @@ permissions:
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # a newer push to a branch supersedes the running build; release tags always run to the end
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -79,7 +80,6 @@ jobs:
 
   desktop:
     # Linux + Windows. macOS has its own job below (universal core, signing, notarization, .dmg).
-    needs: core-tests
     strategy:
       fail-fast: false
       matrix:
@@ -218,7 +218,6 @@ jobs:
   # unsigned (ad-hoc) build; when the Developer ID secrets exist it is signed with
   # the hardened runtime, notarized and stapled. See docs/src/platforms/apple.md.
   macos:
-    needs: core-tests
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -356,7 +355,6 @@ jobs:
   # only after re-signing). With the signing secrets: a signed App Store IPA, and
   # on version tags an upload to TestFlight.
   ios:
-    needs: core-tests
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -525,7 +523,6 @@ jobs:
           rm -f app/ios/Flutter/LumoraSigning*.generated.xcconfig "$RUNNER_TEMP"/*.mobileprovision
 
   android:
-    needs: core-tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -648,7 +645,6 @@ jobs:
 
   push-image:
     # optional APNs wake-up bridge for iPhones (docs/src/ops/push.md)
-    needs: core-tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -661,7 +657,6 @@ jobs:
           docker rm -f push
 
   relay-image:
-    needs: core-tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -669,7 +664,6 @@ jobs:
 
   bot-runner:
     # "Lumora Bot Runner" = the headless lumorad binary, shipped for bot developers
-    needs: core-tests
     strategy:
       matrix:
         include:
