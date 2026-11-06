@@ -321,6 +321,11 @@ fn predicted_ports(their: &ConnInfo, both_sequential: bool) -> Vec<SocketAddr> {
 }
 
 /// Identical on both sides of a QUIC connection (TLS keying-material exporter).
+/// The connection runs over IPv6 (v4-mapped addresses count as IPv4).
+fn direct_v6(c: &quinn::Connection) -> bool {
+    crate::util::canon(c.remote_address()).is_ipv6()
+}
+
 fn conn_tiebreak_id(c: &quinn::Connection) -> [u8; 16] {
     let mut out = [0u8; 16];
     let _ = c.export_keying_material(&mut out, b"lumora-conn-tiebreak", b"");
@@ -1315,6 +1320,12 @@ impl Node {
                     false
                 } else if path.rank() != old.path.rank() {
                     old.path.rank() < path.rank()
+                } else if old.path == PathKind::Direct && path == PathKind::Direct && direct_v6(&old.conn) != direct_v6(&conn) {
+                    // Two direct paths over different families (both punched at once): keep the
+                    // IPv6 one — no NAT on it to time out or rebind. Both ends see the same family
+                    // for a given connection, so they still agree (NAT lab v6-pc used to pick
+                    // IPv4 about one time in nine through the random tiebreak below).
+                    direct_v6(&old.conn)
                 } else {
                     conn_tiebreak_id(&old.conn) <= conn_tiebreak_id(&conn)
                 };
