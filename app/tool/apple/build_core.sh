@@ -18,6 +18,11 @@
 # dylib dependencies) and fails loudly, so CI cannot ship a half-built app.
 set -euo pipefail
 
+# Old bindgen (used by aec-rs-sys) hands clang `arm64-apple-ios-sim`, which Xcode 26's clang
+# rejects; bindgen keeps a --target given here instead of inventing one.
+export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="${BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim:---target=arm64-apple-ios-simulator}"
+export BINDGEN_EXTRA_CLANG_ARGS_x86_64_apple_ios="${BINDGEN_EXTRA_CLANG_ARGS_x86_64_apple_ios:---target=x86_64-apple-ios-simulator}"
+
 MODE="${1:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CORE="$ROOT/core"
