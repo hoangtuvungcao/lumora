@@ -72,7 +72,12 @@ require_symbols() { # <binary> : the Dart bindings look these up by name
   local bin="$1" missing=0 syms
   # list once: `nm | grep -q` under pipefail fails on big static archives (grep exits at the
   # first match, nm dies of SIGPIPE and the pipeline counts as failed)
-  syms="$(nm -gU "$bin" 2>/dev/null)" || die "nm cannot read $bin"
+  # Apple nm exits non-zero on archive members it cannot parse (it still lists the rest):
+  # judge by the symbols, and show what it complained about
+  local err="${TMPDIR:-/tmp}/lumora-nm.$$.err"
+  syms="$(nm -gU "$bin" 2>"$err" || true)"
+  [ -s "$err" ] && { echo "nm notes for $bin:" >&2; head -n 5 "$err" >&2; }
+  rm -f "$err"
   for s in lumora_start lumora_request lumora_next_event lumora_free lumora_stop; do
     grep -q " _${s}\$" <<<"$syms" || { echo "missing symbol _${s} in $bin" >&2; missing=1; }
   done
