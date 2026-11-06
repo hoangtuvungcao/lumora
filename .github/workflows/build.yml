@@ -406,7 +406,14 @@ jobs:
       # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
       - run: flutter pub get && dart run pdfrx:remove_wasm_modules
         working-directory: app
-      - run: flutter build ios --release --no-codesign $FLUTTER_HARDEN/ios --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ github.run_number }}"
+      - run: |
+          flutter build ios --release --no-codesign $FLUTTER_HARDEN/ios --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ github.run_number }}" || {
+            # flutter hides the linker's details: show them from Xcode's own build logs
+            for f in ~/Library/Developer/Xcode/DerivedData/*/Logs/Build/*.xcactivitylog; do
+              gunzip -c "$f" 2>/dev/null | strings | grep -E -A12 "duplicate symbol|Undefined symbols|ld: " | head -80 || true
+            done
+            exit 1
+          }
         working-directory: app
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: { name: symbols-ios, path: app/build/symbols, retention-days: 90, if-no-files-found: error }
