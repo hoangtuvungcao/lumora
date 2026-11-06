@@ -66,9 +66,9 @@ Pushing a tag `vX.Y.Z` to the private source repo runs every job and then the `r
    | `Lumora-vX.Y.Z-linux-amd64.deb` | Debian/Ubuntu package (installs to `/opt/lumora`, `/usr/bin/lumora`, menu entry + icons) |
    | `Lumora-vX.Y.Z-linux-x86_64.AppImage` | any other distribution; static type2 runtime, so no libfuse2 needed |
    | `Lumora-vX.Y.Z-linux-x86_64.tar.gz` | the plain Flutter bundle in one folder |
-   | `Lumora-vX.Y.Z-android-arm64-v8a.apk` | Android 8+, almost every phone of the last years — recommend this one |
+   | `Lumora-vX.Y.Z-android-universal.apk` | all three ABIs in one — **the recommended download** (some phones, e.g. Xiaomi with a 32-bit userspace, refuse the arm64-only APK with "package appears to be invalid") |
+   | `Lumora-vX.Y.Z-android-arm64-v8a.apk` | lighter build for recent 64-bit phones |
    | `Lumora-vX.Y.Z-android-armeabi-v7a.apk` / `…-android-x86_64.apk` | old 32-bit phones / emulators and Chromebooks |
-   | `Lumora-vX.Y.Z-android-universal.apk` | all three ABIs in one (bigger); for people who don't know their phone |
    | `Lumora-bot-runner-vX.Y.Z-{linux-x86_64, windows-x86_64.exe, macos-universal}` | headless `lumorad` for bot developers |
    | `LICENSE.md`, `THIRD_PARTY_NOTICES.md` | EULA (proprietary freeware) and open-source notices |
    | `SHA256SUMS`, `SHA256SUMS.sigstore.json` | checksums and their Sigstore signature |

@@ -153,51 +153,59 @@
       "name": "Android",
       "icon": "os-android",
       "simple": {
-        "vi": "Điện thoại, máy tính bảng Android 8 trở lên",
-        "en": "Android 8 or later phones and tablets"
+        "vi": "Android 8 trở lên · một bản cài được trên mọi máy",
+        "en": "Android 8 or later · one file for every device"
       },
       "requirements": {
-        "vi": "Android 8.0+ · arm64-v8a (hầu hết điện thoại), armeabi-v7a (máy cũ), x86_64",
-        "en": "Android 8.0+ · arm64-v8a (most phones), armeabi-v7a (older phones), x86_64"
+        "vi": "Android 8.0 trở lên · không chắc thì chọn bản “Mọi điện thoại Android” — cài được trên mọi máy",
+        "en": "Android 8.0 or later · if unsure, pick “All Android phones” — it installs on every device"
       },
       "files": [
         {
-          "id": "android-arm64",
-          "label": {
-            "vi": "Hầu hết điện thoại (arm64)",
-            "en": "Most phones (arm64)"
-          },
-          "ext": ".apk",
-          "arch": "arm64-v8a",
-          "file": "Lumora-v{version}-android-arm64-v8a.apk",
-          "primary": true,
-          "available": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.0/Lumora-v1.0.0-android-arm64-v8a.apk",
-          "sha256": "38bdfc8cb813253992e83d533b6fcee60af3fe647e2e97f95ff730f7cf50bd0d",
-          "bytes": 60474079,
-          "size": "58 MB"
-        },
-        {
           "id": "android-universal",
           "label": {
-            "vi": "Mọi điện thoại (lớn hơn)",
-            "en": "Any phone (larger)"
+            "vi": "Mọi điện thoại Android (khuyên dùng)",
+            "en": "All Android phones (recommended)"
           },
           "ext": ".apk",
           "arch": "universal",
           "file": "Lumora-v{version}-android-universal.apk",
-          "alt": true,
           "available": true,
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.0/Lumora-v1.0.0-android-universal.apk",
           "sha256": "36ac2816472d7f8eaf6564225bca20f03a40cbdcc2bd1214c9a52146b97a630b",
           "bytes": 167118767,
-          "size": "159 MB"
+          "size": "159 MB",
+          "primary": true,
+          "note": {
+            "vi": "Một tệp cài được trên mọi điện thoại và máy tính bảng. Nặng hơn vì chứa sẵn bản cho mọi loại chip.",
+            "en": "One file that installs on every phone and tablet. Larger because it carries a build for every chip."
+          }
+        },
+        {
+          "id": "android-arm64",
+          "label": {
+            "vi": "bản nhẹ cho máy 64-bit đời mới",
+            "en": "lighter build for recent 64-bit phones"
+          },
+          "ext": ".apk",
+          "arch": "arm64-v8a",
+          "file": "Lumora-v{version}-android-arm64-v8a.apk",
+          "available": true,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.0/Lumora-v1.0.0-android-arm64-v8a.apk",
+          "sha256": "38bdfc8cb813253992e83d533b6fcee60af3fe647e2e97f95ff730f7cf50bd0d",
+          "bytes": 60474079,
+          "size": "58 MB",
+          "alt": true,
+          "note": {
+            "vi": "Nhẹ hơn khoảng 100 MB, cho hầu hết điện thoại từ 2019 trở lại đây. Nếu cài báo “gói không hợp lệ”, hãy dùng bản Mọi điện thoại Android.",
+            "en": "About 100 MB smaller, for most phones from 2019 on. If installing says “package appears to be invalid”, use All Android phones instead."
+          }
         },
         {
           "id": "android-armv7",
           "label": {
-            "vi": "Điện thoại đời cũ (32-bit)",
-            "en": "Older phones (32-bit)"
+            "vi": "Bản nhẹ cho máy 32-bit, đời cũ",
+            "en": "Lighter build for older 32-bit phones"
           },
           "ext": ".apk",
           "arch": "armeabi-v7a",
@@ -206,13 +214,17 @@
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.0/Lumora-v1.0.0-android-armeabi-v7a.apk",
           "sha256": "1bd98f0d99f02165458564378eb5b0035708f1077111d3bcb2f497cad19bf978",
           "bytes": 49577299,
-          "size": "47 MB"
+          "size": "47 MB",
+          "note": {
+            "vi": "Cho điện thoại cũ hoặc máy giá rẻ chạy Android 32-bit (một số dòng Redmi, Android Go).",
+            "en": "For older or budget phones running 32-bit Android (some Redmi models, Android Go)."
+          }
         },
         {
           "id": "android-x86_64",
           "label": {
-            "vi": "Máy tính bảng / máy ảo x86",
-            "en": "x86 tablets / emulators"
+            "vi": "Máy tính bảng chip Intel, giả lập Android trên PC",
+            "en": "Intel-based tablets, Android emulators on a PC"
           },
           "ext": ".apk",
           "arch": "x86_64",
@@ -221,7 +233,11 @@
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.0/Lumora-v1.0.0-android-x86_64.apk",
           "sha256": "8c8dd7c21bf2f62f4037e30bdc0b73cc1ba73248ffca6cca6336f9daa92a5668",
           "bytes": 66699991,
-          "size": "64 MB"
+          "size": "64 MB",
+          "note": {
+            "vi": "Chỉ dùng cho máy chip Intel/AMD (x86_64), ví dụ trình giả lập Android trên máy tính.",
+            "en": "Only for Intel/AMD (x86_64) devices, such as an Android emulator on a computer."
+          }
         }
       ]
     }
