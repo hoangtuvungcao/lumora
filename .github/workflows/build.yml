@@ -279,14 +279,14 @@ jobs:
           LIB="$APP/Contents/Frameworks/liblumora_ffi.dylib"
           test -f "$LIB" || { echo "::error::core library not embedded in $APP"; exit 1; }
           lipo "$LIB" -verify_arch arm64 x86_64
-          nm -gU "$LIB" | grep -q ' _lumora_start$'
+          grep -q ' _lumora_start$' <<<"$(nm -gU "$LIB")"
           # Video-call camera (LumoraCamera.swift resolves it with dlsym at run time).
-          nm -gU "$LIB" | grep -q ' _lumora_push_camera_yuv$' || { echo "::error::_lumora_push_camera_yuv missing (core built without media?)"; exit 1; }
+          grep -q ' _lumora_push_camera_yuv$' <<<"$(nm -gU "$LIB")" || { echo "::error::_lumora_push_camera_yuv missing (core built without media?)"; exit 1; }
           /usr/libexec/PlistBuddy -c 'Print :NSCameraUsageDescription' "$APP/Contents/Info.plist"
           test -f "$APP/Contents/Resources/vi.lproj/InfoPlist.strings"
           codesign --verify --deep --strict --verbose=2 "$APP"
-          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'com.apple.security.device.audio-input'
-          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'com.apple.security.device.camera'
+          grep -q 'com.apple.security.device.audio-input' <<<"$(codesign -d --entitlements - --xml "$APP" 2>/dev/null)"
+          grep -q 'com.apple.security.device.camera' <<<"$(codesign -d --entitlements - --xml "$APP" 2>/dev/null)"
       - name: sign with Developer ID (hardened runtime)
         if: env.HAS_DEVELOPER_ID == 'true'
         env:
@@ -302,7 +302,7 @@ jobs:
           sign --entitlements app/macos/Runner/Release.entitlements "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dvv "$APP" 2>&1 | grep -E "TeamIdentifier=${APPLE_TEAM_ID}$"
-          codesign -dvv "$APP" 2>&1 | grep -q 'flags=.*runtime'
+          grep -q 'flags=.*runtime' <<<"$(codesign -dvv "$APP" 2>&1)"
       - name: package .dmg
         run: |
           # Same name signed or not: unsigned DMGs are published too (how to open them:
@@ -408,7 +408,7 @@ jobs:
           APP=app/build/ios/iphoneos/Runner.app
           # The core is linked statically and found at run time via dlsym: its C API must survive linking.
           for s in lumora_start lumora_request lumora_next_event lumora_free lumora_stop lumora_push_screen_frame lumora_push_camera_yuv; do
-            nm -gU "$APP/Runner" | grep -q " _${s}\$" || { echo "::error::_${s} missing from Runner"; exit 1; }
+            grep -q " _${s}\$" <<<"$(nm -gU "$APP/Runner")" || { echo "::error::_${s} missing from Runner"; exit 1; }
           done
           lipo "$APP/Runner" -verify_arch arm64
           for k in NSCameraUsageDescription NSMicrophoneUsageDescription NSLocalNetworkUsageDescription NSPhotoLibraryUsageDescription NSBonjourServices; do
@@ -498,9 +498,9 @@ jobs:
           IPA="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' | head -1)"
           unzip -q -o "$IPA" -d "$RUNNER_TEMP/ipa-check"
           codesign --verify --deep --strict "$RUNNER_TEMP"/ipa-check/Payload/*.app
-          nm -gU "$RUNNER_TEMP"/ipa-check/Payload/Runner.app/Runner | grep -q ' _lumora_start$'
+          grep -q ' _lumora_start$' <<<"$(nm -gU "$RUNNER_TEMP"/ipa-check/Payload/Runner.app/Runner)"
           # push + App Group + shared keychain must be in the signed app (profile capabilities)
-          codesign -d --entitlements - --xml "$RUNNER_TEMP"/ipa-check/Payload/Runner.app 2>/dev/null | grep -q aps-environment
+          grep -q aps-environment <<<"$(codesign -d --entitlements - --xml "$RUNNER_TEMP"/ipa-check/Payload/Runner.app 2>/dev/null)"
           echo "IPA=app/$IPA" >> "$GITHUB_ENV"
       - if: env.HAS_IOS_SIGNING == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -555,7 +555,7 @@ jobs:
       - name: camera entry point present (no media = no calls video)
         run: |
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "app/android/app/src/main/jniLibs/$abi/liblumora_ffi.so" | grep -q ' T Java_vn_lumora_lumora_LumoraNative_pushCameraYuv$' \
+            grep -q ' T Java_vn_lumora_lumora_LumoraNative_pushCameraYuv$' <<<"$("$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" -D "app/android/app/src/main/jniLibs/$abi/liblumora_ffi.so")" \
               || { echo "::error::$abi core lacks the camera JNI entry"; exit 1; }
           done
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
@@ -656,7 +656,7 @@ jobs:
         run: |
           docker run -d --name push -p 127.0.0.1:8099:8099 lumora-push --apns-log /data/apns.jsonl
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8099/health && break; sleep 1; done
-          curl -sf http://127.0.0.1:8099/pubkey | grep -q public_key
+          grep -q public_key <<<"$(curl -sf http://127.0.0.1:8099/pubkey)"
           docker rm -f push
 
   relay-image:

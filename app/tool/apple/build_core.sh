@@ -69,9 +69,12 @@ build() {
 out_of() { echo "$TARGET_DIR/$1/$PROFILE/$2"; }
 
 require_symbols() { # <binary> : the Dart bindings look these up by name
-  local bin="$1" missing=0
+  local bin="$1" missing=0 syms
+  # list once: `nm | grep -q` under pipefail fails on big static archives (grep exits at the
+  # first match, nm dies of SIGPIPE and the pipeline counts as failed)
+  syms="$(nm -gU "$bin" 2>/dev/null)" || die "nm cannot read $bin"
   for s in lumora_start lumora_request lumora_next_event lumora_free lumora_stop; do
-    nm -gU "$bin" 2>/dev/null | grep -q " _${s}\$" || { echo "missing symbol _${s} in $bin" >&2; missing=1; }
+    grep -q " _${s}\$" <<<"$syms" || { echo "missing symbol _${s} in $bin" >&2; missing=1; }
   done
   [ "$missing" = 0 ] || die "$bin does not export the Lumora C API"
 }
