@@ -4,7 +4,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumora/app.dart';
-import 'package:lumora/core/api.dart';
 import 'package:lumora/core/mock_api.dart';
 import 'package:lumora/state/stores.dart';
 import 'package:lumora/ui/chats/chat_view.dart';
