@@ -33,7 +33,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with: { workspaces: core }
-      - run: sudo apt-get update && sudo apt-get install -y clang nasm libpipewire-0.3-dev libspa-0.2-dev libopus-dev libasound2-dev libxdo-dev libxtst-dev libdbus-1-dev libgbm-dev libegl-dev
+      - run: sudo apt-get update && sudo apt-get install -y clang nasm imagemagick libpipewire-0.3-dev libspa-0.2-dev libopus-dev libasound2-dev libxdo-dev libxtst-dev libdbus-1-dev libgbm-dev libegl-dev
       - run: cargo test --workspace --locked
         working-directory: core
       - name: video codecs (dev-only source-built OpenH264 exercises the H.264 path + H.264 → VP8 switch)

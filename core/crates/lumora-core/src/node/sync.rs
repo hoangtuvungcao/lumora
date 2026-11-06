@@ -338,7 +338,7 @@ impl Node {
                 }
             }
             Imported::Group { gid } => {
-                if let Some(st) = self.store.group_load(&gid).and_then(|b| rmp_serde::from_slice::<GroupState>(&b).ok()) {
+                if let Some(st) = self.store.group_load(&gid).and_then(|b| crate::proto::from_slice_capped::<GroupState>(&b).ok()) {
                     let conv = st.conv_id();
                     self.groups.write().insert(st.gid, st);
                     if live {
@@ -527,7 +527,7 @@ impl Node {
             proto::write_sync_frame(&mut s, &batch).await?;
         }
         let since_hlc = (req.since_ms as i64) << 8;
-        let mut cur: HistCursor = if req.cursor.is_empty() { HistCursor::default() } else { rmp_serde::from_slice(&req.cursor).unwrap_or_default() };
+        let mut cur: HistCursor = if req.cursor.is_empty() { HistCursor::default() } else { crate::proto::from_slice_capped(&req.cursor).unwrap_or_default() };
         let total = self.store.history_conv_count(since_hlc);
         let limit = if req.limit > 0 { (req.limit as usize).clamp(10, 1000) } else { hist_batch_limit() };
         let mut convs_seen: std::collections::HashSet<String> = Default::default();

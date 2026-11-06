@@ -519,7 +519,7 @@ pub async fn read_sync_frame<R: AsyncReadExt + Unpin>(r: &mut R) -> anyhow::Resu
     anyhow::ensure!(n <= MAX_SYNC_FRAME, "sync frame too large");
     let mut b = vec![0u8; n];
     r.read_exact(&mut b).await?;
-    Ok(Some(rmp_serde::from_slice(&b)?))
+    Ok(Some(from_slice_capped(&b)?))
 }
 
 pub async fn write_frame<W: AsyncWriteExt + Unpin>(w: &mut W, msg: &PeerMsg) -> anyhow::Result<()> {
@@ -610,17 +610,17 @@ mod tests {
         let new = rmp_serde::to_vec(&MsgMeta::default()).unwrap();
         assert_eq!(new, rmp_serde::to_vec(&OldMeta::default()).unwrap());
         // old bytes decode with silent = false
-        let m: MsgMeta = rmp_serde::from_slice(&rmp_serde::to_vec(&OldMeta { mention_all: true, ..Default::default() }).unwrap()).unwrap();
+        let m: MsgMeta = crate::proto::from_slice_capped(&rmp_serde::to_vec(&OldMeta { mention_all: true, ..Default::default() }).unwrap()).unwrap();
         assert!(m.mention_all && !m.silent);
         // silent round-trips
-        let m: MsgMeta = rmp_serde::from_slice(&rmp_serde::to_vec(&MsgMeta { silent: true, ..Default::default() }).unwrap()).unwrap();
+        let m: MsgMeta = crate::proto::from_slice_capped(&rmp_serde::to_vec(&MsgMeta { silent: true, ..Default::default() }).unwrap()).unwrap();
         assert!(m.silent);
     }
 
     #[test]
     fn new_bodies_roundtrip_and_json() {
         let b = Body::Checklist { title: "Đi chợ".into(), items: vec![CheckItem { id: 1, text: "Rau".into() }] };
-        let back: Body = rmp_serde::from_slice(&rmp_serde::to_vec(&b).unwrap()).unwrap();
+        let back: Body = crate::proto::from_slice_capped(&rmp_serde::to_vec(&b).unwrap()).unwrap();
         assert_eq!(back.kind(), "checklist");
         assert_eq!(b.to_json()["items"][0]["text"], "Rau");
         let r = Body::Reminder { title: "Họp".into(), at_ms: 5, note: String::new() };
@@ -680,7 +680,7 @@ mod tests {
             match FROZEN.iter().find(|(n, _)| *n == name) {
                 Some((_, want)) => {
                     assert_eq!(&got, want, "wire layout of {name} changed");
-                    let back: PeerMsg = rmp_serde::from_slice(&hex::decode(want).unwrap()).unwrap();
+                    let back: PeerMsg = crate::proto::from_slice_capped(&hex::decode(want).unwrap()).unwrap();
                     assert_eq!(hex::encode(rmp_serde::to_vec(&back).unwrap()), *want);
                 }
                 None => panic!("no frozen fixture for {name}: (\"{name}\", \"{got}\")"),
@@ -721,7 +721,7 @@ mod tests {
             b.read_exact(&mut len).await.unwrap();
             let mut buf = vec![0u8; u32::from_be_bytes(len) as usize];
             b.read_exact(&mut buf).await.unwrap();
-            assert_eq!(rmp_serde::from_slice::<OldMsg>(&buf).is_ok(), want_some);
+            assert_eq!(crate::proto::from_slice_capped::<OldMsg>(&buf).is_ok(), want_some);
         }
     }
 
@@ -789,8 +789,8 @@ mod tests {
         for i in 0..2000u32 {
             let len = (i % 97) as usize;
             let data: Vec<u8> = (0..len).map(|j| ((i as usize * 31 + j * 17) % 256) as u8).collect();
-            let _ = rmp_serde::from_slice::<PeerMsg>(&data);
-            let _ = rmp_serde::from_slice::<Signal>(&data);
+            let _ = crate::proto::from_slice_capped::<PeerMsg>(&data);
+            let _ = crate::proto::from_slice_capped::<Signal>(&data);
         }
     }
 }

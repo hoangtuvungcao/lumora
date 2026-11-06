@@ -57,7 +57,7 @@ impl Node {
         anyhow::ensure!(dev != self.device && self.own_list().map(|b| b.is_active(&dev)).unwrap_or(false), "bridge: not one of my devices");
         let m: ProxyMsg = proto::ext_body(body)?;
         let to = PeerId(m.to.as_slice().try_into().map_err(|_| anyhow!("bridge: bad target"))?);
-        let inner: PeerMsg = rmp_serde::from_slice(&m.msg)?;
+        let inner: PeerMsg = crate::proto::from_slice_capped(&m.msg)?;
         // signed by that device, as this account
         let by_dev = |author: &PeerId, bytes: &[u8], sig: &[u8]| {
             *author == self.me && matches!(crate::devices::verify_by(author, bytes, sig), Some(SigBy::Device { device, .. }) if device == dev)

@@ -137,7 +137,7 @@ pub fn open_envelope_any(keys: &[[u8; 32]], gid: &Gid, env: &[u8]) -> Result<Opt
     }
     for k in keys {
         if let Ok(plain) = aead_decrypt(k, &env[8..], gid) {
-            let s: Signed = rmp_serde::from_slice(&plain)?;
+            let s: Signed = crate::proto::from_slice_capped(&plain)?;
             if &s.gid != gid || !s.verify() {
                 bail!("bad group envelope signature");
             }
@@ -152,7 +152,7 @@ pub fn open_envelope(key: &[u8; 32], gid: &Gid, env: &[u8]) -> Result<Signed> {
         bail!("short envelope");
     }
     let plain = aead_decrypt(key, &env[8..], gid)?;
-    let s: Signed = rmp_serde::from_slice(&plain)?;
+    let s: Signed = crate::proto::from_slice_capped(&plain)?;
     if &s.gid != gid || !s.verify() {
         bail!("bad group envelope signature");
     }
@@ -770,7 +770,7 @@ pub fn verify_admin_proof(gid: &Gid, admin: &PeerId, proof: &[u8]) -> bool {
     if proof.len() > MAX_ADMIN_PROOF {
         return false;
     }
-    match rmp_serde::from_slice::<Vec<Signed>>(proof) {
+    match crate::proto::from_slice_capped::<Vec<Signed>>(proof) {
         Ok(ops) => proves_admin(gid, admin, &ops),
         Err(_) => false,
     }
@@ -871,11 +871,11 @@ mod tests {
         let st = GroupState::fold(gid, ops).unwrap();
         // the creator: the Create op alone
         let pa = admin_proof(&st, &a.account()).unwrap();
-        assert_eq!(rmp_serde::from_slice::<Vec<Signed>>(&pa).unwrap().len(), 1);
+        assert_eq!(crate::proto::from_slice_capped::<Vec<Signed>>(&pa).unwrap().len(), 1);
         assert!(verify_admin_proof(&gid, &a.account(), &pa));
         // a promoted admin: Create + the promotion (renames left out)
         let pb = admin_proof(&st, &b.account()).unwrap();
-        assert_eq!(rmp_serde::from_slice::<Vec<Signed>>(&pb).unwrap().len(), 2);
+        assert_eq!(crate::proto::from_slice_capped::<Vec<Signed>>(&pb).unwrap().len(), 2);
         assert!(verify_admin_proof(&gid, &b.account(), &pb));
         // a plain member has no proof, and nobody else can use someone's proof
         assert!(admin_proof(&st, &c.account()).is_none());

@@ -500,7 +500,7 @@ fn parse_invite(link: &str) -> Result<Invite> {
     let tok = link.trim().trim_start_matches("lumora://join/").trim_start_matches("https://lumora.app/join/");
     let bad = || crate::i18n::user_err("err.invite_invalid");
     let raw = BASE32_NOPAD.decode(tok.to_uppercase().as_bytes()).map_err(|e| bad().detail(e))?;
-    let inv: Invite = rmp_serde::from_slice(&raw).map_err(|e| bad().detail(e))?;
+    let inv: Invite = crate::proto::from_slice_capped(&raw).map_err(|e| bad().detail(e))?;
     anyhow::ensure!(
         crate::devices::verify_by(&inv.inviter, &invite_bytes(&inv.gid, &inv.inviter, inv.expires), &inv.sig).is_some(),
         bad().detail("signature mismatch")

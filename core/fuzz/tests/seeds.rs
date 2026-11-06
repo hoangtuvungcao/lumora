@@ -72,8 +72,8 @@ fn write_seeds() {
     let (st, op) = group::create(&s, 1, "g", vec![Identity::from_secret(&[2; 32]).peer_id()], 0).unwrap();
     let dev = Identity::from_secret(&[3; 32]);
     let cert = DeviceCert::issue(&a, dev.peer_id(), 1, 1);
-    let list = SignedDeviceList::sign(&a, &DeviceListBody { v: 1, account: p, version: 1, devices: vec![lumora_core::devices::DeviceEntry { device: p, name: "pc".into(), kind: 2, caps: 1, added: 1 }], revoked: vec![] }).unwrap();
-    let qr = LinkQr { v: 1, d: dev.peer_id(), s: vec![1; 32], a: vec!["1.2.3.4:5".parse().unwrap()], r: vec!["wss://r".into()], n: "n".into(), k: 1, e: 9 };
+    let list = SignedDeviceList::sign(&a, &DeviceListBody { v: 1, account: p, version: 1, devices: vec![lumora_core::devices::DeviceEntry { device: p, name: "pc".into(), kind: 2, caps: 1, added: 1, proof: vec![] }], revoked: vec![] }).unwrap();
+    let qr = LinkQr { v: 1, d: dev.peer_id(), s: vec![1; 32], a: vec!["1.2.3.4:5".parse().unwrap()], r: vec!["wss://r".into()], n: "n".into(), k: 1, e: 9, i: false };
     let _ = st;
     save("chat_group", vec![rmp_serde::to_vec(&op).unwrap(), cert.encode(), list.encode(), qr.to_uri().into_bytes(), cert.to_san().into_bytes(), b"1234-5678-9012".to_vec()]);
     save("group_fold", vec![vec![0; 64], (0..=255u8).collect(), vec![3, 2, 1, 7, 0, 1, 1, 9, 2, 1, 1, 4, 0, 10, 2, 3, 1, 0, 2, 3, 4]]);

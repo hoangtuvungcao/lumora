@@ -91,7 +91,7 @@ impl FilePreview {
         if b.len() > MAX_CONTAINER || b.len() < MAGIC.len() + 1 || !b.starts_with(MAGIC) {
             return None;
         }
-        rmp_serde::from_slice::<FilePreview>(&b[MAGIC.len() + 1..]).ok()?.sanitized()
+        crate::proto::from_slice_capped::<FilePreview>(&b[MAGIC.len() + 1..]).ok()?.sanitized()
     }
 
     /// Fields exposed to the app next to `thumb` (the picture itself is `thumb`).
@@ -315,7 +315,7 @@ mod tests {
             Text { text: String },
             File { file_id: [u8; 16], name: String, size: u64, mime: String, hash: [u8; 32], #[serde(with = "serde_bytes")] thumb: Vec<u8>, width: u32, height: u32 },
         }
-        let old: OldBody = rmp_serde::from_slice(&rmp_serde::to_vec(&b).unwrap()).unwrap();
+        let old: OldBody = crate::proto::from_slice_capped(&rmp_serde::to_vec(&b).unwrap()).unwrap();
         assert!(matches!(old, OldBody::File { width: 480, .. }));
         // a plain photo thumb has no preview key
         let photo = Body::File { file_id: [1; 16], name: "a.jpg".into(), size: 9, mime: "image/jpeg".into(), hash: [2; 32], thumb: JPEG.to_vec(), width: 1, height: 1 };

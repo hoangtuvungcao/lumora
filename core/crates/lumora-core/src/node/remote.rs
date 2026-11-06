@@ -344,7 +344,7 @@ impl RemoteState {
         let pw: String = (0..8).map(|_| PW_CHARS[rand::random::<usize>() % PW_CHARS.len()] as char).collect();
         let fixed = store.kv_get("remote.fixed_key").and_then(|v| v.try_into().ok());
         let flag = |k: &str, d: bool| store.kv_get(k).map(|v| v == b"1").unwrap_or(d);
-        let fixed_v2 = store.kv_get("remote.fixed_v2").and_then(|b| rmp_serde::from_slice::<FixedVerifier>(&b).ok()).filter(|f| f.verifier.len() == 32);
+        let fixed_v2 = store.kv_get("remote.fixed_v2").and_then(|b| crate::proto::from_slice_capped::<FixedVerifier>(&b).ok()).filter(|f| f.verifier.len() == 32);
         RemoteState {
             password: Mutex::new(pw),
             fixed_key: Mutex::new(fixed),
@@ -1672,7 +1672,7 @@ mod v2_tests {
         let st = RemoteState::new(&store);
         st.set(&store, Some("mat-khau-co-dinh"), None, None, None).unwrap();
         let raw = store.kv_get("remote.fixed_v2").unwrap();
-        let f: FixedVerifier = rmp_serde::from_slice(&raw).unwrap();
+        let f: FixedVerifier = crate::proto::from_slice_capped(&raw).unwrap();
         // nothing password-equivalent at rest: no v1 key, and the stored verifier can't
         // produce a valid answer without the password
         assert!(store.kv_get("remote.fixed_key").is_none());

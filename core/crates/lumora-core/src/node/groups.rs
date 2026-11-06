@@ -254,7 +254,7 @@ impl Node {
     }
 
     pub(super) fn load_groups(&self) {
-        let all: Vec<GroupState> = self.store.group_all().iter().filter_map(|b| rmp_serde::from_slice::<GroupState>(b).ok()).collect();
+        let all: Vec<GroupState> = self.store.group_all().iter().filter_map(|b| crate::proto::from_slice_capped::<GroupState>(b).ok()).collect();
         for st in &all {
             // keys stored by an older version (first one wins) are checked against the
             // winning commitment once
@@ -992,7 +992,7 @@ impl Node {
         let _ = from_dev;
         let sender = self.account_of(&sender_dev);
         anyhow::ensure!(!self.is_revoked(&sender, &sender_dev), "key from a revoked device");
-        let ku: KeyUpdate = rmp_serde::from_slice(&body)?;
+        let ku: KeyUpdate = crate::proto::from_slice_capped(&body)?;
         let Some(st) = self.groups.read().get(&ku.gid).cloned() else {
             // the key came before its group's welcome: hold a few (checked on the welcome)
             let mut p = self.pending_keys.lock();
@@ -1178,7 +1178,7 @@ impl Node {
         let (sender_dev, _ts, body) = open_sealed(&self.id, sealed)?;
         let sender = self.account_of(&sender_dev);
         anyhow::ensure!(!self.is_revoked(&sender, &sender_dev), "welcome from a revoked device");
-        let w: Welcome = rmp_serde::from_slice(&body)?;
+        let w: Welcome = crate::proto::from_slice_capped(&body)?;
         let lock = self.group_lock(&w.gid);
         let guard = lock.lock().await;
         let existing_state = self.groups.read().get(&w.gid).cloned();

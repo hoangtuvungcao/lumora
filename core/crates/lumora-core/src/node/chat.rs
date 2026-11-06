@@ -716,7 +716,7 @@ impl Node {
             if m.conv != conv || (!any_author && m.author != crate::store::b32_pub(&target_author)) {
                 continue;
             }
-            let (Ok(action), Ok(actor)) = (rmp_serde::from_slice::<MsgAction>(&action), <[u8; 32]>::try_from(actor.as_slice()).map(PeerId)) else { continue };
+            let (Ok(action), Ok(actor)) = (crate::proto::from_slice_capped::<MsgAction>(&action), <[u8; 32]>::try_from(actor.as_slice()).map(PeerId)) else { continue };
             let r = match &action {
                 MsgAction::Delete { target } if any_author || m.author != actor.to_base32() => match self.delete_message_everywhere(target, None) {
                     Ok(true) => {

@@ -882,7 +882,7 @@ impl Node {
         let cached: Vec<SocketAddr> = if seq || !self.may_reveal_addrs(&peer) {
             vec![]
         } else {
-            self.store.peer_cache_get(&peer).and_then(|b| rmp_serde::from_slice::<ConnInfo>(&b).ok()).map(|i| i.addrs).unwrap_or_default()
+            self.store.peer_cache_get(&peer).and_then(|b| crate::proto::from_slice_capped::<ConnInfo>(&b).ok()).map(|i| i.addrs).unwrap_or_default()
         };
         let me = self.clone();
         let cached_try = async move {

@@ -510,7 +510,7 @@ pub fn spawn_lan(me: PeerId, port: u16, table: Arc<LanTable>, enabled: Arc<std::
                 r = sock.recv_from(&mut buf) => {
                     let Ok((n, src)) = r else { continue };
                     if n >= 4 && &buf[..4] == b"LMRL" {
-                        if let Ok(b) = rmp_serde::from_slice::<LinkBeacon>(&buf[4..n]) {
+                        if let Ok(b) = crate::proto::from_slice_capped::<LinkBeacon>(&buf[4..n]) {
                             if b.peer != me && b.v == 1 {
                                 table.add_link_beacon(b, src);
                             }
@@ -518,7 +518,7 @@ pub fn spawn_lan(me: PeerId, port: u16, table: Arc<LanTable>, enabled: Arc<std::
                         continue;
                     }
                     if n >= 4 && &buf[..4] == b"LMRH" {
-                        let Ok(a) = rmp_serde::from_slice::<LanHintAnnounce>(&buf[4..n]) else { continue };
+                        let Ok(a) = crate::proto::from_slice_capped::<LanHintAnnounce>(&buf[4..n]) else { continue };
                         let d = lan_day();
                         if a.v != 1 || [d, d.saturating_sub(1), d + 1].iter().any(|day| lan_hint(&me, *day) == a.h) {
                             continue; // ourselves
@@ -534,7 +534,7 @@ pub fn spawn_lan(me: PeerId, port: u16, table: Arc<LanTable>, enabled: Arc<std::
                     }
                     // legacy announcement (older builds): still understood
                     if n < 4 || &buf[..4] != b"LMRA" { continue }
-                    let Ok(a) = rmp_serde::from_slice::<LanAnnounce>(&buf[4..n]) else { continue };
+                    let Ok(a) = crate::proto::from_slice_capped::<LanAnnounce>(&buf[4..n]) else { continue };
                     if a.peer == me || a.v != 1 { continue }
                     // Prefer the observed source IP; fall back to announced addresses.
                     let mut addrs = vec![SocketAddr::new(src.ip(), a.port)];
@@ -639,7 +639,7 @@ fn seal_friend_record(p: &PeerId, key: &[u8; 32], rec: &DhtRecord) -> anyhow::Re
 
 fn open_friend_record(p: &PeerId, key: &[u8; 32], ct: &[u8]) -> Option<DhtRecord> {
     let plain = crate::crypto::aead_decrypt(&friend_record_key(p, key), ct, b"dht-f1").ok()?;
-    rmp_serde::from_slice(&plain).ok()
+    crate::proto::from_slice_capped(&plain).ok()
 }
 
 pub struct Dht {
@@ -691,7 +691,7 @@ impl Dht {
             .await
             .ok()??;
         let plain = crate::crypto::aead_decrypt(&dht_devices_key(account), item.value(), b"dht-devs").ok()?;
-        rmp_serde::from_slice(&plain).ok()
+        crate::proto::from_slice_capped(&plain).ok()
     }
 }
 
@@ -705,7 +705,7 @@ mod tests {
         let plain = rmp_serde::to_vec(&rec).unwrap();
         let ct = crate::crypto::aead_encrypt(&dht_devices_key(&PeerId([1; 32])), &plain, b"dht-devs");
         assert!(ct.len() <= 1000, "{} bytes", ct.len());
-        let back: DhtDevices = rmp_serde::from_slice(&crate::crypto::aead_decrypt(&dht_devices_key(&PeerId([1; 32])), &ct, b"dht-devs").unwrap()).unwrap();
+        let back: DhtDevices = crate::proto::from_slice_capped(&crate::crypto::aead_decrypt(&dht_devices_key(&PeerId([1; 32])), &ct, b"dht-devs").unwrap()).unwrap();
         assert_eq!(back, rec);
         // only who knows the account can read it
         assert!(crate::crypto::aead_decrypt(&dht_devices_key(&PeerId([2; 32])), &ct, b"dht-devs").is_err());
@@ -780,7 +780,7 @@ mod privacy_tests {
         let pkt = lan_hint_packet(&me, 4433, info().addrs);
         assert_eq!(&pkt[..4], b"LMRH");
         assert!(!pkt.windows(32).any(|w| w == me.0), "public key in the LAN packet");
-        let a: LanHintAnnounce = rmp_serde::from_slice(&pkt[4..]).unwrap();
+        let a: LanHintAnnounce = crate::proto::from_slice_capped(&pkt[4..]).unwrap();
         assert_eq!(a.h, lan_hint(&me, lan_day()));
         assert_eq!(a.addrs, vec!["192.168.1.5:4433".parse::<SocketAddr>().unwrap()], "only LAN addresses");
         // a known peer recognises it; the table resolves it only by key

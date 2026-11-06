@@ -367,7 +367,7 @@ impl Store {
             v
         };
         for state in blobs("SELECT state FROM groups")? {
-            if let Ok(g) = rmp_serde::from_slice::<crate::group::GroupState>(&state) {
+            if let Ok(g) = crate::proto::from_slice_capped::<crate::group::GroupState>(&state) {
                 keep.extend(g.members.keys().map(|p| p.0.to_vec()));
             }
         }
@@ -1314,7 +1314,7 @@ impl Store {
     /// Verified ops of group `gid` that its fold rejected (msgpack `Vec<Signed>`).
     pub fn group_held_get(&self, gid: &[u8]) -> Vec<crate::group::Signed> {
         let b: Option<Vec<u8>> = self.conn.lock().query_row("SELECT ops FROM group_held WHERE gid=?1", params![gid], |r| r.get(0)).optional().ok().flatten();
-        b.and_then(|b| rmp_serde::from_slice(&b).ok()).unwrap_or_default()
+        b.and_then(|b| crate::proto::from_slice_capped(&b).ok()).unwrap_or_default()
     }
     pub fn group_held_set(&self, gid: &[u8], ops: &[crate::group::Signed]) -> Result<()> {
         let c = self.conn.lock();

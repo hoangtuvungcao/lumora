@@ -67,12 +67,12 @@ pub fn peer_frame(data: &[u8]) {
         walk_msg(&m, 0);
         // what we accept we must be able to re-encode (relaying, Wrapped acks, signing bytes)
         let enc: Vec<u8> = rmp_serde::to_vec(&m).expect("decoded PeerMsg must re-encode");
-        let back = rmp_serde::from_slice::<PeerMsg>(&enc).expect("re-encoded PeerMsg must decode");
+        let back = proto::from_slice_capped::<PeerMsg>(&enc).expect("re-encoded PeerMsg must decode");
         assert_eq!(rmp_serde::to_vec(&back).unwrap(), enc, "PeerMsg encoding is not stable");
     }
-    let _ = rmp_serde::from_slice::<Signal>(data);
-    let _ = rmp_serde::from_slice::<Body>(data);
-    let _ = rmp_serde::from_slice::<MsgAction>(data);
+    let _ = proto::from_slice_capped::<Signal>(data);
+    let _ = proto::from_slice_capped::<Body>(data);
+    let _ = proto::from_slice_capped::<MsgAction>(data);
     let _ = proto::ext_body::<SyncBatch>(data);
     // remote-control input events (datagram INPUT / PeerMsg::RemoteInput)
     let _ = proto::from_slice_capped::<Value>(data);
@@ -116,7 +116,7 @@ pub fn chat_group(data: &[u8]) {
     let _ = group::open_envelope(&key, &gid, &env);
     let _ = group::open_envelope(&key, &gid, data);
     let _ = group::envelope_epoch(data);
-    if let Ok(s) = rmp_serde::from_slice::<Signed>(data) {
+    if let Ok(s) = proto::from_slice_capped::<Signed>(data) {
         let _ = s.verify();
         let _ = s.signer_device();
     }
@@ -143,7 +143,7 @@ pub fn chat_group(data: &[u8]) {
     if let Ok(sealed) = lumora_core::crypto::seal_to(&ident(2), &me.peer_id(), data) {
         let (_, _, body) = lumora_core::crypto::open_sealed(&me, &sealed).expect("own seal must open");
         assert_eq!(body, data);
-        let _ = rmp_serde::from_slice::<Signal>(&body);
+        let _ = proto::from_slice_capped::<Signal>(&body);
     }
     let _ = lumora_core::crypto::open_sealed(&me, data);
 }

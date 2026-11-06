@@ -107,13 +107,30 @@ fn device_kek(dir: &Path, create: bool) -> Result<(Zeroizing<[u8; 32]>, String)>
     #[cfg(all(feature = "os-keyring", not(target_os = "android")))]
     {
         if let Ok(entry) = keyring::Entry::new("lumora", &account) {
-            match entry.get_secret() {
+            // The Secret Service (D-Bus) can fail for a moment — right after login, or on a
+            // busy machine. That is not "no key": retry, and never answer it with
+            // "this device can no longer unlock your data" (nor replace the stored key).
+            let mut got = entry.get_secret();
+            for _ in 0..5 {
+                match &got {
+                    Ok(_) | Err(keyring::Error::NoEntry) => break,
+                    Err(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        got = entry.get_secret();
+                    }
+                }
+            }
+            let unavailable = matches!(&got, Err(e) if !matches!(e, keyring::Error::NoEntry));
+            match got {
                 Ok(s) if s.len() == 32 => {
                     let mut k = Zeroizing::new([0u8; 32]);
                     k.copy_from_slice(&s);
                     return Ok((k, "os-keychain".into()));
                 }
-                _ if create => {
+                _ if unavailable && !create && !dir.join(".device_key").exists() => {
+                    bail!(crate::i18n::user_err("err.keychain_unavailable"));
+                }
+                _ if create && !unavailable => {
                     let k = Zeroizing::new(random_bytes::<32>());
                     if entry.set_secret(&k[..]).is_ok() {
                         if let Ok(back) = entry.get_secret() {
@@ -426,7 +443,7 @@ pub fn import_backup(dir: &Path, file: &Path, password: &str, new_pass: Option<&
     };
     let h = read_block(&mut f)?.ok_or_else(corrupt)?;
     let header = Zeroizing::new(aead_decrypt(&kek, &h, &chunk_aad(&salt, u64::MAX, false)).map_err(|_| crate::i18n::user_err("err.wrong_backup_password"))?);
-    let p: BackupHeader = rmp_serde::from_slice(&header).map_err(|e| corrupt().detail(e))?;
+    let p: BackupHeader = crate::proto::from_slice_capped(&header).map_err(|e| corrupt().detail(e))?;
     let secret: [u8; 32] = p.secret.as_slice().try_into().map_err(|_| corrupt())?;
     anyhow::ensure!(p.db_key.len() == 32, corrupt());
     let mut db_key = Zeroizing::new([0u8; 32]);
@@ -469,7 +486,7 @@ fn import_backup_v1(dir: &Path, file: &Path, password: &str, new_pass: Option<&s
     let salt: [u8; 16] = f[9..25].try_into().unwrap();
     let kek = derive_passphrase_key(password, &salt)?;
     let plain = Zeroizing::new(aead_decrypt(&kek, &f[25..], BACKUP_MAGIC).map_err(|_| crate::i18n::user_err("err.wrong_backup_password"))?);
-    let p: BackupPayload = rmp_serde::from_slice(&plain).map_err(|e| crate::i18n::user_err("err.backup_corrupt").detail(e))?;
+    let p: BackupPayload = crate::proto::from_slice_capped(&plain).map_err(|e| crate::i18n::user_err("err.backup_corrupt").detail(e))?;
     let secret: [u8; 32] = p.secret.as_slice().try_into().map_err(|_| crate::i18n::user_err("err.backup_corrupt"))?;
     anyhow::ensure!(p.db_key.len() == 32, crate::i18n::user_err("err.backup_corrupt"));
     let mut db_key = Zeroizing::new([0u8; 32]);

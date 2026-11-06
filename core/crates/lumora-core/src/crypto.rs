@@ -93,7 +93,7 @@ pub fn open_sealed(me: &Identity, data: &[u8]) -> Result<(PeerId, u64, Vec<u8>)>
     let shared = sk.diffie_hellman(&PublicKey::from(eph_pub));
     let key = seal_key(shared.as_bytes(), &eph_pub, &me.peer_id().0);
     let plain = aead_decrypt(&key, &data[33..], &eph_pub)?;
-    let inner: SealedInner = rmp_serde::from_slice(&plain)?;
+    let inner: SealedInner = crate::proto::from_slice_capped(&plain)?;
     if inner.to != me.peer_id() {
         bail!("envelope not for us");
     }

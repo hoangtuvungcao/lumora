@@ -45,7 +45,7 @@ impl BotToken {
         let bad = || crate::i18n::user_err("err.bad_bot_token");
         let body = s.trim().strip_prefix(TOKEN_PREFIX).ok_or_else(|| bad().detail("missing lumora_bot_ prefix"))?;
         let raw = BASE32_NOPAD.decode(body.to_uppercase().as_bytes()).map_err(|e| bad().detail(e))?;
-        let t: BotToken = rmp_serde::from_slice(&raw).map_err(|e| bad().detail(e))?;
+        let t: BotToken = crate::proto::from_slice_capped(&raw).map_err(|e| bad().detail(e))?;
         anyhow::ensure!(t.secret.len() == 32, bad().detail("bad secret length"));
         let bot = t.identity().peer_id();
         anyhow::ensure!(
@@ -65,7 +65,7 @@ impl Node {
     fn my_bots(&self) -> Vec<BotToken> {
         self.store
             .kv_get("botfather.bots")
-            .and_then(|v| rmp_serde::from_slice(&v).ok())
+            .and_then(|v| crate::proto::from_slice_capped(&v).ok())
             .unwrap_or_default()
     }
 

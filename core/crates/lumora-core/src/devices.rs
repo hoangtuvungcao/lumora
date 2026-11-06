@@ -62,7 +62,7 @@ impl DeviceCert {
         rmp_serde::to_vec_named(self).unwrap_or_default()
     }
     pub fn decode(b: &[u8]) -> Result<DeviceCert> {
-        Ok(rmp_serde::from_slice(b)?)
+        Ok(crate::proto::from_slice_capped(b)?)
     }
     /// Value of the extra X.509 SAN URI carried by a secondary's TLS certificate.
     pub fn to_san(&self) -> String {
@@ -274,7 +274,7 @@ impl SignedDeviceList {
 
     /// Signature + structure checks (not freshness: see [`Self::newer_than`]).
     pub fn validate(&self) -> Result<DeviceListBody> {
-        let b: DeviceListBody = rmp_serde::from_slice(&self.body)?;
+        let b: DeviceListBody = crate::proto::from_slice_capped(&self.body)?;
         if !b.account.verify(&list_signing_bytes(&self.body), &self.sig) {
             bail!("device list signature invalid");
         }
@@ -319,7 +319,7 @@ impl SignedDeviceList {
         rmp_serde::to_vec_named(self).unwrap_or_default()
     }
     pub fn decode(b: &[u8]) -> Result<SignedDeviceList> {
-        Ok(rmp_serde::from_slice(b)?)
+        Ok(crate::proto::from_slice_capped(b)?)
     }
 }
 
@@ -362,7 +362,7 @@ impl LinkQr {
     pub fn parse(uri: &str) -> Result<LinkQr> {
         let b = uri.trim().strip_prefix(LINK_QR_PREFIX).ok_or_else(|| anyhow!("not a link code"))?;
         let raw = data_encoding::BASE32_NOPAD.decode(b.to_uppercase().as_bytes())?;
-        let q: LinkQr = rmp_serde::from_slice(&raw)?;
+        let q: LinkQr = crate::proto::from_slice_capped(&raw)?;
         anyhow::ensure!(q.v == 1 && q.s.len() == 32, "unsupported link code");
         Ok(q)
     }

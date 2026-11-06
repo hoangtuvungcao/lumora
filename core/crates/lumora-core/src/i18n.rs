@@ -29,6 +29,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("err.data_unreadable", "Lumora can't open its data folder. Check that the folder still exists and you have access to it.", "Lumora không mở được thư mục dữ liệu. Hãy kiểm tra thư mục còn tồn tại và bạn có quyền truy cập."),
     ("err.data_corrupt", "Your saved data looks damaged and can't be opened. You can restore it from a backup or your recovery phrase.", "Dữ liệu đã lưu có vẻ bị hỏng nên không mở được. Bạn có thể khôi phục từ bản sao lưu hoặc cụm từ khôi phục."),
     ("err.device_key_missing", "This device can no longer unlock your data. Restore your account from a backup or your recovery phrase.", "Máy này không còn mở khóa được dữ liệu của bạn. Hãy khôi phục tài khoản từ bản sao lưu hoặc cụm từ khôi phục."),
+    ("err.keychain_unavailable", "The system keychain is not ready yet, so your data cannot be unlocked right now. Wait a moment, then open Lumora again.", "Kho khóa của hệ thống chưa sẵn sàng nên chưa mở khóa được dữ liệu. Hãy đợi một lát rồi mở lại Lumora."),
     ("err.passphrase_required", "Enter your password to unlock Lumora.", "Hãy nhập mật khẩu để mở khóa Lumora."),
     ("err.wrong_passphrase", "Wrong password. Please try again.", "Sai mật khẩu. Vui lòng thử lại."),
     ("err.account_exists", "This device already has an account. Remove it before restoring another one.", "Máy này đã có tài khoản. Hãy xóa tài khoản đó trước khi khôi phục tài khoản khác."),

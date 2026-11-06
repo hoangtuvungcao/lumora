@@ -141,7 +141,7 @@ impl SyncItem {
         rmp_serde::to_vec_named(self).unwrap_or_default()
     }
     pub fn decode(b: &[u8]) -> Option<SyncItem> {
-        rmp_serde::from_slice(b).ok()
+        crate::proto::from_slice_capped(b).ok()
     }
 }
 

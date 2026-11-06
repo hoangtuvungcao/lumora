@@ -1160,7 +1160,7 @@ impl Node {
         if from == self.device || self.store.is_blocked(&account) || self.is_revoked(&account, &from) {
             return Ok(());
         }
-        let s: Signal = rmp_serde::from_slice(&body)?;
+        let s: Signal = crate::proto::from_slice_capped(&body)?;
         match s {
             Signal::Offer { sid, info, name } => {
                 if now_ms().abs_diff(ts) > 120_000 {

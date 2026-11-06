@@ -141,7 +141,7 @@ impl Node {
     pub fn sticker_pack_import(&self, path: &str) -> Result<Value> {
         let bytes = std::fs::read(path).map_err(|e| crate::i18n::user_err("err.file_unreadable").detail(e))?;
         anyhow::ensure!(bytes.len() <= 130 * 1024 * 1024, crate::i18n::user_err("err.not_sticker_pack"));
-        let f: PackFile = rmp_serde::from_slice(&bytes).map_err(|e| crate::i18n::user_err("err.not_sticker_pack").detail(e))?;
+        let f: PackFile = crate::proto::from_slice_capped(&bytes).map_err(|e| crate::i18n::user_err("err.not_sticker_pack").detail(e))?;
         let created = self.sticker_pack_create(&f.name)?;
         let id = created["id"].as_str().unwrap_or("").to_string();
         let mut n = 0;

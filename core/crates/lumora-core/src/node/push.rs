@@ -46,7 +46,7 @@ struct SelfDev {
 
 impl SelfDev {
     fn load(store: &crate::store::Store) -> Option<SelfDev> {
-        store.kv_get(SELF_DEV).and_then(|b| rmp_serde::from_slice(&b).ok())
+        store.kv_get(SELF_DEV).and_then(|b| crate::proto::from_slice_capped(&b).ok())
     }
     fn key(&self) -> Option<[u8; 32]> {
         self.bridge_key.as_slice().try_into().ok()

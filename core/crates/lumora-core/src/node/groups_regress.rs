@@ -288,7 +288,7 @@ async fn pump(nodes: &[Arc<Node>], rng: &mut rand::rngs::StdRng) -> usize {
             let mut q = std::collections::VecDeque::new();
             for (_, id, payload) in from.store.outbox_page(&to.device, 0, 100_000).unwrap() {
                 from.store.outbox_remove(&id, &to.device).unwrap();
-                if let Ok(PeerMsg::Wrapped { inner, .. }) = rmp_serde::from_slice::<PeerMsg>(&payload) {
+                if let Ok(PeerMsg::Wrapped { inner, .. }) = crate::proto::from_slice_capped::<PeerMsg>(&payload) {
                     q.push_back(*inner);
                 }
             }
@@ -537,7 +537,7 @@ async fn missing_key_is_requested_and_served() {
     o.rotate_key(gid).await.unwrap();
     // the KeyUpdate to m is lost (e.g. acked by a device that was then wiped)
     for (_, id, p) in o.store.outbox_page(&m.device, 0, 1000).unwrap() {
-        if matches!(rmp_serde::from_slice::<PeerMsg>(&p), Ok(PeerMsg::Wrapped { inner, .. }) if matches!(*inner, PeerMsg::GroupKey { .. })) {
+        if matches!(crate::proto::from_slice_capped::<PeerMsg>(&p), Ok(PeerMsg::Wrapped { inner, .. }) if matches!(*inner, PeerMsg::GroupKey { .. })) {
             o.store.outbox_remove(&id, &m.device).unwrap();
         }
     }
