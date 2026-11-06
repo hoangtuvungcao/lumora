@@ -853,3 +853,4 @@ html[lang="en"] .l-vi,html:not([lang="en"]) .l-en{display:none!important}
 .dl-item__soon{flex:none;font-size:13px;opacity:.7}
 @media (max-width:900px){.dl-all{grid-template-columns:1fr}}
 @media (max-width:480px){.dl-item{flex-direction:column;align-items:stretch}.dl-item__btn{justify-content:center}}
+.dl-card__btn2{margin-top:10px}

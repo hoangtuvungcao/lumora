@@ -650,8 +650,17 @@ jobs:
           out="$RUNNER_TEMP/apk"; mkdir -p "$out"
           flutter build apk --release $FLUTTER_HARDEN/android-universal "${bn[@]}"
           cp build/app/outputs/flutter-apk/app-release.apk "$out/app-universal-release.apk"
-          flutter build apk --release --split-per-abi $FLUTTER_HARDEN/android "${bn[@]}"
-          for abi in arm64-v8a armeabi-v7a x86_64; do cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$out/"; done
+          # one build per ABI (not --split-per-abi): split APKs get versionCode + 1000×ABI, so a
+          # phone holding one variant refused another as a downgrade ("package appears to be
+          # invalid" on Xiaomi). Same versionCode everywhere = people can switch variants.
+          for pair in android-arm64:arm64-v8a android-arm:armeabi-v7a android-x64:x86_64; do
+            flutter build apk --release --target-platform "${pair%%:*}" $FLUTTER_HARDEN/android-${pair##*:} "${bn[@]}"
+            cp build/app/outputs/flutter-apk/app-release.apk "$out/app-${pair##*:}-release.apk"
+          done
+          # all four must carry the same versionCode
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -1)"
+          codes="$(for f in "$out"/*.apk; do "$aapt" dump badging "$f" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p"; done | sort -u)"
+          [ "$(echo "$codes" | wc -l)" = 1 ] || { echo "::error::APK versionCodes differ: $codes"; exit 1; }
           ls -la "$out"
       # Google Play takes an Android App Bundle (Play builds the per-device APKs from it).
       # Signed with the same key = the Play "upload key"; kept as a PRIVATE workflow artifact.

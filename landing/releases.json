@@ -203,7 +203,11 @@
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.1/Lumora-v1.0.1-android-universal.apk",
           "sha256": "014d367f9d66624e1479dacb7cc1fe143c45d14602f4a372e3e96a67a5ea750c",
           "bytes": 167463247,
-          "size": "160 MB"
+          "size": "160 MB",
+          "short": {
+            "vi": "Mọi máy",
+            "en": "Any phone"
+          }
         },
         {
           "id": "android-arm64",
@@ -223,7 +227,11 @@
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.1/Lumora-v1.0.1-android-arm64-v8a.apk",
           "sha256": "144227d25300327c91ba0fa490896f3b6d0156162d214c6815c3cef4821d800b",
           "bytes": 60589195,
-          "size": "58 MB"
+          "size": "58 MB",
+          "short": {
+            "vi": "Bản nhẹ 64-bit",
+            "en": "Lighter 64-bit"
+          }
         },
         {
           "id": "android-armv7",
