@@ -275,12 +275,15 @@ void main() {
       expect(pendingDeepLink.value, 'lumora://add/QUEUED');
       pendingDeepLink.value = null; // consumed by the home shell
 
-      await nativeOpens('lumora://link/abc');
-      expect(pendingDeepLink.value, 'lumora://link/abc');
+      await nativeOpens('https://getlumora.pages.dev/remote/123456789');
+      expect(pendingDeepLink.value, 'https://getlumora.pages.dev/remote/123456789');
 
       pendingDeepLink.value = null;
+      await nativeOpens('lumora://link/abc');
+      expect(pendingDeepLink.value, isNull, reason: 'device-link codes are never taken from outside the app');
+
       await nativeOpens('https://evil.example/');
-      expect(pendingDeepLink.value, isNull, reason: 'only lumora:// links');
+      expect(pendingDeepLink.value, isNull, reason: 'only Lumora links');
     });
 
     test('a runner without the channel is fine', () async {

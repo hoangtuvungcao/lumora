@@ -99,17 +99,52 @@ class _ChatViewState extends State<ChatView> {
   Future<void> _dropFiles(List<String> paths) => showSendFiles(context, conv: widget.conv, paths: paths, onSent: _toBottom);
 
   late final NavStore _nav;
+  late final ChatStore _chats;
+  bool _convSeen = false, _closing = false;
+
+  /// The chat was deleted (here, on another of my devices, or "for both" by the other
+  /// side): don't leave the user inside it — close the page / clear the desktop pane.
+  void _onChats() {
+    if (_chats.convs.containsKey(widget.conv)) {
+      _convSeen = true;
+      return;
+    }
+    if (!_convSeen || _closing) return;
+    _closing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (!widget.embedded && !widget.bare) {
+        // Close this chat's own page — not just the top route: its info page
+        // (or a dialog) may be on top of it, and they go with it.
+        final route = ModalRoute.of(context);
+        if (route == null || !route.isActive) return;
+        final navigator = Navigator.of(context);
+        navigator.popUntil((r) => r == route || r.isFirst);
+        if (route.isCurrent && !route.isFirst) navigator.pop();
+      } else if (_nav.conv == widget.conv) {
+        _nav.openConv(null);
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _nav = context.read<NavStore>()..chatShown(widget.conv);
+    _chats = context.read<ChatStore>()..addListener(_onChats);
+    _convSeen = _chats.convs.containsKey(widget.conv);
     _thread = context.read<ChatStore>().thread(widget.conv);
     _thread.loadInitial().then((_) {
       if (mounted) _lastCount = _thread.messages.length;
     });
     context.read<ChatStore>().loadRetention(widget.conv);
     context.read<ChatStore>().loadPinned(widget.conv);
+    if (widget.conv.startsWith('g:')) {
+      // removed from it while this app was closed: read-only (the `group`
+      // event says so live)
+      final gid = widget.conv.substring(2).split('#').first;
+      context.read<LumoraApi>().groupInfo(gid).then((g) => _chats.onGroup(gid, member: g.myRole != 'none')).catchError((_) {});
+    }
     context.read<ChatStore>().loadWallpaper(widget.conv);
     _thread.addListener(_onThread);
     _scroll.addListener(_onScroll);
@@ -122,6 +157,7 @@ class _ChatViewState extends State<ChatView> {
   void dispose() {
     // A phone chat page that is closed must stop reading new messages.
     _nav.chatHidden(widget.conv, pushed: !widget.embedded && !widget.bare);
+    _chats.removeListener(_onChats);
     _thread.removeListener(_onThread);
     _scroll.dispose();
     _composer.dispose();
@@ -313,13 +349,16 @@ class _ChatViewState extends State<ChatView> {
         _TypingBar(conv: widget.conv),
         if (widget.conv.startsWith('g:')) GroupFloodBanner(conv: widget.conv),
         BridgedHint(conv: widget.conv),
-        BlockedChatGate(
+        _RemovedGroupGate(
+          conv: widget.conv,
+          child: BlockedChatGate(
           conv: widget.conv,
           child: _BotStartOr(
             conv: widget.conv,
             thread: _thread,
             child: Composer(conv: widget.conv, controller: _composer, onSent: _toBottom),
           ),
+        ),
         ),
       ],
     );
@@ -902,6 +941,43 @@ class _BotStartOr extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// A group I was removed from: its history stays readable, the composer goes.
+class _RemovedGroupGate extends StatelessWidget {
+  const _RemovedGroupGate({required this.conv, required this.child});
+  final String conv;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final removed = context.select<ChatStore, bool>((c) => c.removedFrom(conv));
+    if (!removed) return child;
+    final s = S.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: const ValueKey('group-removed'),
+        margin: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        decoration: BoxDecoration(
+          color: context.lc.surface,
+          borderRadius: BorderRadius.circular(Radii.lg),
+          border: Border.all(color: context.lc.divider),
+        ),
+        child: Row(children: [
+          const IconTile(AppIcons.signOut, color: LC.danger, circle: true),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              Text(s('group_removed_banner'), maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+              Text(s('group_removed_hint'), maxLines: 2, overflow: TextOverflow.ellipsis, style: context.tt.bodySmall),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 }

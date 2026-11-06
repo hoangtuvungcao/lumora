@@ -93,16 +93,40 @@ class AppLock extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       return;
     }
+    // Locked chats are an account setting in the core (synced to the other
+    // devices); null: no device has saved a list yet.
+    List<String>? accountChats;
+    try {
+      accountChats = await a.lockedChatsGet();
+      _accountChats = true;
+    } catch (_) {
+      _accountChats = false; // older core: this device's list only
+    }
     final wasLegacy = settings.legacyPinSecrets;
     final fileHash = settings.pinHash;
     var saveChats = false;
-    // The core's encrypted copy wins over the plain settings file, which
-    // anyone with access to the folder can edit (lock switch, locked chats).
+    List<String>? deviceChats;
     if (chatsRaw != null) {
       try {
-        final list = (jsonDecode(chatsRaw) as List).map((e) => '$e').toList();
-        settings.lockedChats = list;
+        deviceChats = (jsonDecode(chatsRaw) as List).map((e) => '$e').toList();
       } catch (_) {}
+    }
+    // The core's encrypted copies win over the plain settings file, which
+    // anyone with access to the folder can edit (lock switch, locked chats).
+    if (_accountChats) {
+      if (deviceChats != null) {
+        // first run with synced locks: this device's list joins the account's
+        // (never drops a lock made on another device)
+        settings.lockedChats = {...?accountChats, ...deviceChats}.toList();
+        saveChats = true;
+        _dropDeviceChats = true;
+      } else if (accountChats != null) {
+        settings.lockedChats = accountChats;
+      } else if (settings.lockedChats.isNotEmpty) {
+        saveChats = true; // a list from a version before the core kept it: move it in
+      }
+    } else if (deviceChats != null) {
+      settings.lockedChats = deviceChats;
     } else if (settings.lockedChats.isNotEmpty) {
       saveChats = true; // first run with this version: move the list in
     }
@@ -209,12 +233,91 @@ class AppLock extends ChangeNotifier with WidgetsBindingObserver {
     await a.uiSecretSet(secretKey, settings.pinHash.isEmpty ? null : _secretsJson());
   }
 
-  /// Persists the locked-chats list in the core (best effort; the file keeps
-  /// a copy for older cores).
+  /// The core keeps the locked chats as an account setting (synced); false
+  /// with an older core, which keeps this device's list in `ui.locked_chats`.
+  bool _accountChats = false;
+
+  /// The old per-device copy (`ui.locked_chats`) goes once the account list
+  /// has been saved.
+  bool _dropDeviceChats = false;
+
+  /// Persists the locked-chats list in the core (best effort; the settings
+  /// file keeps a copy as a cache). With a current core it is the account's
+  /// list: the other devices hide these chats too.
   void _saveChats() {
     final a = api;
     if (a == null) return;
-    a.uiSecretSet(chatsKey, settings.lockedChats.isEmpty ? null : jsonEncode(settings.lockedChats)).catchError((_) {});
+    final list = List<String>.of(settings.lockedChats);
+    Future<void> perDevice() => a.uiSecretSet(chatsKey, list.isEmpty ? null : jsonEncode(list));
+    if (!_accountChats) {
+      perDevice().catchError((_) {});
+      return;
+    }
+    final f = a.lockedChatsSet(list).then((_) {
+      if (!_dropDeviceChats) return null;
+      _dropDeviceChats = false;
+      return a.uiSecretSet(chatsKey, null);
+    }).catchError((_) => perDevice().catchError((_) {}));
+    _chatsWrite = f;
+    f.whenComplete(() {
+      if (identical(_chatsWrite, f)) _chatsWrite = null;
+    });
+  }
+
+  /// The last list sent to the core, until it is saved (a reload waits for
+  /// it, so it never reads the list from before this device's own change).
+  Future<void>? _chatsWrite;
+
+  /// Reads the account's locked chats again (changed on another device, or the
+  /// app is back in front). A chat newly locked elsewhere is hidden at once.
+  Future<void> reloadChats() async {
+    final a = api;
+    if (a == null || !_accountChats || !_secretsReady) return;
+    List<String>? list;
+    try {
+      while (_chatsWrite != null) {
+        await _chatsWrite;
+      }
+      list = await a.lockedChatsGet();
+    } catch (_) {
+      return;
+    }
+    // (a change made here meanwhile is newer than what was read)
+    if (list == null || _chatsWrite != null) return;
+    _applyAccountChats(list);
+  }
+
+  void _applyAccountChats(List<String> list) {
+    final old = settings.lockedChats;
+    if (list.length == old.length && list.every(old.contains)) return;
+    final added = list.any((c) => !old.contains(c));
+    settings.update((s) => s.lockedChats = List.of(list));
+    if (added) chatsOpen = false;
+    notifyListeners();
+  }
+
+  Timer? _reloadSoon;
+
+  /// Core events: the account's locked chats changed on another device
+  /// (`settings` with key `privacy.locked_chats`), or a message says its chat is
+  /// locked while this device's copy doesn't know yet (or the other way round).
+  /// A lock reported by a message applies at once, so its notification (shown
+  /// by the handlers that run after this one) carries no name or text.
+  void onCoreEvent(String name, Map<String, dynamic> d) {
+    if (!_accountChats) return;
+    if (name == 'settings' && d['key'] == 'privacy.locked_chats') {
+      unawaited(reloadChats());
+    } else if (name == 'link_state' && d['state'] == 'state_synced') {
+      unawaited(reloadChats()); // the account's settings arrived on this new device
+    } else if (name == 'message' || name == 'mention') {
+      final conv = d['conv']?.toString() ?? '';
+      if (conv.isEmpty) return;
+      final locked = d['locked'] == true;
+      if (locked == settings.lockedChats.contains(conv)) return;
+      if (locked) _applyAccountChats([...settings.lockedChats, conv]);
+      _reloadSoon?.cancel();
+      _reloadSoon = Timer(const Duration(milliseconds: 300), () => unawaited(reloadChats()));
+    }
   }
 
   /// Tries without any wait.
@@ -292,6 +395,8 @@ class AppLock extends ChangeNotifier with WidgetsBindingObserver {
     _tick = null;
     _idleTimer?.cancel();
     _idleTimer = null;
+    _reloadSoon?.cancel();
+    _reloadSoon = null;
   }
 
   // ------------------------------------------------ desktop idle lock
@@ -348,6 +453,8 @@ class AppLock extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // back in front: locks made on another device meanwhile apply now
+    if (state == AppLifecycleState.resumed) unawaited(reloadChats());
     if ((state == AppLifecycleState.hidden || state == AppLifecycleState.paused) && chatsOpen) {
       chatsOpen = false;
       notifyListeners();

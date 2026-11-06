@@ -448,6 +448,23 @@ abstract class LumoraApi {
 
   Future<void> settingsSet(Map<String, dynamic> values) => request('settings_set', values);
 
+  /// Locked chats: an account setting kept (and synced to the account's other
+  /// devices) by the core. Null when no device has saved a list yet.
+  Future<List<String>?> lockedChatsGet() async {
+    final m = _map(await request('locked_chats_get'));
+    if (m['set'] != true) return null;
+    return ((m['chats'] as List?) ?? const []).map((e) => '$e').toList();
+  }
+
+  Future<void> lockedChatsSet(List<String> chats) => request('locked_chats_set', {'chats': chats});
+
+  /// The BotFather conversation (synced to the account's devices, last 200
+  /// lines; tokens are never kept in it).
+  Future<List<Map<String, dynamic>>> botfatherHistory() async =>
+      ((_map(await request('botfather_history'))['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  Future<void> botfatherAppend(List<Map<String, dynamic>> entries) => request('botfather_append', {'entries': entries});
+  Future<void> botfatherClear() => request('botfather_clear');
+
   /// Small encrypted key-value store inside the core's database (keys start
   /// with "ui.", values up to 4 KB). Only available once the core is running.
   Future<String?> uiSecretGet(String key) async {
@@ -794,6 +811,21 @@ class DeviceInfo {
   final String safety;
   final String os;
   bool get remoteHost => caps & 2 != 0;
+
+  DeviceInfo withPresence({required bool online, int? lastSeen}) => DeviceInfo(
+        device: device,
+        name: name,
+        kind: kind,
+        caps: caps,
+        primary: primary,
+        isThis: isThis,
+        online: online,
+        lastSeen: lastSeen ?? this.lastSeen,
+        added: added,
+        shortId: shortId,
+        safety: safety,
+        os: os,
+      );
 
   factory DeviceInfo.fromJson(Map<String, dynamic> j) => DeviceInfo(
         device: _s(j, 'device'),
@@ -1284,6 +1316,7 @@ class Message {
   bool get isSystem => kind == 'system' || kind == 'call';
 
   factory Message.fromJson(Map<String, dynamic> j) {
+    if (j['author_name'] is String) PeerNames.learn(j['author']?.toString() ?? '', j['author_name'] as String);
     final r = <String, List<String>>{};
     final st = <String, dynamic>{};
     final rj = j['reactions'];
@@ -1503,13 +1536,29 @@ class NetStatus {
   }
 }
 
+/// Names the core told us for people who aren't contacts (group members:
+/// `members[].name` of group info, `author_name` of group messages) — the
+/// fallback of [ContactsStore.nameOf] before a short id.
+class PeerNames {
+  PeerNames._();
+  static final Map<String, String> known = {};
+  static void learn(String peer, String? name) {
+    if (peer.isEmpty || name == null || name.isEmpty) return;
+    if (known.length > 5000) known.clear();
+    known[peer] = name;
+  }
+}
+
 class GroupMember {
   const GroupMember({required this.peer, required this.name, this.role = 'member'});
   final String peer;
   final String name;
   final String role; // owner | admin | member
-  factory GroupMember.fromJson(Map<String, dynamic> j) =>
-      GroupMember(peer: _s(j, 'peer'), name: _s(j, 'name'), role: _s(j, 'role', 'member'));
+  factory GroupMember.fromJson(Map<String, dynamic> j) {
+    final m = GroupMember(peer: _s(j, 'peer'), name: _s(j, 'name'), role: _s(j, 'role', 'member'));
+    PeerNames.learn(m.peer, m.name);
+    return m;
+  }
 }
 
 class GroupInfo {
@@ -1630,6 +1679,8 @@ class CallState {
     this.startedAt,
     this.speaking = const {},
     this.quality = 3,
+    this.accounts = const {},
+    this.names = const {},
   });
   final String callId;
   final String conv;
@@ -1646,6 +1697,41 @@ class CallState {
   /// 0..3 bars (optional `quality` field in `call` event).
   final int quality;
 
+  /// Participant (a device key) → its account: a friend on a linked device
+  /// joins with that device's key, while contacts / the 1-1 `peer` use the
+  /// account (`participants[].account`).
+  final Map<String, String> accounts;
+
+  /// Participant (device key) → the name the core knows (`participants[].name`).
+  final Map<String, String> names;
+
+  String accountOf(String participant) => accounts[participant] ?? participant;
+
+  /// The camera stream of `account` (keyed by its account or by one of its devices).
+  int? streamOf(String account) {
+    final direct = streams[account];
+    if (direct != null) return direct;
+    for (final e in streams.entries) {
+      if (accounts[e.key] == account) return e.value;
+    }
+    return null;
+  }
+
+  CallState copyWith({CallPhase? phase, List<String>? participants, Map<String, int>? streams, int? startedAt, Set<String>? speaking, int? quality, Map<String, String>? accounts, Map<String, String>? names}) => CallState(
+        callId: callId,
+        conv: conv,
+        peer: peer,
+        phase: phase ?? this.phase,
+        video: video,
+        participants: participants ?? this.participants,
+        streams: streams ?? this.streams,
+        startedAt: startedAt ?? this.startedAt,
+        speaking: speaking ?? this.speaking,
+        quality: quality ?? this.quality,
+        accounts: accounts ?? this.accounts,
+        names: names ?? this.names,
+      );
+
   factory CallState.fromJson(Map<String, dynamic> j) {
     final st = _s(j, 'state', 'ringing');
     final streams = <String, int>{};
@@ -1660,6 +1746,19 @@ class CallState {
     final parts = (j['participants'] is List)
         ? (j['participants'] as List).map((e) => e is Map ? (e['peer']?.toString() ?? '') : e.toString()).where((e) => e.isNotEmpty).toList()
         : <String>[];
+    final accounts = <String, String>{};
+    final names = <String, String>{};
+    if (j['participants'] is List) {
+      for (final e in j['participants'] as List) {
+        if (e is! Map) continue;
+        final p = e['peer']?.toString() ?? '';
+        if (p.isEmpty) continue;
+        final a = e['account']?.toString() ?? '';
+        if (a.isNotEmpty && a != p) accounts[p] = a;
+        final n = e['name']?.toString() ?? '';
+        if (n.isNotEmpty) names[p] = n;
+      }
+    }
     final peer = _so(j, 'peer') ?? _so(j, 'from') ?? (conv.startsWith('d:') ? conv.substring(2) : (parts.isNotEmpty ? parts.first : ''));
     if (parts.isEmpty && conv.startsWith('d:')) parts.add(conv.substring(2));
     return CallState(
@@ -1678,6 +1777,8 @@ class CallState {
       startedAt: j['started_at'] == null ? null : _i(j, 'started_at'),
       speaking: _ls(j, 'speaking').toSet(),
       quality: _i(j, 'quality', 3).clamp(0, 3),
+      accounts: accounts,
+      names: names,
     );
   }
 }
@@ -1718,7 +1819,8 @@ class RemoteStatus {
 }
 
 class RemoteRequest {
-  const RemoteRequest({required this.session, required this.peer, required this.name, this.viewOnly = false, this.ask = false, this.shortId = ''});
+  const RemoteRequest({required this.session, required this.peer, required this.name, this.viewOnly = false, this.ask = false, this.shortId = '', String? account, this.own = false})
+      : account = account ?? peer;
   final String session;
   /// Friend asked without a password: the host decides (accept/deny).
   final bool ask;
@@ -1728,9 +1830,17 @@ class RemoteRequest {
   final bool viewOnly;
   /// Short form of the requester's ID (cannot be faked).
   final String shortId;
+  /// The requester's account (a friend may ask from a linked device whose key
+  /// isn't their account); older cores send only `peer`.
+  final String account;
+
+  /// The request comes from another of my own devices.
+  final bool own;
   factory RemoteRequest.fromJson(Map<String, dynamic> j) => RemoteRequest(
         session: _s(j, 'session'),
         peer: _s(j, 'peer'),
+        account: _so(j, 'account') ?? _s(j, 'peer'),
+        own: _b(j, 'own'),
         name: _s(j, 'name'),
         viewOnly: _b(j, 'view_only'),
         ask: _b(j, 'ask'),
@@ -1751,9 +1861,13 @@ class RemoteState {
     this.height = 0,
     this.viewer = true,
     this.stream = 0,
-  });
+    String? account,
+  }) : account = account ?? peer;
   final String session;
   final String peer;
+
+  /// The account behind `peer` (a device key for a friend's linked device).
+  final String account;
   final RemotePhase phase;
   final int width;
   final int height;
@@ -1769,6 +1883,7 @@ class RemoteState {
       height: _i(j, 'height'),
       viewer: _s(j, 'role', 'viewer') == 'viewer',
       stream: _i(j, 'stream'),
+      account: _so(j, 'account'),
     );
   }
 }

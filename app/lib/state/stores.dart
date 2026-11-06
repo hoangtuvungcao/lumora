@@ -168,6 +168,47 @@ class AvatarStore extends ChangeNotifier {
     return null;
   }
 
+  /// The group changed (`group` event): a cached avatar (or a cached "none")
+  /// is fetched again — the old picture stays until the new one is here.
+  void refreshGroup(String gid, {bool? hasAvatar}) {
+    final key = 'g:$gid';
+    if (!_cache.containsKey(key)) return; // never shown: fetched when needed
+    if (hasAvatar == false) {
+      if (_cache[key] != null) {
+        _cache[key] = null;
+        notifyListeners();
+      }
+      return;
+    }
+    if (!_pending.add(key)) return;
+    api.groupAvatar(gid).then((b64) {
+      _pending.remove(key);
+      final bytes = _decodeB64(b64);
+      if (!_sameBytes(_cache[key], bytes)) {
+        _cache[key] = bytes;
+        notifyListeners();
+      }
+    }).catchError((_) {
+      _pending.remove(key);
+    });
+  }
+
+  /// A contact removed their avatar.
+  void cleared(String peer) {
+    if (_cache[peer] == null) return;
+    _cache[peer] = null;
+    notifyListeners();
+  }
+
+  static bool _sameBytes(Uint8List? a, Uint8List? b) {
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   void setGroup(String gid, Uint8List bytes) {
     _cache['g:$gid'] = bytes;
     notifyListeners();
@@ -211,6 +252,8 @@ class ContactsStore extends ChangeNotifier {
     if (peer == me) return meName ?? 'Bạn';
     final c = byPeer[peer];
     if (c != null && c.displayName.isNotEmpty) return c.displayName;
+    final known = PeerNames.known[peer]; // a group member the core named
+    if (known != null) return known;
     return _peerRe.hasMatch(peer) ? '${peer.substring(0, 8)}…' : peer;
   }
 
@@ -455,6 +498,21 @@ class ConvThread extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Messages were imported underneath this thread without `message` events
+  /// (history copied to a newly linked device): read the newest page again
+  /// (at least as many as shown) so older ones can be scrolled to.
+  Future<void> reloadAfterImport() async {
+    if (!loaded || loadingOlder) return;
+    final n = math.max(pageSize, messages.length);
+    final list = await api.messages(conv, limit: n);
+    messages
+      ..clear()
+      ..addAll(list);
+    hasMore = list.length >= n;
+    _reindex();
+    notifyListeners();
+  }
+
   Future<void> loadOlder() async {
     if (loadingOlder || !hasMore || messages.isEmpty) return;
     loadingOlder = true;
@@ -595,6 +653,13 @@ class ChatStore extends ChangeNotifier {
 
   ConvThread thread(String conv) => _threads.putIfAbsent(conv, () => ConvThread(api, conv));
 
+  /// History was copied in (newly linked device): open threads read it.
+  Future<void> reloadThreadsAfterImport() async {
+    for (final t in List.of(_threads.values)) {
+      await t.reloadAfterImport().catchError((_) {});
+    }
+  }
+
   /// Saved messages, then pinned, then by recency.
   List<Conversation> get sorted => _sorted ??= convs.values.toList()
     ..sort((a, b) {
@@ -660,6 +725,9 @@ class ChatStore extends ChangeNotifier {
     } else if (old != null && !j.containsKey('last_mine') && c.lastText == old.lastText) {
       c = c.copyWith(lastMine: old.lastMine); // same last message: who wrote it is known here
     }
+    // The core's conversation rows carry no `mentions` (it sends `mention` events, then
+    // the row): keep the count until the chat is read.
+    if (old != null && !j.containsKey('mentions') && c.unread > 0 && old.mentions > 0) c = c.copyWith(mentions: old.mentions);
     _conv(c);
   }
 
@@ -703,7 +771,139 @@ class ChatStore extends ChangeNotifier {
     return m.body; // "You:" is added from `lastMine` by the list
   }
 
-  void onMessageUpdate(Map<String, dynamic> j) => _threads[j['conv']]?.update(j);
+  void onMessageUpdate(Map<String, dynamic> j) {
+    final conv = j['conv']?.toString() ?? '';
+    final t = _threads[conv];
+    // `removed`: purged (deleted for me here or on another of my devices, expired):
+    // it leaves the chat at once instead of lingering until the next reload.
+    if (j['removed'] == true) {
+      if (t != null) {
+        final before = t.messages.length;
+        t.messages.removeWhere((m) => m.id == j['id']);
+        if (t.messages.length != before) {
+          t._reindex();
+          t.notifyListeners();
+        }
+      }
+      _refreshPreview(conv);
+      _unpin(conv, j['id']);
+      return;
+    }
+    t?.update(j);
+    if (j['deleted'] == true) {
+      _refreshPreview(conv);
+      _unpin(conv, j['id']);
+    } else if (j.containsKey('pinned')) {
+      _syncPin(conv, j['id']?.toString() ?? '', j['pinned'] == true);
+    } else {
+      // an edited pinned message: the bar shows its new text
+      final list = pinned[conv];
+      final m = t?.byId(j['id']?.toString() ?? '');
+      final i = list == null || m == null ? -1 : list.indexWhere((x) => x.id == m.id);
+      if (i >= 0) {
+        pinned[conv] = List<Message>.of(list!)..[i] = m!;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// A deleted / purged message leaves the pinned bar too.
+  void _unpin(String conv, Object? id) {
+    final list = pinned[conv];
+    if (list == null || !list.any((m) => m.id == id)) return;
+    pinned[conv] = list.where((m) => m.id != id).toList();
+    notifyListeners();
+  }
+
+  /// Pinned / unpinned elsewhere (another member, my other device): the bar follows.
+  void _syncPin(String conv, String id, bool on) {
+    final list = pinned[conv];
+    if (list == null) return; // not shown yet: loaded fresh when the chat opens
+    if (!on) {
+      _unpin(conv, id);
+      return;
+    }
+    if (list.any((m) => m.id == id)) return;
+    final m = _threads[conv]?.byId(id);
+    if (m != null) {
+      pinned[conv] = [...list, m];
+      notifyListeners();
+    } else {
+      loadPinned(conv); // not in the loaded part of the chat: ask the core
+    }
+  }
+
+  /// Group chats I was removed from (kicked / banned): kept, read-only.
+  final Set<String> removedGroups = {};
+
+  /// Whether `conv` (a group chat or one of its channels) is read-only for me.
+  bool removedFrom(String conv) => conv.startsWith('g:') && removedGroups.contains(conv.split('#').first);
+
+  /// `group` event: the title follows a rename; membership is known.
+  void onGroup(String gid, {String? name, bool? member}) {
+    final conv = 'g:$gid';
+    var changed = false;
+    final c = convs[conv];
+    if (c != null && name != null && name.isNotEmpty && c.title != name) {
+      convs[conv] = c.copyWith(title: name);
+      _sorted = null;
+      changed = true;
+    }
+    if (member == true) changed |= removedGroups.remove(conv);
+    if (member == false && convs.containsKey(conv)) changed |= removedGroups.add(conv);
+    if (changed) notifyListeners();
+  }
+
+  /// I'm out of a group: `left` (by me, maybe on another device) → its chats
+  /// go; kicked → the chat stays, read-only, with the core's notice line.
+  void onGroupRemoved(String conv, {required bool left}) {
+    if (left) {
+      for (final id in convs.keys.where((k) => k == conv || k.startsWith('$conv#')).toList()) {
+        onConversationRemoved(id);
+      }
+      onConversationRemoved(conv);
+      removedGroups.remove(conv);
+      return;
+    }
+    if (removedGroups.add(conv)) notifyListeners();
+  }
+
+  /// The chat was deleted (by me on another device, or "for both" by the other side).
+  void onConversationRemoved(String conv) {
+    pinned.remove(conv);
+    if (convs.remove(conv) == null && !_threads.containsKey(conv)) return;
+    _threads.remove(conv);
+    _sorted = null;
+    notifyListeners();
+  }
+
+  /// Its history was cleared (elsewhere): empty the open thread and the preview.
+  void onHistoryCleared(String conv) {
+    if (pinned[conv]?.isNotEmpty ?? false) loadPinned(conv); // cleared pins go with it
+    final t = _threads[conv];
+    if (t != null) {
+      t.messages.clear();
+      t._reindex();
+      t.notifyListeners();
+    }
+    final c = convs[conv];
+    if (c != null) _conv(c.copyWith(lastText: '', unread: 0));
+  }
+
+  /// The list preview follows the newest message still shown.
+  void _refreshPreview(String conv) {
+    final c = convs[conv];
+    final t = _threads[conv];
+    if (c == null || t == null) return;
+    final live = t.messages.where((m) => !m.deleted).toList();
+    if (live.isEmpty) {
+      if (c.lastText.isNotEmpty) _conv(c.copyWith(lastText: ''));
+      return;
+    }
+    final m = live.last;
+    final text = _previewOf(m);
+    if (text != c.lastText) _conv(c.copyWith(lastText: text, lastMine: m.mine, lastTs: m.ts));
+  }
 
   void onTyping(Map<String, dynamic> j) =>
       _setTyping(j['conv']?.toString() ?? '', j['peer']?.toString() ?? '', j['on'] == true);
@@ -762,13 +962,13 @@ class ChatStore extends ChangeNotifier {
   Future<void> deleteFor(String conv, String id, {required bool forEveryone}) async {
     await api.deleteMessageFor(conv, id, forEveryone: forEveryone);
     final t = thread(conv);
-    if (forEveryone) {
-      t.update({'id': id, 'deleted': true, 'body': ''});
-    } else {
+    // Gone from my screen at once either way; the others see "message was unsent".
+    {
       t.messages.removeWhere((m) => m.id == id);
       t._reindex();
       t.notifyListeners();
     }
+    _refreshPreview(conv);
   }
 
   Future<void> clearHistory(String conv, {bool forEveryone = false}) async {
@@ -1119,10 +1319,12 @@ class CallStore extends ChangeNotifier {
         screen = false;
         videoNeedsPeerUpdate = false;
         videoCodec = null;
+        peerMedia.clear();
         cameraRequested.value = false; // the core sends no camera_released on hang-up
       }
     } else {
       final prev = call;
+      if (prev != null && prev.callId != c.callId) peerMedia.clear();
       call = CallState(
         callId: c.callId,
         conv: c.conv,
@@ -1130,7 +1332,9 @@ class CallStore extends ChangeNotifier {
         phase: c.phase,
         video: c.video,
         participants: c.participants,
-        streams: c.streams.isEmpty && prev != null ? prev.streams : c.streams,
+        accounts: c.accounts,
+        names: c.names,
+        streams: c.streams.isEmpty && prev != null && prev.callId == c.callId ? prev.streams : c.streams,
         // The core's call events carry no `started_at`: the caller learns the
         // call was picked up from the first `active` event — start the clock
         // there (the answerer sets it in [answer]), else the caller's call
@@ -1196,20 +1400,28 @@ class CallStore extends ChangeNotifier {
     } else {
       streams[peer] = stream;
     }
-    call = CallState(
-      callId: c.callId,
-      conv: c.conv,
-      peer: c.peer,
-      phase: c.phase,
-      video: c.video,
-      participants: c.participants,
-      streams: streams,
-      startedAt: c.startedAt,
-      speaking: c.speaking,
-      quality: c.quality,
-    );
+    call = c.copyWith(streams: streams);
     notifyListeners();
   }
+
+  /// Each participant's own mic / camera / screen state (`call_peer`, keyed
+  /// by the participant's device key as in `participants`).
+  final Map<String, ({bool mic, bool cam, bool screen})> peerMedia = {};
+
+  void onCallPeer(Map<String, dynamic> j) {
+    final c = call;
+    if (c == null || j['call_id'] != c.callId) return;
+    final peer = j['peer']?.toString() ?? '';
+    if (peer.isEmpty) return;
+    peerMedia[peer] = (mic: j['mic'] != false, cam: j['cam'] != false, screen: j['screen'] == true);
+    notifyListeners();
+  }
+
+  /// Whether `participant` has muted their microphone (unknown: not muted).
+  bool peerMuted(String participant) => peerMedia[participant]?.mic == false;
+
+  /// Whether `participant` turned their camera off (unknown: on).
+  bool peerCamOff(String participant) => peerMedia[participant]?.cam == false;
 
   /// Voice-channel calls stay minimised (Discord-style panel).
   bool isVoiceChannel(String conv) => conv.contains('#');
@@ -1252,6 +1464,8 @@ class CallStore extends ChangeNotifier {
         participants: c.participants,
         streams: c.streams,
         startedAt: DateTime.now().millisecondsSinceEpoch,
+        accounts: c.accounts,
+        names: c.names,
       );
     }
     notifyListeners();
@@ -1315,8 +1529,22 @@ class RemoteStore extends ChangeNotifier {
 
   RemoteStatus status = const RemoteStatus();
   RemoteRequest? request;
+
+  /// Requests waiting behind [request] (the core keeps up to 8 pending): each
+  /// is answered in turn instead of the newest silently replacing the first.
+  final List<RemoteRequest> queued = [];
   RemoteState? viewer;
+
+  /// The newest active host session (the "being controlled" banner).
   RemoteState? host;
+
+  /// Every active host session: two viewers may control this device at once.
+  final Map<String, RemoteState> hosts = {};
+
+  void _dropHost(String session) {
+    hosts.remove(session);
+    if (host?.session == session) host = hosts.isEmpty ? null : hosts.values.last;
+  }
   String? viewerPeerName;
 
   /// Names announced in accepted requests (for people who aren't contacts).
@@ -1536,8 +1764,11 @@ class RemoteStore extends ChangeNotifier {
   Future<void> respond({required bool accept, bool control = true, bool trust = false}) async {
     final r = request;
     if (r == null) return;
-    request = null;
-    if (accept && r.name.isNotEmpty) requestNames[r.peer] = r.name;
+    request = queued.isEmpty ? null : queued.removeAt(0); // the next one waiting
+    if (accept && r.name.isNotEmpty) {
+      requestNames[r.peer] = r.name;
+      requestNames[r.account] = r.name;
+    }
     notifyListeners();
     await api.remoteRespond(r.session, accept: accept, control: control);
     if (accept && trust) await api.remoteTrust(r.peer, true);
@@ -1578,13 +1809,18 @@ class RemoteStore extends ChangeNotifier {
       }
       viewer = null;
     }
-    if (host?.session == session) host = null;
+    _dropHost(session);
     notifyListeners();
     await api.remoteEnd(session);
   }
 
   void onRequest(Map<String, dynamic> j) {
-    request = RemoteRequest.fromJson(j);
+    final r = RemoteRequest.fromJson(j);
+    if (request == null || request!.session == r.session) {
+      request = r;
+    } else if (!queued.any((q) => q.session == r.session)) {
+      queued.add(r);
+    }
     notifyListeners();
   }
 
@@ -1635,11 +1871,15 @@ class RemoteStore extends ChangeNotifier {
         }
         viewer = ended ? null : s;
       }
+    } else if (ended) {
+      _dropHost(s.session); // another viewer may still be in control
     } else {
-      host = ended ? null : s;
+      hosts[s.session] = s;
+      host = s;
     }
-    if (ended && request?.session == s.session) request = null;
-    if (ended && host?.session == s.session) host = null;
+    if (ended) queued.removeWhere((r) => r.session == s.session);
+    if (ended && request?.session == s.session) request = queued.isEmpty ? null : queued.removeAt(0);
+    if (ended) _dropHost(s.session);
     notifyListeners();
   }
 
@@ -1717,7 +1957,7 @@ class StoryStore extends ChangeNotifier {
 
 // ---------------------------------------------------------- notifications
 
-enum NoticeKind { mention, friendRequest, missedCall, file, remote, system, reminder }
+enum NoticeKind { mention, friendRequest, missedCall, file, remote, system, reminder, scheduledFailed, storageLow }
 
 class Notice {
   Notice({required this.kind, required this.title, this.body = '', this.conv, this.peer, int? ts})
@@ -2021,14 +2261,21 @@ class EventHub {
         contacts.onPresence(d);
       case 'contact':
         contacts.onContact(d);
-        if (d['has_avatar'] == true) avatars.invalidate(d['peer']?.toString() ?? '');
+        if (d['has_avatar'] == true) {
+          avatars.invalidate(d['peer']?.toString() ?? '');
+        } else if (d['has_avatar'] == false) {
+          avatars.cleared(d['peer']?.toString() ?? ''); // removed: no stale picture
+        }
       case 'friend_request':
         contacts.onFriendRequest(d);
         notices.add(Notice(kind: NoticeKind.friendRequest, title: d['name']?.toString() ?? '', body: d['note']?.toString() ?? '', peer: d['peer']?.toString()));
       case 'mention':
         final conv = d['conv']?.toString();
         final c = conv == null ? null : chat.convs[conv];
+        // the chat on screen reads it: no badge, no bell
+        if (conv != null && conv == nav.readingConv) break;
         if (c != null) chat.onConversation({'id': c.id, 'kind': c.isGroup ? 1 : 0, 'community': c.isCommunity, 'title': c.title, 'last_ts': c.lastTs, 'unread': c.unread, 'muted': c.muted, 'pinned': c.pinned, 'last_text': c.lastText, 'last_mine': c.lastMine, 'archived': c.archived, 'mentions': c.mentions + 1});
+        if (c != null && c.muted) break;
         notices.add(Notice(
           kind: NoticeKind.mention,
           title: contacts.nameOf(d['author']?.toString() ?? d['peer']?.toString() ?? ''),
@@ -2057,6 +2304,10 @@ class EventHub {
         chat.onMessage(d, myPeer: session.me?.peer ?? '', openConv: nav.readingConv);
       case 'message_update':
         chat.onMessageUpdate(d);
+      case 'conversation_removed':
+        chat.onConversationRemoved(d['conv']?.toString() ?? '');
+      case 'history_cleared':
+        chat.onHistoryCleared(d['conv']?.toString() ?? '');
       case 'reminder_due':
         chat.onReminderDue(d);
         notices.add(Notice(kind: NoticeKind.reminder, title: d['title']?.toString() ?? '', body: d['note']?.toString() ?? '', conv: d['conv']?.toString()));
@@ -2068,7 +2319,9 @@ class EventHub {
       case 'file':
         final known = files.byId.containsKey(d['id']);
         files.onFile(d);
-        if (!known && d['direction'] == 1 && d['state'] == 0) {
+        final fconv = d['conv']?.toString();
+        final quiet = fconv != null && (fconv == nav.readingConv || (chat.convs[fconv]?.muted ?? false));
+        if (!known && !quiet && d['direction'] == 1 && d['state'] == 0) {
           notices.add(Notice(kind: NoticeKind.file, title: contacts.nameOf(d['peer']?.toString() ?? ''), body: d['name']?.toString() ?? '', conv: d['conv']?.toString()));
         }
       case 'call':
@@ -2076,22 +2329,62 @@ class EventHub {
         calls.onCall(d);
         if (d['state'] == 'ended') AppleAudio.endCall(); // the other side hung up
         AppleServices.instance.onCallEvent(d);
-        if (d['state'] == 'ended' && d['reason'] != 'answered_elsewhere' && prev?.phase == CallPhase.incoming && prev?.callId == d['call_id']) {
+        // (answered or declined on another of my devices: not missed)
+        final elsewhere = d['reason'] == 'answered_elsewhere' || d['reason'] == 'declined_elsewhere';
+        if (d['reason'] == 'busy' && d['state'] == 'ended') {
+          // it rang while this device was in another call
+          final from = d['from']?.toString() ?? '';
+          notices.add(Notice(kind: NoticeKind.missedCall, title: contacts.nameOf(from), conv: d['conv']?.toString(), peer: from));
+        }
+        if (d['state'] == 'ended' && !elsewhere && prev?.phase == CallPhase.incoming && prev?.callId == d['call_id']) {
           notices.add(Notice(kind: NoticeKind.missedCall, title: contacts.nameOf(prev!.peer), conv: prev.conv, peer: prev.peer));
         }
       case 'remote_request':
         remote.onRequest(d);
         // a stranger's self-chosen name is quoted (it may imitate a friend)
-        final rp = d['peer']?.toString() ?? '';
+        // (by account: a friend's — or my own — linked device has its own key)
+        final rp = d['account']?.toString() ?? d['peer']?.toString() ?? '';
         final rc = contacts[rp];
-        final rname = rc != null && rc.status == ContactStatus.friend ? contacts.nameOf(rp) : '"${d['name'] ?? ''}"';
-        notices.add(Notice(kind: NoticeKind.remote, title: rname, peer: d['peer']?.toString()));
+        final known = d['own'] == true || (rc != null && rc.status == ContactStatus.friend);
+        final rname = known && rc != null ? contacts.nameOf(rp) : (known ? '${d['name'] ?? ''}' : '"${d['name'] ?? ''}"');
+        notices.add(Notice(kind: NoticeKind.remote, title: rname, peer: rp));
+      case 'call_peer':
+        calls.onCallPeer(d);
       case 'remote_state':
         remote.onState(d);
       case 'clipboard':
         remote.onClipboard(d);
       case 'group':
         _reloadSpaces();
+        final gid = d['gid']?.toString() ?? '';
+        if (d['members'] is List) {
+          for (final m in d['members'] as List) {
+            if (m is Map) PeerNames.learn(m['peer']?.toString() ?? '', m['name']?.toString());
+          }
+        }
+        if (gid.isNotEmpty) {
+          avatars.refreshGroup(gid, hasAvatar: d['has_avatar'] is bool ? d['has_avatar'] as bool : null);
+          chat.onGroup(gid, name: d['name']?.toString(), member: d['my_role'] == null ? null : d['my_role'] != 'none');
+        }
+      case 'group_removed':
+        final gconv = d['conv']?.toString() ?? (d['gid'] != null ? 'g:${d['gid']}' : '');
+        if (gconv.isNotEmpty) chat.onGroupRemoved(gconv, left: d['left'] == true);
+      case 'profile':
+        // (name / bio / avatar: reloaded by AppServices._onDeviceEvent) — the
+        // cached picture of my own avatar goes with it
+        final mine = session.me?.peer;
+        if (mine != null && (d['key']?.toString() ?? '').contains('avatar')) avatars.invalidate(mine);
+      case 'scheduled_failed':
+        // (the chat gets its own line from the core; this is the bell)
+        notices.add(Notice(kind: NoticeKind.scheduledFailed, title: d['text']?.toString() ?? '', body: d['error']?.toString() ?? '', conv: d['conv']?.toString()));
+      case 'storage_low':
+        // (checked every 10 min while low: say it once in a while, not every time)
+        final now = DateTime.now();
+        if (_storageWarned == null || now.difference(_storageWarned!) > const Duration(hours: 6)) {
+          _storageWarned = now;
+          final msg = d['message']?.toString() ?? '';
+          notices.add(Notice(kind: NoticeKind.storageLow, title: msg));
+        }
       case 'group_flood':
         chat.floods.onEvent(d);
       case 'error':
@@ -2103,6 +2396,8 @@ class EventHub {
         }
     }
   }
+
+  DateTime? _storageWarned;
 
   Timer? _spacesDebounce;
   void _reloadSpaces() {

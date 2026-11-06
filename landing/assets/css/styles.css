@@ -825,3 +825,15 @@ html[lang="en"] .l-vi,html:not([lang="en"]) .l-en{display:none!important}
 @media (max-width:640px){.prose--docs .table--api th,.prose--docs .table--api td{padding:10px 8px;font-size:13px}.prose--docs .table--api td:first-child code{white-space:normal}}
 .page-head--docs+.section{padding-top:8px}
 .prose--docs .table--api td:first-child{width:auto;min-width:104px}
+
+/* /open/ — fallback page for shared links and QR codes (assets/js/open.js) */
+.op-card{padding:32px 28px;text-align:center}
+.op-id{margin-bottom:8px}
+.op-id .overline{margin-bottom:6px}
+.op-id__value{font-size:clamp(30px,6vw,40px);font-weight:700;letter-spacing:.08em;font-variant-numeric:tabular-nums;margin-bottom:8px}
+.op-broken{color:var(--muted);margin:0 auto 8px;max-width:32em}
+.op-cta{margin-top:20px}
+.op-steps{padding:24px 28px;margin-top:20px}
+.op-steps .sub-h{margin:0 0 12px;font-size:22px}
+.op-steps ol{margin:0 0 14px;padding-left:22px;line-height:1.7}
+@media (max-width:640px){.op-card{padding:24px 16px}.op-steps{padding:20px 16px}}

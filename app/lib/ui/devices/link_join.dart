@@ -16,12 +16,8 @@ import '../theme.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/secure_input.dart';
-import '../flows.dart' show pendingDeepLink;
 import 'device_ui.dart';
 import 'qr_scan.dart';
-
-/// Opens a camera QR scanner and returns the scanned text (null = cancelled).
-typedef QrScanner = Future<String?> Function(BuildContext context);
 
 /// Camera scanning for phones (Android / iOS, see qr_scan.dart). Null hides the
 /// "Scan the QR code" button; desktop keeps paste and the 12-digit code. Tests
@@ -59,22 +55,13 @@ class _LinkJoinViewState extends State<LinkJoinView> {
   void initState() {
     super.initState();
     _api = context.read<LumoraApi>();
+    // A `lumora://link/…` code is only taken from this screen (scan / paste /
+    // type), never from a link another app opened (see core/links.dart).
     _sub = context.read<DevicesStore>().linkEvents.listen(_onEvent);
-    // a `lumora://link/…` link opened with Lumora (e.g. from the QR code)
-    pendingDeepLink.addListener(_deepLink);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _deepLink());
-  }
-
-  void _deepLink() {
-    final l = pendingDeepLink.value;
-    if (!mounted || l == null || !l.startsWith('lumora://link/') || _phase != JoinPhase.enter) return;
-    pendingDeepLink.value = null;
-    _submit(qr: l);
   }
 
   @override
   void dispose() {
-    pendingDeepLink.removeListener(_deepLink);
     _sub?.cancel();
     _code.dispose();
     super.dispose();

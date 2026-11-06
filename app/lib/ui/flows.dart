@@ -7,6 +7,7 @@ import 'widgets/app_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../core/api.dart';
+import '../core/links.dart';
 import '../l10n/strings.dart';
 import '../state/stores.dart';
 import 'chats/attachments.dart';
@@ -14,6 +15,7 @@ import 'chats/chat_view.dart';
 import 'chats/rich_bubbles.dart';
 import 'chats/stories.dart';
 import 'devices/device_picker.dart';
+import 'devices/qr_scan.dart';
 import 'friends/add_friend.dart';
 import 'groups/create_group.dart';
 import 'groups/invite.dart';
@@ -22,7 +24,8 @@ import 'theme.dart';
 import 'widgets/common.dart';
 
 /// Deep link received from the OS / command line, handled once the home
-/// screen is up.
+/// screen is up (onboarding finished, account and app lock unlocked — see
+/// [canOpenPendingLink]). Put links here through [acceptIncomingLink].
 final pendingDeepLink = ValueNotifier<String?>(null);
 
 abstract final class Flows {
@@ -100,48 +103,94 @@ abstract final class Flows {
 
   // --------------------------------------------------------------- links
 
-  static String addLink(String peer) => 'lumora://add/$peer';
-  static String remoteLink(String shortId) => 'lumora://remote/${shortId.replaceAll(' ', '')}';
+  /// Shared "add me" link (https on Lumora's site, see core/links.dart).
+  static String addLink(String peer, {String? shortId}) => LumoraLink.addLink(peer, shortId: shortId);
+  static String remoteLink(String shortId) => LumoraLink.remoteLink(shortId);
 
-  static bool isDeepLink(String s) => s.trim().startsWith('lumora://');
+  static bool isDeepLink(String s) => LumoraLink.looksLikeLink(s);
 
-  /// `lumora://join/TOKEN` · `lumora://add/PEER-or-9-digit-ID` · `lumora://remote/ID`
+  /// One handler for every Lumora link: from another app, the command line,
+  /// the in-app scanner or pasted text. Nothing is sent without a tap:
+  ///  * add → Add friend, filled in, waiting for "Send request"
+  ///    (an existing friend → their chat);
+  ///  * join → the join-group preview with its "Join" button;
+  ///  * remote → Remote control with the partner ID filled in;
+  ///  * a device-link code → how to use it (never acted on here).
   static Future<void> openDeepLink(BuildContext context, String link) async {
-    final s = S.read(context);
-    final uri = Uri.tryParse(link.trim());
-    if (uri == null || uri.scheme != 'lumora') {
-      toast(context, s('invalid_link'));
+    final l = LumoraLink.find(link);
+    if (l == null) {
+      toast(context, S.read(context)('link_broken'));
       return;
     }
-    final arg = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
-    switch (uri.host) {
-      case 'join':
-        await showJoinByLink(context, initial: link.trim());
-      case 'add':
-        final contacts = context.read<ContactsStore>();
-        final known = contacts[arg];
-        if (known != null && known.status == ContactStatus.friend) {
-          openChat(context, arg);
+    await openLink(context, l);
+  }
+
+  static Future<void> openLink(BuildContext context, LumoraLink l) async {
+    final s = S.read(context);
+    switch (l.kind) {
+      case LinkKind.join:
+        await showJoinByLink(context, initial: l.https);
+      case LinkKind.add:
+        final me = context.read<SessionStore>().me;
+        final myId = me?.shortId.replaceAll(RegExp(r'\D'), '');
+        if (me != null && (l.peer == me.peer || (l.peer == null && l.shortId == myId))) {
+          toast(context, s('link_is_you'));
           return;
         }
-        final ok = await confirm(context, title: s('add_friend'), body: s('add_from_link', {'id': arg.length > 12 ? '${arg.substring(0, 12)}…' : arg}), action: s('send_request'));
-        if (!ok) return;
-        try {
-          await contacts.add(arg);
-          if (context.mounted) toast(context, s('request_sent_toast'));
-        } catch (e) {
-          if (context.mounted) toastError(context, e);
+        final known = l.peer == null ? null : context.read<ContactsStore>()[l.peer!];
+        if (known != null && known.status == ContactStatus.friend) {
+          openChat(context, l.peer!);
+          return;
         }
-      case 'remote':
-        prefillRemoteId(formatShortId(arg));
+        await showAddFriend(context, initial: l);
+      case LinkKind.remote:
+        prefillRemoteId(formatShortId(l.shortId!));
+        // the Remote screen must be the one in front (phones push chats etc.)
+        Navigator.of(context).popUntil((r) => r.isFirst);
         context.read<NavStore>().go(Section.remote);
-      case 'link':
-        // a "link a new device" code from another device: it is used on the
-        // device being added, from the welcome screen
-        toast(context, s('dv_link_open_on_new'));
-      default:
-        toast(context, s('invalid_link'));
+      case LinkKind.device:
+        toast(context, s('qr_device_link_code'));
     }
+  }
+
+  /// Camera scan of any Lumora QR code (phones). Returns the link, or null when
+  /// cancelled / not usable (the reason is already shown).
+  static Future<LumoraLink?> scanQr(BuildContext context) async {
+    final scan = lumoraQrScanner;
+    if (scan == null) return null;
+    final s = S.read(context);
+    String? raw;
+    try {
+      raw = await scan(context);
+    } catch (_) {
+      if (context.mounted) toast(context, s('qr_camera_off'));
+      return null;
+    }
+    if (raw == null || !context.mounted) return null;
+    final l = LumoraLink.find(raw);
+    if (l == null) {
+      toast(context, s(LumoraLink.looksLikeLink(raw) ? 'link_broken' : 'qr_any_not_lumora'));
+      return null;
+    }
+    if (l.kind == LinkKind.device) {
+      toast(context, s('qr_device_link_code'));
+      return null;
+    }
+    return l;
+  }
+
+  /// "Scan QR code" from the "+" menu: scan, then do what the code is for.
+  static Future<void> scanAndOpen(BuildContext context) async {
+    final l = await scanQr(context);
+    if (l != null && context.mounted) await openLink(context, l);
+  }
+
+  /// A screen scanned a code meant for another screen (e.g. a group invite
+  /// in Add friend): close [context]'s screen and let the home screen open it.
+  static Future<void> openElsewhere(BuildContext context, LumoraLink l) async {
+    // closed first: the next screen must not be the one popped
+    await Navigator.of(context).maybePop();
+    pendingDeepLink.value = l.https;
   }
 
   // ------------------------------------------------------------ create menu
@@ -155,6 +204,7 @@ abstract final class Flows {
       ('join', AppIcons.explore, s('join_by_link'), const Color(0xFF22C55E)),
       ('friend', AppIcons.addFriend, s('add_friend_qr'), const Color(0xFFF59E0B)),
       ('remote', AppIcons.remote, s('remote_connect'), const Color(0xFF0EA5E9)),
+      if (lumoraQrScanner != null) ('scan', AppIcons.scan, s('scan_qr'), const Color(0xFF14B8A6)),
       ('story', AppIcons.story, s('new_story'), const Color(0xFFEC4899)),
     ];
     String? r;
@@ -209,6 +259,8 @@ abstract final class Flows {
         showAddFriend(context);
       case 'remote':
         context.read<NavStore>().go(Section.remote);
+      case 'scan':
+        scanAndOpen(context);
       case 'story':
         showStoryComposer(context);
     }

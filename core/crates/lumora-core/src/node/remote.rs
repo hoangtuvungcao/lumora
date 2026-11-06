@@ -304,6 +304,8 @@ pub struct Call {
     pub cam: AtomicBool,
     pub screen: AtomicBool,
     pub started: Instant,
+    /// When it was picked up (`None`: never active — cancelled, declined, missed).
+    pub answered: Mutex<Option<Instant>>,
     pub stop: Arc<AtomicBool>,
     pub incoming_from: Option<PeerId>,
     pub media_started: AtomicBool,
@@ -658,8 +660,8 @@ impl RemoteState {
         } else {
             let name = pc.name.read().clone();
             node.emit("remote_request", json!({
-                "session": hex::encode(session), "peer": acct.to_base32(), "device": from.to_base32(), "name": name,
-                "short_id": acct.short_id_fmt(), "view_only": s.view_only,
+                "session": hex::encode(session), "peer": acct.to_base32(), "account": acct.to_base32(), "device": from.to_base32(),
+                "own": pc.own, "name": name, "short_id": acct.short_id_fmt(), "view_only": s.view_only,
             }));
         }
         Ok(())
@@ -734,8 +736,9 @@ impl RemoteState {
                 } else {
                     let name = pc.name.read().clone();
                     node.emit("remote_request", json!({
-                        "session": hex::encode(session), "peer": from.to_base32(), "name": name,
-                        "short_id": from.short_id_fmt(), "view_only": view_only, "ask": true,
+                        // (a friend's linked device: `peer` is the account, as on the password path)
+                        "session": hex::encode(session), "peer": acct.to_base32(), "account": acct.to_base32(), "device": from.to_base32(),
+                        "own": pc.own, "name": name, "short_id": acct.short_id_fmt(), "view_only": view_only, "ask": true,
                     }));
                 }
             }
@@ -911,7 +914,13 @@ impl RemoteState {
                 };
                 let busy = !self.calls.lock().is_empty();
                 if busy {
-                    let _ = pc.ctl.try_send(PeerMsg::CallAnswer { call_id, accept: false });
+                    // The caller takes a decline from one device as the account's answer
+                    // (it stops my other devices ringing): when another of my devices can
+                    // pick up, this one just stays out of it. Alone: "busy" at once.
+                    if node.peers_of(&node.me).is_empty() {
+                        let _ = pc.ctl.try_send(PeerMsg::CallAnswer { call_id, accept: false });
+                    }
+                    node.call_missed_busy(&conv, &acct, call_id, video);
                     return Ok(());
                 }
                 let c = Arc::new(Call {
@@ -924,6 +933,7 @@ impl RemoteState {
                     cam: AtomicBool::new(video),
                     screen: AtomicBool::new(false),
                     started: Instant::now(),
+                    answered: Mutex::new(None),
                     stop: Arc::new(AtomicBool::new(false)),
                     incoming_from: Some(from),
                     media_started: AtomicBool::new(false),
@@ -969,6 +979,7 @@ impl RemoteState {
                 }
                 if accept {
                     *c.state.lock() = "active".into();
+                    c.answered.lock().get_or_insert_with(Instant::now);
                     {
                         let mut p = c.peers.lock();
                         if !p.contains(&from) {
@@ -1205,8 +1216,8 @@ impl Node {
         self.send_now_dev(&s.peer, PeerMsg::RemoteAccept { session: *session, width: w, height: h, displays, control });
         self.share_wake_info(*session, s.peer);
         self.emit("remote_state", json!({
-            "session": hex::encode(session), "peer": s.peer.to_base32(), "state": "active", "role": "host",
-            "width": w, "height": h, "control": control,
+            "session": hex::encode(session), "peer": s.peer.to_base32(), "account": self.account_of(&s.peer).to_base32(),
+            "state": "active", "role": "host", "width": w, "height": h, "control": control,
         }));
         Ok(())
     }
@@ -1282,7 +1293,7 @@ impl Node {
         json!({
             "call_id": hex::encode(c.id), "conv": c.conv, "state": c.state.lock().clone(), "video": c.video,
             "participants": peers, "mic": c.mic.load(Ordering::Relaxed), "cam": c.cam.load(Ordering::Relaxed),
-            "screen": c.screen.load(Ordering::Relaxed), "duration_s": c.started.elapsed().as_secs(),
+            "screen": c.screen.load(Ordering::Relaxed), "duration_s": c.answered.lock().map(|t| t.elapsed().as_secs()).unwrap_or(0),
             "from": c.incoming_from.map(|p| self.account_of(&p).to_base32()),
         })
     }
@@ -1305,6 +1316,7 @@ impl Node {
             cam: AtomicBool::new(video),
             screen: AtomicBool::new(false),
             started: Instant::now(),
+            answered: Mutex::new(None),
             stop: Arc::new(AtomicBool::new(false)),
             incoming_from: None,
             media_started: AtomicBool::new(false),
@@ -1383,6 +1395,7 @@ impl Node {
         }
         if accept {
             *c.state.lock() = "active".into();
+            c.answered.lock().get_or_insert_with(Instant::now);
             #[cfg(feature = "media")]
             super::media_pipe::start_call_media(self, &c);
             self.emit_call(&c);
@@ -1450,8 +1463,11 @@ impl Node {
         }
         *c.state.lock() = "ended".into();
         self.emit_call(&c);
-        // call log entry in the conversation
-        let dur = c.started.elapsed().as_secs() as u32;
+        // call log entry in the conversation: the talk time from the moment it was picked
+        // up; never picked up (cancelled, declined, unanswered) → a missed call, 0 s
+        let answered = *c.answered.lock();
+        let missed = missed || answered.is_none();
+        let dur = answered.map(|t| t.elapsed().as_secs() as u32).unwrap_or(0);
         let me = self.clone();
         let conv = c.conv.clone();
         let video = c.video;
@@ -1463,6 +1479,19 @@ impl Node {
                 }
             }
         });
+    }
+
+    /// A call came in while this device was in another one: a "missed (busy)" line in that
+    /// chat on this device and a `call` event the app turns into a missed-call notice.
+    pub(crate) fn call_missed_busy(&self, conv: &str, from: &PeerId, call_id: [u8; 16], video: bool) {
+        if conv.starts_with("d:") {
+            let name = self.store.contact(from).map(|c| c.alias.unwrap_or(c.name)).filter(|n| !n.is_empty()).unwrap_or_else(|| from.short_id_fmt());
+            self.local_notice(conv, "sys.call_missed_busy", &[("name", &name)]);
+        }
+        self.emit("call", json!({
+            "call_id": hex::encode(call_id), "conv": conv, "state": "ended", "video": video, "reason": "busy",
+            "from": from.to_base32(), "participants": [],
+        }));
     }
 
     pub fn call_set(self: &Arc<Self>, call_id: &[u8; 16], mic: Option<bool>, cam: Option<bool>, screen: Option<bool>) -> Result<()> {
@@ -1929,5 +1958,90 @@ mod pre_auth_tests {
         assert!(!p.ok && p.reason.is_empty());
         let PeerMsg::Ext { kind, .. } = proto::ext(ext::REMOTE_PRE_REQ, &PreReq { session: [1; 16], view_only: true, ts: 1, cert: vec![] }) else { panic!() };
         assert_eq!(kind, 0x52);
+    }
+}
+
+#[cfg(test)]
+mod call_log_tests {
+    use super::*;
+    use crate::identity::Identity;
+
+    async fn node(tmp: &std::path::Path) -> Arc<Node> {
+        Node::start(NodeConfig {
+            data_dir: tmp.join("data"),
+            downloads_dir: Some(tmp.join("dl")),
+            enable_lan: false,
+            enable_upnp: false,
+            enable_dht: false,
+            enable_nostr: false,
+            relays: Some(vec![]),
+            nostr: Some(vec![]),
+            stun: Some(vec![]),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+    }
+
+    fn call_logs(n: &Node, conv: &str) -> Vec<String> {
+        n.store.messages(conv, None, 50).unwrap().into_iter().filter(|m| m.kind == "call").map(|m| m.body.to_string()).collect()
+    }
+
+    /// A call nobody picked up was logged as "Voice call · 0:12" (the ringing time).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn call_log_counts_only_talk_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let bob = Identity::generate().peer_id();
+        n.store.upsert_contact(&bob, Some("b"), Some(3)).unwrap();
+        let conv = direct_conv(&bob);
+        n.store.ensure_conv(&conv, 0, "b").unwrap();
+        // rang, then cancelled: missed, 0 s
+        let v = n.call_start(&conv, false).await.unwrap();
+        let id: [u8; 16] = hex::decode(v["call_id"].as_str().unwrap()).unwrap().try_into().unwrap();
+        n.remote.calls.lock().get(&id).unwrap().invited.lock().clear();
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        n.end_call(&id, false);
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let logs = call_logs(&n, &conv);
+        assert_eq!(logs.len(), 1, "{logs:?}");
+        assert!(logs[0].contains("\"missed\":true") && logs[0].contains("\"duration_s\":0"), "{}", logs[0]);
+        // picked up 2 s after it started ringing, talked 3 s → 3 s
+        let v = n.call_start(&conv, false).await.unwrap();
+        let id: [u8; 16] = hex::decode(v["call_id"].as_str().unwrap()).unwrap().try_into().unwrap();
+        {
+            let c = n.remote.calls.lock().get(&id).cloned().unwrap();
+            c.invited.lock().clear();
+            *c.state.lock() = "active".into();
+            *c.answered.lock() = Some(Instant::now() - Duration::from_secs(3));
+        }
+        n.end_call(&id, false);
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let logs = call_logs(&n, &conv);
+        assert_eq!(logs.len(), 2, "{logs:?}");
+        let last = logs.iter().find(|l| l.contains("\"missed\":false")).expect("answered call logged as missed");
+        assert!(last.contains("\"duration_s\":3"), "{last}");
+        n.shutdown();
+    }
+
+    /// A call while this device is in another one: recorded here as a missed (busy) call.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn busy_call_is_recorded_locally() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let bob = Identity::generate().peer_id();
+        n.store.upsert_contact(&bob, Some("Bình"), Some(3)).unwrap();
+        let conv = direct_conv(&bob);
+        n.store.ensure_conv(&conv, 0, "Bình").unwrap();
+        let mut ev = n.subscribe();
+        n.call_missed_busy(&conv, &bob, [7; 16], false);
+        let msgs = n.store.messages(&conv, None, 10).unwrap();
+        assert!(msgs.iter().any(|m| m.kind == "system" && m.body["code"] == "sys.call_missed_busy"));
+        let mut got = false;
+        while let Ok(e) = ev.try_recv() {
+            got |= e["event"] == "call" && e["reason"] == "busy" && e["from"] == bob.to_base32().as_str();
+        }
+        assert!(got, "no busy call event");
+        n.shutdown();
     }
 }

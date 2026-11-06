@@ -143,8 +143,12 @@ void main() {
     // hold long enough to count as a note
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 700)));
     await g.up();
-    await real(t, 60);
-    await t.pump();
+    // stopping + sending touch real files: wait for it to happen (bounded), not a fixed
+    // 60 ms that a loaded machine overruns
+    for (var i = 0; i < 100 && (rec.stops < 1 || api.voices.isEmpty); i++) {
+      await real(t, 50);
+      await t.pump();
+    }
     expect(rec.stops, 1);
     expect(rec.disposes, 1);
     expect(api.voices, [rec.path]);

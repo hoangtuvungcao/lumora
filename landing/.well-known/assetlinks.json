@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "vn.lumora.lumora",
+      "sha256_cert_fingerprints": [
+        "EF:37:5E:A9:07:8D:E6:FE:5C:D4:5E:2D:6B:2C:93:36:B8:B8:E8:FC:56:47:52:1C:5D:F3:D6:76:63:8F:BF:C9"
+      ]
+    }
+  }
+]

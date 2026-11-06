@@ -67,6 +67,7 @@ class AppServices {
     hub.listeners.add(devices.onEvent);
     hub.listeners.add(_onDeviceEvent);
     appLock = AppLock(settings, api: api)..attach();
+    hub.listeners.add(appLock.onCoreEvent); // locked chats changed on another device
     chat.lockedConvs = () => settings.lockedChats;
     nav.canRead = (conv) {
       final life = WidgetsBinding.instance.lifecycleState; // null: not reported yet
@@ -105,6 +106,7 @@ class AppServices {
     AndroidBridge.lockedConvs = settings.lockedChats.toSet();
     AppleServices.lockedConvs = settings.lockedChats.toSet(); // CallKit / iOS notifications: no name
     AndroidBridge.isMuted = (c) => chat.convs[c]?.muted ?? false;
+    AndroidBridge.convTitle = (c) => chat.convs[c]?.title;
     // Notifications in the app's language, not the phone's (no-op if unchanged).
     AndroidBridge.setLanguage(settings.locale);
     remote.setClipboardSync(settings.remoteClipboard);
@@ -143,6 +145,7 @@ class AppServices {
 
   void dispose() {
     _loadRetry?.cancel();
+    _historyReload?.cancel();
     settings.removeListener(_syncPrivacy);
     _life?.dispose();
     appLock.removeListener(_readVisible);
@@ -241,7 +244,29 @@ class AppServices {
       _afterCoreRestart(d['reason']?.toString() ?? '', ok: d['ok'] != false, error: d['error']?.toString());
     } else if (name == 'device_revoked') {
       _afterSignedOut();
+    } else if (name == 'profile') {
+      // the account profile changed underneath us: copied to a newly linked
+      // device (it starts before the copy arrives) or edited on another device
+      _reloadProfile();
+    } else if (name == 'link_state' && d['state'] == 'state_synced') {
+      // the account state arrived on this new device: name, avatar, devices
+      _reloadProfile();
+      unawaited(devices.load().catchError((_) {}));
+    } else if (name == 'history_sync') {
+      // older messages were imported without `message` events: chats that are
+      // open read them (at most every 2 s while copying, and once when done)
+      _historyReload?.cancel();
+      _historyReload = Timer(d['done'] == true ? Duration.zero : const Duration(seconds: 2), () {
+        unawaited(chat.reloadThreadsAfterImport());
+      });
     }
+  }
+
+  Timer? _historyReload;
+
+  void _reloadProfile() {
+    unawaited(session.reloadMe().catchError((_) {}));
+    unawaited(session.loadProfile());
   }
 
   /// The core came back after `link_state: restart` (now part of an account,

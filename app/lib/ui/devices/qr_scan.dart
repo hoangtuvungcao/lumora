@@ -1,10 +1,13 @@
-// Phone camera QR scanner for linking a device (Android / iOS).
+// Phone camera QR scanner (Android / iOS): linking a device, and every other
+// Lumora QR code (add a friend, join a group, remote control — see
+// lib/core/links.dart and Flows.scanQr).
 //
 // `mobile_scanner` does the camera + decoding natively: CameraX + the Google Play
 // services barcode model on Android (unbundled: nothing big ships in the APK), Apple
 // Vision on iOS (built into the OS). Only QR codes are looked for, and the first
-// `lumora://link/…` found closes the screen with it. Anything else gets a short
-// "That isn't a Lumora link code" and scanning goes on.
+// code the caller accepts (`lumora://link/…` for device linking, any Lumora link
+// for [scanLumoraQr]) closes the screen with it. Anything else gets a short
+// "That isn't a Lumora code" and scanning goes on.
 //
 // No camera permission (refused, or blocked in the system settings) or no usable
 // camera: a calm panel explains it and offers "Open Settings" / "Type the 12-digit
@@ -18,12 +21,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/links.dart';
 import '../../l10n/strings.dart';
 import '../theme.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/secure_input.dart';
 
 final _linkRe = RegExp(r'lumora://link/\S+');
+
+/// Opens a camera QR scanner and returns the scanned text (null = cancelled).
+typedef QrScanner = Future<String?> Function(BuildContext context);
 
 /// Phones only (desktop keeps paste / the 12-digit code).
 bool get qrScanSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
@@ -33,8 +40,34 @@ Future<String?> scanLinkQr(BuildContext context) => Navigator.of(context).push<S
       MaterialPageRoute(fullscreenDialog: true, builder: (_) => const QrScanScreen()),
     );
 
+/// Opens the scanner for any Lumora QR code (friend, group invite, remote
+/// control, device link); the scanned link text, or null when closed.
+Future<String?> scanLumoraQr(BuildContext context) => Navigator.of(context).push<String>(
+      MaterialPageRoute(fullscreenDialog: true, builder: (_) => QrScanScreen.any()),
+    );
+
+/// The "Scan QR code" entries outside device linking (Add friend, Join group,
+/// Remote control, the "+" menu). Null hides them (desktop). Tests inject a fake.
+QrScanner? lumoraQrScanner = qrScanSupported ? scanLumoraQr : null;
+
+String? _deviceLink(String raw) => _linkRe.firstMatch(raw)?.group(0);
+
+String? _anyLumoraLink(String raw) {
+  final l = LumoraLink.find(raw);
+  return l == null ? null : (l.kind == LinkKind.device ? l.raw : l.https);
+}
+
 class QrScanScreen extends StatefulWidget {
-  const QrScanScreen({super.key});
+  const QrScanScreen({super.key}) : pick = _deviceLink, titleKey = 'qr_scan_title', notLinkKey = 'qr_scan_not_link', bottomKey = 'qr_scan_type_code';
+
+  /// Any Lumora QR code.
+  const QrScanScreen.any({super.key}) : pick = _anyLumoraLink, titleKey = 'qr_any_title', notLinkKey = 'qr_any_not_lumora', bottomKey = 'qr_any_type_instead';
+
+  /// The text to return for a scanned code, or null to keep scanning.
+  final String? Function(String raw) pick;
+  final String titleKey;
+  final String notLinkKey;
+  final String bottomKey;
   @override
   State<QrScanScreen> createState() => _QrScanScreenState();
 }
@@ -60,7 +93,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
     if (_done) return;
     for (final b in capture.barcodes) {
       final raw = b.rawValue ?? '';
-      final link = _linkRe.firstMatch(raw)?.group(0);
+      final link = widget.pick(raw);
       if (link != null) {
         _done = true;
         HapticFeedback.mediumImpact();
@@ -89,8 +122,8 @@ class _QrScanScreenState extends State<QrScanScreen> {
             controller: _controller,
             onDetect: _onDetect,
             scanWindow: window,
-            errorBuilder: (context, e) => QrCameraIssue(denied: e.errorCode == MobileScannerErrorCode.permissionDenied),
-            overlayBuilder: (context, _) => _Overlay(window: window, notLink: _notLink),
+            errorBuilder: (context, e) => QrCameraIssue(denied: e.errorCode == MobileScannerErrorCode.permissionDenied, backKey: widget.bottomKey),
+            overlayBuilder: (context, _) => _Overlay(window: window, notLink: _notLink, screen: widget),
           ),
           SafeArea(
             child: Padding(
@@ -124,9 +157,10 @@ class _QrScanScreenState extends State<QrScanScreen> {
 
 /// Dimmed surroundings, a rounded window with corner marks, title + hint.
 class _Overlay extends StatelessWidget {
-  const _Overlay({required this.window, required this.notLink});
+  const _Overlay({required this.window, required this.notLink, required this.screen});
   final Rect window;
   final bool notLink;
+  final QrScanScreen screen;
 
   @override
   Widget build(BuildContext context) {
@@ -138,7 +172,7 @@ class _Overlay extends StatelessWidget {
         right: 24,
         bottom: MediaQuery.sizeOf(context).height - window.top + 28,
         child: Text(
-          s('qr_scan_title'),
+          s(screen.titleKey),
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w700, height: 1.3),
         ),
@@ -157,7 +191,7 @@ class _Overlay extends StatelessWidget {
                   child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
                     const Icon(AppIcons.warning, size: 16, color: Color(0xFFFBBF24)),
                     const SizedBox(width: 8),
-                    Flexible(child: Text(s('qr_scan_not_link'), style: const TextStyle(color: Colors.white, fontSize: 14))),
+                    Flexible(child: Text(s(screen.notLinkKey), style: const TextStyle(color: Colors.white, fontSize: 14))),
                   ]),
                 )
               : Text(
@@ -177,7 +211,7 @@ class _Overlay extends StatelessWidget {
             style: TextButton.styleFrom(foregroundColor: Colors.white),
             onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(AppIcons.numpad, size: 18),
-            label: Text(s('qr_scan_type_code')),
+            label: Text(s(screen.bottomKey)),
           ),
         ),
       ),
@@ -225,8 +259,11 @@ class _WindowPainter extends CustomPainter {
 
 /// No camera permission / no usable camera: what to do, in plain words.
 class QrCameraIssue extends StatelessWidget {
-  const QrCameraIssue({super.key, required this.denied});
+  const QrCameraIssue({super.key, required this.denied, this.backKey = 'qr_scan_type_code'});
   final bool denied;
+
+  /// Label of the "go back and type it instead" button.
+  final String backKey;
 
   static const _ch = MethodChannel('lumora/camera');
 
@@ -262,7 +299,7 @@ class QrCameraIssue extends StatelessWidget {
                   child: TextButton.icon(
                     onPressed: () => Navigator.of(context).maybePop(),
                     icon: const Icon(AppIcons.numpad, size: 18),
-                    label: Text(s('qr_scan_type_code')),
+                    label: Text(s(backKey)),
                   ),
                 ),
               ]),

@@ -33,12 +33,61 @@ import UIKit
     if let r = self.registrar(forPlugin: "LumoraPhotos") {
       LumoraPhotos.register(messenger: r.messenger())
     }
+    if let r = self.registrar(forPlugin: "LumoraLinks") {
+      LumoraLinks.register(messenger: r.messenger())
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  // lumora:// links (CFBundleURLTypes in Info.plist).
+  override func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    if LumoraLinks.open(url) { return true }
+    return super.application(app, open: url, options: options)
   }
 
   override func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
     LumoraPush.shared.didRegister(deviceToken: deviceToken)
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+}
+
+/// `lumora/links` (lib/platform/desktop_links.dart): `lumora://add|join|remote/…`
+/// opened from another app. `ready` returns the links that came before Dart
+/// listened; later ones are sent as `open`. Device-link codes
+/// (`lumora://link/…`) are never taken from outside the app.
+enum LumoraLinks {
+  private static var channel: FlutterMethodChannel?
+  private static var ready = false
+  private static var queued: [String] = []
+
+  static func register(messenger: FlutterBinaryMessenger) {
+    let ch = FlutterMethodChannel(name: "lumora/links", binaryMessenger: messenger)
+    ch.setMethodCallHandler { call, result in
+      guard call.method == "ready" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      ready = true
+      let links = queued
+      queued = []
+      result(links)
+    }
+    channel = ch
+  }
+
+  /// True when the URL is a Lumora link (taken), false otherwise.
+  @discardableResult
+  static func open(_ url: URL) -> Bool {
+    let link = url.absoluteString
+    guard url.scheme?.lowercased() == "lumora", link.count <= 4200,
+      let host = url.host?.lowercased(), ["add", "join", "remote"].contains(host)
+    else { return false }
+    if ready, let ch = channel {
+      ch.invokeMethod("open", arguments: link)
+    } else {
+      queued.append(link)
+    }
+    return true
   }
 }
 

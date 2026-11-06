@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../state/app_lock.dart';
 
 import '../../core/api.dart';
+import '../../core/links.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_list.dart';
@@ -57,7 +58,9 @@ class _HomeShellState extends State<HomeShell> {
 
   void _handleLink() {
     final l = pendingDeepLink.value;
-    if (l == null || !mounted || (_lock.locked && _lock.enabled)) return;
+    // HomeShell only exists once onboarding is done and the account is
+    // unlocked; links that came earlier wait in pendingDeepLink until then.
+    if (l == null || !mounted || !canOpenPendingLink(homeReady: true, lockShown: _lock.locked && _lock.enabled)) return;
     pendingDeepLink.value = null;
     Flows.openDeepLink(context, l);
   }

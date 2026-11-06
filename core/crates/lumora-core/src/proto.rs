@@ -497,11 +497,22 @@ pub struct SyncBatch {
     pub convs_total: u32,
 }
 
+/// Largest sync frame every receiver accepts (1.0.0 builds reject anything bigger and drop
+/// the whole stream).
 pub const MAX_SYNC_FRAME: usize = 1024 * 1024;
+/// Largest sync frame this build accepts. A receiver asks for frames up to this size in its
+/// `HistoryRequest` (`max_frame`), so one large account item — an image wallpaper is up to
+/// 2 MB — is sent in a frame of its own instead of being left out of the bootstrap.
+pub const MAX_SYNC_FRAME_LARGE: usize = 4 * 1024 * 1024;
 
 pub async fn write_sync_frame<W: AsyncWriteExt + Unpin>(w: &mut W, b: &SyncBatch) -> anyhow::Result<()> {
+    write_sync_frame_max(w, b, MAX_SYNC_FRAME).await
+}
+
+/// [`write_sync_frame`] for a receiver that accepts frames up to `max` bytes.
+pub async fn write_sync_frame_max<W: AsyncWriteExt + Unpin>(w: &mut W, b: &SyncBatch, max: usize) -> anyhow::Result<()> {
     let v = rmp_serde::to_vec_named(b)?;
-    anyhow::ensure!(v.len() <= MAX_SYNC_FRAME, "sync frame too large");
+    anyhow::ensure!(v.len() <= max.min(MAX_SYNC_FRAME_LARGE), "sync frame too large");
     w.write_all(&(v.len() as u32).to_be_bytes()).await?;
     w.write_all(&v).await?;
     Ok(())
@@ -516,7 +527,7 @@ pub async fn read_sync_frame<R: AsyncReadExt + Unpin>(r: &mut R) -> anyhow::Resu
         Err(e) => return Err(e.into()),
     }
     let n = u32::from_be_bytes(len) as usize;
-    anyhow::ensure!(n <= MAX_SYNC_FRAME, "sync frame too large");
+    anyhow::ensure!(n <= MAX_SYNC_FRAME_LARGE, "sync frame too large");
     let mut b = vec![0u8; n];
     r.read_exact(&mut b).await?;
     Ok(Some(from_slice_capped(&b)?))

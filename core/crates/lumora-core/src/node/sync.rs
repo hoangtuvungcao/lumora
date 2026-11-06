@@ -24,6 +24,8 @@ const HAVE_BATCH: usize = 500;
 const ITEMS_BYTES: usize = 1024 * 1024;
 const BATCH_BYTES: usize = 256 * 1024;
 const ROUND_TIMEOUT: Duration = Duration::from_secs(30);
+/// A history / bootstrap stream that broke off is asked for again after this long.
+const HISTORY_RETRY: Duration = Duration::from_secs(5);
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(super) struct HaveEntry {
@@ -55,6 +57,10 @@ pub(super) struct HistoryRequestMsg {
     /// messages per batch the requester wants (0 = default; bounded by the server)
     #[serde(default)]
     pub limit: u32,
+    /// largest sync frame the requester accepts (0 = `proto::MAX_SYNC_FRAME`, what 1.0.0
+    /// builds accept): larger items (image wallpapers) only fit in a larger frame
+    #[serde(default)]
+    pub max_frame: u32,
 }
 
 /// Saved on the new device (kv `link.history`): where and what to copy.
@@ -76,6 +82,9 @@ pub(crate) struct HistoryPlan {
 pub struct SyncState {
     /// sibling → (round upto, started) while a round is in flight
     inflight: Mutex<HashMap<PeerId, (u64, Instant)>>,
+    /// sync streams received per sibling (generation: a newer stream supersedes the old
+    /// one, which then must not trigger a retry)
+    receiving: Mutex<HashMap<PeerId, u64>>,
     /// siblings we are streaming history to right now (generation: a newer request from
     /// the same device — e.g. after it reconnected — supersedes the old stream)
     serving: Mutex<HashMap<PeerId, u64>>,
@@ -331,6 +340,11 @@ impl Node {
                 if key.starts_with("profile.") {
                     self.emit("profile", json!({"key": key, "name": self.name()}));
                 }
+                // account settings changed on another device (chat locks, BotFather chat…):
+                // let the app refresh at once instead of on the next resume
+                if key.starts_with("privacy.") {
+                    self.emit("settings", json!({"key": key}));
+                }
             }
             Imported::GroupKey { gid, .. } => {
                 if let Ok(g) = <[u8; 16]>::try_from(gid.as_slice()) {
@@ -400,14 +414,51 @@ impl Node {
             r.insert(pc.peer, Instant::now());
         }
         let (cursor, _) = self.store.sync_peer_hist(&pc.peer).unwrap_or_default();
-        let req = HistoryRequestMsg { state: !plan.state_done, since_ms: plan.since_ms, cursor, limit: hist_batch_limit() as u32 };
+        let req = HistoryRequestMsg {
+            state: !plan.state_done,
+            since_ms: plan.since_ms,
+            cursor,
+            limit: hist_batch_limit() as u32,
+            max_frame: proto::MAX_SYNC_FRAME_LARGE as u32,
+        };
         tracing::info!("requesting {} history from {:?}", if req.state { "state +" } else { "" }, pc.peer);
         let _ = pc.ctl.try_send(proto::ext(ext::HISTORY_REQUEST, &req));
         self.emit("link_state", json!({"state": "syncing"}));
     }
 
-    /// One `STREAM_SYNC` from my own device: import batch by batch (one transaction each).
-    pub(super) async fn receive_sync_stream(self: &Arc<Self>, pc: &Arc<PeerConn>, mut recv: quinn::RecvStream) -> Result<()> {
+    /// One `STREAM_SYNC` from my own device. A stream that breaks off before the transfer is
+    /// done (the other device was paused or lost the network for a moment while the
+    /// connection survived) is asked for again from the saved position: otherwise nothing
+    /// would ask before the next reconnect, and a new device stayed without the account.
+    pub(super) async fn on_sync_stream(self: &Arc<Self>, pc: &Arc<PeerConn>, recv: quinn::RecvStream) {
+        let gen = {
+            let mut r = self.sync.receiving.lock();
+            let g = r.entry(pc.peer).or_insert(0);
+            *g += 1;
+            *g
+        };
+        let res = self.receive_sync_stream(pc, recv).await;
+        if let Err(e) = &res {
+            tracing::info!("sync stream from {:?}: {e:#}", pc.peer);
+        }
+        if !pc.own || self.history_plan().map(|p| p.done).unwrap_or(true) {
+            return;
+        }
+        let me = self.clone();
+        let pc = pc.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(HISTORY_RETRY).await;
+            let newer = me.sync.receiving.lock().get(&pc.peer) != Some(&gen);
+            if newer || pc.conn.close_reason().is_some() || me.peer(&pc.peer).map(|c| !Arc::ptr_eq(&c, &pc)).unwrap_or(true) {
+                return; // a newer stream runs, or the connection went (its successor asks)
+            }
+            me.sync.requested.lock().remove(&pc.peer);
+            me.maybe_request_history(&pc);
+        });
+    }
+
+    /// Import one `STREAM_SYNC` from my own device batch by batch (one transaction each).
+    async fn receive_sync_stream(self: &Arc<Self>, pc: &Arc<PeerConn>, mut recv: quinn::RecvStream) -> Result<()> {
         anyhow::ensure!(pc.own, "sync stream from a device that isn't mine");
         let mut plan = self.history_plan().unwrap_or_default();
         while let Some(b) = proto::read_sync_frame(&mut recv).await? {
@@ -500,6 +551,7 @@ impl Node {
     }
 
     async fn serve_history(self: &Arc<Self>, pc: &Arc<PeerConn>, req: HistoryRequestMsg, gen: u64) -> Result<()> {
+        let max_frame = frame_limit(req.max_frame);
         let mut s = pc.conn.open_uni().await?;
         s.set_priority(-2)?; // chat, control and files first
         s.write_all(&[proto::STREAM_SYNC]).await?;
@@ -508,23 +560,12 @@ impl Node {
                 let st = self.store.clone();
                 tokio::task::spawn_blocking(move || st.bootstrap_items()).await?
             };
-            let mut batch = SyncBatch { phase: 1, ..Default::default() };
-            let mut bytes = 0;
-            for it in items {
-                let b = it.encode();
-                if b.len() > proto::MAX_SYNC_FRAME - 1024 {
-                    continue;
-                }
-                if bytes + b.len() > BATCH_BYTES && !batch.items.is_empty() {
-                    proto::write_sync_frame(&mut s, &batch).await?;
-                    batch.items.clear();
-                    bytes = 0;
-                }
-                bytes += b.len();
-                batch.items.push(ByteBuf::from(b));
+            let batches = state_batches(items.iter().map(|it| it.encode()).collect(), max_frame);
+            let n = batches.len();
+            for (i, items) in batches.into_iter().enumerate() {
+                let batch = SyncBatch { phase: 1, items, done: i + 1 == n, ..Default::default() };
+                proto::write_sync_frame_max(&mut s, &batch, max_frame).await?;
             }
-            batch.done = true;
-            proto::write_sync_frame(&mut s, &batch).await?;
         }
         let since_hlc = (req.since_ms as i64) << 8;
         let mut cur: HistCursor = if req.cursor.is_empty() { HistCursor::default() } else { crate::proto::from_slice_capped(&req.cursor).unwrap_or_default() };
@@ -545,14 +586,14 @@ impl Node {
                     convs_seen.insert(m.conv.clone());
                 }
                 let b = it.encode();
-                if b.len() > proto::MAX_SYNC_FRAME - 1024 {
+                if b.len() > max_frame - 1024 {
                     continue;
                 }
                 if bytes + b.len() > BATCH_BYTES && !batch.items.is_empty() {
                     // an intermediate frame carries the *previous* cursor: safe to resume from
                     batch.cursor = rmp_serde::to_vec_named(&cur).unwrap_or_default();
                     batch.convs_done = convs_seen.len() as u32;
-                    proto::write_sync_frame(&mut s, &batch).await?;
+                    proto::write_sync_frame_max(&mut s, &batch, max_frame).await?;
                     batch.items.clear();
                     bytes = 0;
                 }
@@ -563,7 +604,7 @@ impl Node {
             batch.cursor = rmp_serde::to_vec_named(&cur).unwrap_or_default();
             batch.convs_done = convs_seen.len() as u32;
             batch.done = done;
-            proto::write_sync_frame(&mut s, &batch).await?;
+            proto::write_sync_frame_max(&mut s, &batch, max_frame).await?;
             if done {
                 break;
             }
@@ -573,6 +614,34 @@ impl Node {
         let _ = s.stopped().await;
         Ok(())
     }
+}
+
+/// Largest frame a history request allows (older requesters: what every build accepts).
+fn frame_limit(asked: u32) -> usize {
+    (asked as usize).clamp(proto::MAX_SYNC_FRAME, proto::MAX_SYNC_FRAME_LARGE)
+}
+
+/// The account state in frames of ≤ `BATCH_BYTES` (one larger item gets a frame of its own;
+/// one that can't fit even a `max_frame` frame is left out). Always at least one (the
+/// last frame says "state done").
+fn state_batches(items: Vec<Vec<u8>>, max_frame: usize) -> Vec<Vec<ByteBuf>> {
+    let mut out: Vec<Vec<ByteBuf>> = vec![];
+    let mut cur: Vec<ByteBuf> = vec![];
+    let mut bytes = 0;
+    for b in items {
+        if b.len() > max_frame - 1024 {
+            tracing::warn!("account item of {} bytes too large to copy to the new device", b.len());
+            continue;
+        }
+        if bytes + b.len() > BATCH_BYTES && !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+            bytes = 0;
+        }
+        bytes += b.len();
+        cur.push(ByteBuf::from(b));
+    }
+    out.push(cur);
+    out
 }
 
 /// Chat-list preview for a stored row (bodies are kept as JSON).
@@ -596,5 +665,79 @@ fn preview_of_row(m: &crate::store::StoredMessage) -> String {
         "checklist" => crate::i18n::trf("pv.checklist", &[("title", m.body["title"].as_str().unwrap_or(""))]),
         "reminder" => crate::i18n::trf("pv.reminder", &[("title", m.body["title"].as_str().unwrap_or(""))]),
         _ => String::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Store;
+
+    /// Regression (v1.0.0, phone → new laptop): an image wallpaper (up to 2 MB) is larger
+    /// than a 1 MB sync frame and was silently left out of the bootstrap, so the new device
+    /// came up without it. A requester that accepts large frames now gets it in a frame of
+    /// its own; one that doesn't (1.0.0) never gets a frame it would reject.
+    #[tokio::test]
+    async fn bootstrap_carries_a_large_wallpaper() {
+        let src = Store::open_memory().unwrap();
+        let wall = format!("image:{}", "A".repeat(1_900_000));
+        src.kv_set("wallpaper.default", wall.as_bytes()).unwrap();
+        src.kv_set("profile.name", "Minh".as_bytes()).unwrap();
+        src.kv_set("profile.avatar", &vec![7u8; 90 * 1024]).unwrap();
+        for i in 0..40 {
+            src.kv_set(&format!("wallpaper.d:{i}"), b"aurora").unwrap();
+        }
+        let items: Vec<Vec<u8>> = src.bootstrap_items().iter().map(|it| it.encode()).collect();
+
+        // a request from this build asks for large frames
+        let req: HistoryRequestMsg = proto::ext_body(&rmp_serde::to_vec_named(&HistoryRequestMsg {
+            state: true,
+            max_frame: proto::MAX_SYNC_FRAME_LARGE as u32,
+            ..Default::default()
+        })
+        .unwrap())
+        .unwrap();
+        let max = frame_limit(req.max_frame);
+        let batches = state_batches(items.clone(), max);
+        let n = batches.len();
+        let (mut a, mut b) = tokio::io::duplex(8 << 20);
+        let writer = tokio::spawn(async move {
+            for (i, items) in batches.into_iter().enumerate() {
+                proto::write_sync_frame_max(&mut a, &SyncBatch { phase: 1, items, done: i + 1 == n, ..Default::default() }, max).await.unwrap();
+            }
+        });
+        let dst = Store::open_memory().unwrap();
+        let me = PeerId([3; 32]);
+        let mut frames = 0;
+        while let Some(f) = proto::read_sync_frame(&mut b).await.unwrap() {
+            frames += 1;
+            let its: Vec<SyncItem> = f.items.iter().filter_map(|x| SyncItem::decode(x)).collect();
+            dst.sync_import_batch(&its, &me, false).unwrap();
+            if f.done {
+                break;
+            }
+        }
+        writer.await.unwrap();
+        assert!(frames >= 2, "the large item travels in a frame of its own");
+        assert_eq!(dst.kv_get("wallpaper.default").unwrap(), wall.as_bytes(), "wallpaper copied");
+        assert_eq!(dst.kv_get("profile.name").unwrap(), b"Minh");
+        assert_eq!(dst.kv_get("profile.avatar").unwrap().len(), 90 * 1024);
+        assert_eq!(dst.kv_get("wallpaper.d:39").unwrap(), b"aurora");
+
+        // a 1.0.0 requester (no `max_frame`): every frame stays ≤ 1 MB, the rest still arrives
+        let old: HistoryRequestMsg = proto::ext_body(&rmp_serde::to_vec_named(&serde_json::json!({"state": true, "since_ms": 0})).unwrap()).unwrap();
+        assert_eq!(old.max_frame, 0);
+        let max = frame_limit(old.max_frame);
+        assert_eq!(max, proto::MAX_SYNC_FRAME);
+        let batches = state_batches(items, max);
+        let mut kept = 0;
+        for items in &batches {
+            let f = rmp_serde::to_vec_named(&SyncBatch { phase: 1, items: items.clone(), done: true, ..Default::default() }).unwrap();
+            assert!(f.len() <= proto::MAX_SYNC_FRAME, "frame of {} bytes for an old receiver", f.len());
+            kept += items.len();
+        }
+        assert_eq!(kept, src.bootstrap_items().len() - 1, "only the oversized wallpaper is left out");
+        // nothing at all: still one (final) frame
+        assert_eq!(state_batches(vec![], max).len(), 1);
     }
 }

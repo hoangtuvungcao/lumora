@@ -131,6 +131,15 @@ void main() {
       expect(notifications().single['title'], 'Alice');
     });
 
+    test('chat locked on another device: the core marks the message, no name or text', () async {
+      // this device's copy of the list doesn't know yet
+      api.ctrl.add({'event': 'message', 'conv': 'd:alice', 'author': 'alice', 'body': {'text': 'secret plan'}, 'locked': true});
+      await _settle();
+      final n = notifications().single;
+      expect(n['title'], 'Lumora');
+      expect('${n['title']} ${n['body']}', isNot(anyOf(contains('Alice'), contains('secret'))));
+    });
+
     test('texts follow the app language, which is also sent to Kotlin', () async {
       await AndroidBridge.setLanguage('en');
       expect(serviceCalls.where((c) => c.method == 'setLanguage').single.arguments, {'lang': 'en'});

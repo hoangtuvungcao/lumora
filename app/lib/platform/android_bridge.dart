@@ -92,6 +92,36 @@ class AndroidBridge with WidgetsBindingObserver {
   static bool Function(String conv) isMuted = _never;
   static bool _never(String _) => false;
 
+  /// A chat's title (group notifications read "Group – Author"). Wired by
+  /// AppServices to the ChatStore.
+  static String? Function(String conv) convTitle = _noTitle;
+  static String? _noTitle(String _) => null;
+
+  /// Notification keys to remove for a core event (`call` over / answered or
+  /// declined elsewhere; a chat read on another device), else empty.
+  static List<String> cancelKeysFor(Map<String, dynamic> ev) {
+    switch (ev['event']) {
+      case 'call':
+        return ev['state'] == 'incoming' ? const [] : const ['call'];
+      case 'conversation':
+        final id = ev['id']?.toString() ?? '';
+        final unread = ev['unread'];
+        return id.isNotEmpty && unread is num && unread == 0 ? [id] : const [];
+      case 'conversation_removed':
+        final id = ev['conv']?.toString() ?? '';
+        return id.isEmpty ? const [] : [id];
+    }
+    return const [];
+  }
+
+  /// Title of a message notification: the author, or "Group – Author".
+  static String messageTitle(String conv, String author) {
+    if (!conv.startsWith('g:')) return author;
+    final group = convTitle(conv) ?? '';
+    if (group.isEmpty) return author;
+    return author.isEmpty || author == 'Lumora' ? group : '$group – $author';
+  }
+
   /// The app's language ('vi' | 'en') for notification texts; see [setLanguage].
   static String language = 'vi';
 
@@ -324,7 +354,9 @@ class AndroidBridge with WidgetsBindingObserver {
         final text = b is Map ? (b['text'] ?? (b['name'] != null ? '${vi ? 'Tệp' : 'File'}: ${b['name']}' : null)) : null;
         kind = 'message';
         key = conv;
-        title = await _nameOf(ev['author']?.toString() ?? '');
+        var author = await _nameOf(ev['author']?.toString() ?? '');
+        if (author == 'Lumora' && ev['author_name'] is String) author = ev['author_name'] as String; // a group member, not a contact
+        title = messageTitle(conv, author);
         body = text?.toString() ?? (vi ? 'Tin nhắn mới' : 'New message');
       case 'call':
         if (ev['state'] != 'incoming') return;
@@ -357,7 +389,9 @@ class AndroidBridge with WidgetsBindingObserver {
         return;
     }
     // Locked chats: neither messages, their reminders nor calls show a name or text.
-    final lockedChat = (kind == 'message' && lockedConvs.contains(key)) ||
+    // (`locked` comes from the core: locked on another device of the account)
+    final lockedChat = ev['locked'] == true ||
+        (kind == 'message' && lockedConvs.contains(key)) ||
         ((kind == 'reminder' || kind == 'call') && lockedConvs.contains(ev['conv']?.toString()));
     if (hideContent || lockedChat) {
       // Privacy: never reveal names or message text (app lock / user choice).
@@ -407,6 +441,9 @@ class AndroidBridge with WidgetsBindingObserver {
   }
 
   void _onEvent(Map<String, dynamic> ev) {
+    for (final key in cancelKeysFor(ev)) {
+      unawaited(_service.invokeMethod('cancelNotification', {'key': key}).catchError((_) => null));
+    }
     // Reminders always ring (they are alarms); everything else only in the background.
     if (!_foreground || ev['event'] == 'reminder_due') unawaited(_notifyBackground(ev));
     if (ev['event'] == 'call') _onCallEvent(ev);

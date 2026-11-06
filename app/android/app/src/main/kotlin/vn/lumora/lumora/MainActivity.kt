@@ -40,6 +40,9 @@ import org.json.JSONObject
  *    `requestMic` → granted | denied: RECORD_AUDIO before a call starts or is
  *    answered (the core opens the microphone itself through AAudio, which
  *    fails without it — the call would go out silent).
+ *  - `lumora/links`: Lumora links opened from other apps (App Links on
+ *    getlumora.pages.dev, `lumora://`; see AndroidManifest). `ready` returns
+ *    the links that came before Dart listened; later ones arrive as `open`.
  */
 class MainActivity : FlutterActivity() {
     companion object {
@@ -78,6 +81,12 @@ class MainActivity : FlutterActivity() {
 
         /** Last `setRecentsHidden` value (app lock on: blank recent-apps preview). */
         @Volatile private var recentsHidden = false
+
+        /** Links opened before Dart called `lumora/links.ready` (main thread only). */
+        private val pendingLinks = mutableListOf<String>()
+        /** Dart listens on `lumora/links` (the engine, and so Dart, outlives Activities). */
+        private var linksReady = false
+        private const val LINK_HOST = "getlumora.pages.dev"
     }
 
     private fun applySecure() {
@@ -130,6 +139,8 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Not on re-creation: the same launch intent would open its link twice.
+        if (savedInstanceState == null) takeLink(intent)
         applySecure()
         applyRecents()
         Lang.get(this) // warm the cache off the notification path
@@ -144,6 +155,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         LumoraNative.init(applicationContext)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+        registerLinks(messenger)
 
         MethodChannel(messenger, "lumora/service").setMethodCallHandler { call, result ->
             when (call.method) {
@@ -181,6 +193,7 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "clearNotifications" -> { Notifier.cancelAll(applicationContext); result.success(true) }
+                "cancelNotification" -> { Notifier.cancel(applicationContext, call.argument<String>("key") ?: ""); result.success(true) }
                 "info" -> result.success(mapOf(
                     "sdk" to Build.VERSION.SDK_INT,
                     "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
@@ -353,6 +366,47 @@ class MainActivity : FlutterActivity() {
             android.util.Log.w("MainActivity", "consent dialog failed: $t")
             finishProjectionRequest(applicationContext, false)
         }
+    }
+
+    private var linksChannel: MethodChannel? = null
+
+    private fun registerLinks(messenger: io.flutter.plugin.common.BinaryMessenger) {
+        linksChannel = MethodChannel(messenger, "lumora/links").also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                if (call.method == "ready") {
+                    linksReady = true
+                    val queued = ArrayList(pendingLinks)
+                    pendingLinks.clear()
+                    result.success(queued)
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeLink(intent)
+    }
+
+    /** A Lumora link from a VIEW intent → Dart (Dart validates it again). */
+    private fun takeLink(i: Intent?) {
+        if (i == null || i.action != Intent.ACTION_VIEW) return
+        if ((i.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
+        val link = i.dataString?.trim() ?: return
+        val uri = i.data ?: return
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host?.lowercase()
+        val ok = link.length <= 4200 && when (scheme) {
+            "lumora" -> host == "add" || host == "join" || host == "remote"
+            "https" -> host == LINK_HOST
+            else -> false
+        }
+        if (!ok) return
+        val ch = linksChannel
+        if (linksReady && ch != null) ch.invokeMethod("open", link) else pendingLinks.add(link)
     }
 
     override fun onResume() {

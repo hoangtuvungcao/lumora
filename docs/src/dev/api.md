@@ -131,6 +131,8 @@ Saved messages: conversation id `s:me`. Conversation flag `archived`. Events: `m
 | `reminders` | – | upcoming `[{conv, msg_id, at_ms, title, note, author}]` on this device |
 | `remote_wake` | `peer` (or 9-digit ID) of a recent remote device | `{sent, helpers}` — magic packets on every local network, plus friends' online devices asked to send one |
 | `ui_secret_get` / `ui_secret_set` | `key` ("ui." prefix) / `key, value: string (≤ 4 KB) \| null` | string \| null / – (kept in the encrypted database) |
+| `locked_chats_get` / `locked_chats_set` | – / `chats: [conv]` (≤ 1000) | `{chats, set}` / `{chats}` — account setting `privacy.locked_chats`, synced to the account's devices; `message` events of a locked chat carry `locked: true` |
+| `botfather_history` / `botfather_append` / `botfather_clear` | – / `entries: [{mine, text, kind?, u?, ts?}]` / – | `{entries}` — BotFather chat, synced to the account's devices, last 200 lines (≤ 64 KB), tokens masked |
 
 `settings_get`/`settings_set` gain `noise_suppression` (default on, applies mid-call) and `wake_for_friends`
 (default on: send wake-up packets when a friend asks). `remote_recent` entries gain `macs`, `online`, `can_wake`;

@@ -570,6 +570,32 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.bot_delete(s(r, "username")?)?;
             Value::Null
         }
+        // BotFather conversation (account setting, synced; bounded, no tokens)
+        "botfather_history" => json!({"entries": crate::node::botfather::transcript(&node.store)}),
+        "botfather_append" => {
+            let entries = r.get("entries").and_then(|x| x.as_array()).ok_or_else(|| anyhow::anyhow!("'entries' must be a list"))?;
+            anyhow::ensure!(entries.len() <= crate::node::botfather::TRANSCRIPT_MAX, "too many entries");
+            json!({"entries": crate::node::botfather::transcript_append(&node.store, entries)?})
+        }
+        "botfather_clear" => {
+            crate::node::botfather::transcript_clear(&node.store)?;
+            Value::Null
+        }
+        // locked chats (account setting, synced; the PIN stays per device in ui_secret)
+        "locked_chats_get" => match crate::node::chat_locks::locked_chats(&node.store) {
+            Some(l) => json!({"chats": l, "set": true}),
+            None => json!({"chats": [], "set": false}),
+        },
+        "locked_chats_set" => {
+            let list: Vec<String> = r
+                .get("chats")
+                .and_then(|x| x.as_array())
+                .ok_or_else(|| anyhow::anyhow!("'chats' must be a list"))?
+                .iter()
+                .map(|x| x.as_str().map(str::to_string).ok_or_else(|| anyhow::anyhow!("'chats' must be strings")))
+                .collect::<Result<_>>()?;
+            json!({"chats": crate::node::chat_locks::set_locked_chats(&node.store, &list)?})
+        }
         "set_username" => node.set_username(s(r, "username")?)?,
         "resolve_username" => Value::Array(node.resolve_username(s(r, "handle")?).await?),
         "set_bot" => {

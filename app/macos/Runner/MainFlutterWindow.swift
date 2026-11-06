@@ -13,8 +13,63 @@ class MainFlutterWindow: NSWindow {
     RegisterGeneratedPlugins(registry: flutterViewController)
     LumoraMedia.register(messenger: flutterViewController.engine.binaryMessenger)
     LumoraCamera.register(messenger: flutterViewController.engine.binaryMessenger)
+    LumoraLinks.register(messenger: flutterViewController.engine.binaryMessenger)
+    // lumora:// links (CFBundleURLTypes): the "get URL" Apple Event, registered
+    // here (before the app finishes launching) so a link that launched Lumora
+    // is not lost.
+    NSAppleEventManager.shared().setEventHandler(
+      self, andSelector: #selector(handleGetURL(_:withReply:)),
+      forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL))
 
     super.awakeFromNib()
+  }
+
+  @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+    guard let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+      let url = URL(string: s)
+    else { return }
+    LumoraLinks.open(url)
+    NSApp.activate(ignoringOtherApps: true)
+  }
+}
+
+/// `lumora/links` (lib/platform/desktop_links.dart): `lumora://add|join|remote/…`
+/// opened from another app. `ready` returns the links that came before Dart
+/// listened; later ones are sent as `open`. Device-link codes
+/// (`lumora://link/…`) are never taken from outside the app.
+enum LumoraLinks {
+  private static var channel: FlutterMethodChannel?
+  private static var ready = false
+  private static var queued: [String] = []
+
+  static func register(messenger: FlutterBinaryMessenger) {
+    let ch = FlutterMethodChannel(name: "lumora/links", binaryMessenger: messenger)
+    ch.setMethodCallHandler { call, result in
+      guard call.method == "ready" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      ready = true
+      let links = queued
+      queued = []
+      result(links)
+    }
+    channel = ch
+  }
+
+  /// True when the URL is a Lumora link (taken), false otherwise.
+  @discardableResult
+  static func open(_ url: URL) -> Bool {
+    let link = url.absoluteString
+    guard url.scheme?.lowercased() == "lumora", link.count <= 4200,
+      let host = url.host?.lowercased(), ["add", "join", "remote"].contains(host)
+    else { return false }
+    if ready, let ch = channel {
+      ch.invokeMethod("open", arguments: link)
+    } else {
+      queued.append(link)
+    }
+    return true
   }
 }
 

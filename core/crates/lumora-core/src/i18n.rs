@@ -187,6 +187,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("sys.role_member", "{actor} made {peer} a member", "{actor} đã đặt {peer} làm thành viên"),
     ("sys.you_removed", "You are no longer a member of this group", "Bạn không còn là thành viên của nhóm này"),
     ("sys.scheduled_failed", "A scheduled message could not be sent: “{text}” ({error})", "Không gửi được tin hẹn giờ: “{text}” ({error})"),
+    ("sys.call_missed_busy", "Missed call from {name} (you were in another call)", "Cuộc gọi nhỡ từ {name} (bạn đang trong cuộc gọi khác)"),
     ("sys.you_added", "{actor} added you to “{name}”", "{actor} đã thêm bạn vào nhóm “{name}”"),
     ("sys.contact_device_added", "{name} added a new device. Their security code changed.", "{name} vừa thêm một thiết bị mới. Mã bảo mật đã thay đổi."),
     ("ch.general", "general", "chung"),

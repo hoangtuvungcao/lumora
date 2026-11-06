@@ -122,6 +122,14 @@ object Notifier {
         }
     }
 
+    /** Removes the notification posted under [key] (call over, chat read elsewhere). */
+    fun cancel(ctx: Context, key: String) {
+        try {
+            (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(key.hashCode())
+        } catch (_: Throwable) {
+        }
+    }
+
     fun cancelAll(ctx: Context) {
         val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         for (s in nm.activeNotifications) {

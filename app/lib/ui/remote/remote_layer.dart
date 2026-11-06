@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../state/devices_store.dart';
 
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
@@ -82,13 +83,15 @@ class RemoteRequestDialog extends StatelessWidget {
     final r = context.select<RemoteStore, RemoteRequest?>((x) => x.request);
     if (r == null) return const SizedBox.shrink();
     final store = context.read<RemoteStore>();
-    final contact = context.read<ContactsStore>()[r.peer];
+    // (by account: a friend may ask from a linked device whose key isn't theirs)
+    final contact = context.read<ContactsStore>()[r.account];
     final verified = contact?.verified ?? false;
     // The requester picks their own name: a friend is shown under the name
     // *I* saved; a stranger gets a clear warning and their real ID, so
-    // nobody can pose as "Mẹ" or "Lumora Support".
-    final friend = contact != null && contact.status == ContactStatus.friend;
-    final shownName = friend && contact.displayName.isNotEmpty ? contact.displayName : r.name;
+    // nobody can pose as "Mẹ" or "Lumora Support". My own other device is
+    // vouched for by the core (`own`), never by the name it sends.
+    final friend = r.own || (contact != null && contact.status == ContactStatus.friend);
+    final shownName = contact != null && friend && contact.displayName.isNotEmpty ? contact.displayName : r.name;
     return Material(
       color: Colors.black.withValues(alpha: 0.5),
       child: Center(
@@ -109,7 +112,7 @@ class RemoteRequestDialog extends StatelessWidget {
             ]),
             const SizedBox(height: 18),
             Row(children: [
-              PeerAvatar(peer: r.peer, fallbackName: shownName, size: 44, presence: false),
+              PeerAvatar(peer: r.account, fallbackName: shownName, size: 44, presence: false),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -274,8 +277,9 @@ class HostBanner extends StatelessWidget {
       if (err == null) return const SizedBox.shrink();
       return _HostFailedNotice(message: err == 'capture_failed' ? s('err_capture_failed_host') : err);
     }
-    final contact = context.read<ContactsStore>()[host.peer];
-    final announced = context.read<RemoteStore>().requestNames[host.peer];
+    final contact = context.read<ContactsStore>()[host.account];
+    final names = context.read<RemoteStore>().requestNames;
+    final announced = names[host.account] ?? names[host.peer];
     final name = (contact != null && contact.displayName.isNotEmpty)
         ? contact.displayName
         : ((announced != null && announced.isNotEmpty) ? announced : s('helper'));
@@ -392,6 +396,24 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
   Timer? _fpsTimer;
   Timer? _hideTimer;
 
+  // ---- touch as a laptop touchpad (phones/tablets) -------------------------------
+  /// Touch input moves a cursor like a laptop touchpad (default) instead of acting
+  /// where the finger lands; a real mouse always acts directly.
+  bool _touchpad = true;
+  bool _touchHint = true;
+  Offset _cursor = const Offset(0.5, 0.5); // normalized position on the remote screen
+  double _zoom = 1; // local magnification (pinch), follows the cursor
+  final Map<int, Offset> _touches = {};
+  int _maxTouches = 0;
+  double _travel = 0;
+  bool _dragHeld = false, _longPressed = false;
+  DateTime _touchStart = DateTime.now(), _lastTapUp = DateTime(2000);
+  Offset _lastTapPos = Offset.zero;
+  double _scrollY = 0, _scrollX = 0;
+  double? _pinchStart;
+  double _zoomStart = 1;
+  Timer? _longPress;
+
   RemoteChatUnread? _u;
   RemoteChatUnread get _unread => _u ??= RemoteChatUnread(context.read<ChatStore>());
 
@@ -433,6 +455,7 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
 
   @override
   void dispose() {
+    _longPress?.cancel();
     _focus.removeListener(_onFocus);
     _focus.dispose();
     _u?.dispose();
@@ -468,8 +491,138 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
     return Rect.fromLTWH((box.width - w) / 2, (box.height - h) / 2, w, h);
   }
 
+  /// The image rect after the local pinch zoom (magnified around the cursor, never
+  /// showing black beyond the remote screen's edges).
+  Rect _viewRect(Size box) {
+    final base = _fitRect(box);
+    if (_zoom <= 1.001) return base;
+    final w = base.width * _zoom, h = base.height * _zoom;
+    final ax = base.left + _cursor.dx * base.width, ay = base.top + _cursor.dy * base.height;
+    final left = (ax - _cursor.dx * w).clamp(base.right - w, base.left);
+    final top = (ay - _cursor.dy * h).clamp(base.bottom - h, base.top);
+    return Rect.fromLTWH(left, top, w, h);
+  }
+
+  bool _isPad(PointerEvent e) => _touchpad && e.kind == PointerDeviceKind.touch;
+
+  DateTime _lastPadMove = DateTime(2000);
+  void _sendCursor({bool force = false}) {
+    final now = DateTime.now();
+    if (!force && now.difference(_lastPadMove).inMilliseconds < 12) return;
+    _lastPadMove = now;
+    _send({'t': 'move', 'x': double.parse(_cursor.dx.toStringAsFixed(5)), 'y': double.parse(_cursor.dy.toStringAsFixed(5))});
+  }
+
+  void _click(String b) {
+    _sendCursor(force: true);
+    _send({'t': 'button', 'b': b, 'down': true});
+    _send({'t': 'button', 'b': b, 'down': false});
+  }
+
+  double _spread() {
+    final p = _touches.values.toList();
+    return p.length < 2 ? 0 : (p[0] - p[1]).distance;
+  }
+
+  void _padDown(PointerDownEvent e) {
+    _focus.requestFocus();
+    if (_touchHint) setState(() => _touchHint = false);
+    _touches[e.pointer] = e.localPosition;
+    if (_touches.length == 1) {
+      _maxTouches = 1;
+      _travel = 0;
+      _scrollX = _scrollY = 0;
+      _longPressed = false;
+      _touchStart = DateTime.now();
+      // tap, then touch again and hold: drag with the left button held (select, move windows)
+      final again = DateTime.now().difference(_lastTapUp).inMilliseconds < 280 && (e.localPosition - _lastTapPos).distance < 48;
+      if (again) {
+        _dragHeld = true;
+        _sendCursor(force: true);
+        _send({'t': 'button', 'b': 'left', 'down': true});
+      }
+      _longPress?.cancel();
+      _longPress = Timer(const Duration(milliseconds: 550), () {
+        if (!mounted || _touches.length != 1 || _travel > 10 || _dragHeld) return;
+        _longPressed = true;
+        HapticFeedback.mediumImpact();
+        _click('right');
+      });
+    } else {
+      _longPress?.cancel();
+      if (_touches.length > _maxTouches) _maxTouches = _touches.length;
+      if (_touches.length == 2) {
+        _pinchStart = _spread();
+        _zoomStart = _zoom;
+      }
+    }
+  }
+
+  void _padMove(PointerMoveEvent e, Size box) {
+    final prev = _touches[e.pointer];
+    if (prev == null) return;
+    _touches[e.pointer] = e.localPosition;
+    final d = e.localPosition - prev;
+    _travel += d.distance;
+    if (_touches.length == 1) {
+      // relative motion with acceleration: slow = precise, quick = far
+      final r = _viewRect(box);
+      final k = 1.1 + (d.distance / 10).clamp(0.0, 2.4);
+      final next = Offset((_cursor.dx + d.dx * k / r.width).clamp(0.0, 1.0), (_cursor.dy + d.dy * k / r.height).clamp(0.0, 1.0));
+      if (next != _cursor) {
+        setState(() => _cursor = next);
+        _sendCursor();
+      }
+      return;
+    }
+    if (_touches.length == 2) {
+      final start = _pinchStart ?? 0;
+      final ratio = start > 0 ? _spread() / start : 1.0;
+      if ((ratio - 1).abs() > 0.12 || _zoom != _zoomStart) {
+        // pinch: magnify locally (the remote screen itself doesn't change)
+        final z = (_zoomStart * ratio).clamp(1.0, 4.0);
+        if ((z - _zoom).abs() > 0.01) setState(() => _zoom = z);
+        return;
+      }
+      // two-finger drag: scroll, content follows the fingers like on a phone
+      _scrollY += d.dy / 2;
+      _scrollX += d.dx / 2;
+      while (_scrollY.abs() >= 26) {
+        _send({'t': 'wheel', 'dx': 0, 'dy': _scrollY > 0 ? -1 : 1});
+        _scrollY -= 26 * _scrollY.sign;
+      }
+      while (_scrollX.abs() >= 26) {
+        _send({'t': 'wheel', 'dx': _scrollX > 0 ? -1 : 1, 'dy': 0});
+        _scrollX -= 26 * _scrollX.sign;
+      }
+    }
+  }
+
+  void _padUp(PointerEvent e, {bool cancel = false}) {
+    if (_touches.remove(e.pointer) == null || _touches.isNotEmpty) return;
+    _longPress?.cancel();
+    final quick = DateTime.now().difference(_touchStart).inMilliseconds < 300 && _travel < 12;
+    if (_dragHeld) {
+      _send({'t': 'button', 'b': 'left', 'down': false});
+      _dragHeld = false;
+      _lastTapUp = DateTime(2000); // a double tap is complete
+    } else if (!cancel && !_longPressed && quick) {
+      if (_maxTouches == 1) {
+        _click('left');
+        _lastTapUp = DateTime.now();
+        _lastTapPos = e.localPosition;
+      } else if (_maxTouches == 2) {
+        _click('right');
+      } else {
+        _click('middle');
+      }
+    }
+    _pinchStart = null;
+    _maxTouches = 0;
+  }
+
   Offset? _norm(Offset local, Size box) {
-    final rect = _fitRect(box);
+    final rect = _viewRect(box);
     if (!rect.contains(local)) return null;
     return Offset((local.dx - rect.left) / rect.width, (local.dy - rect.top) / rect.height);
   }
@@ -548,16 +701,23 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
         onKeyEvent: _onKey,
         child: Listener(
           onPointerHover: (e) => _move(e.localPosition, box),
-          onPointerMove: (e) => _move(e.localPosition, box),
+          onPointerMove: (e) => _isPad(e) ? _padMove(e, box) : _move(e.localPosition, box),
           onPointerDown: (e) {
+            if (_isPad(e)) return _padDown(e);
             _focus.requestFocus();
             _move(e.localPosition, box, force: true);
+            final p = _norm(e.localPosition, box);
+            if (p != null) _cursor = p;
             _down = e.buttons;
             _send({'t': 'button', 'b': _btn(e.buttons), 'down': true});
           },
           onPointerUp: (e) {
+            if (_isPad(e)) return _padUp(e);
             _send({'t': 'button', 'b': _btn(_down), 'down': false});
             _down = 0;
+          },
+          onPointerCancel: (e) {
+            if (_isPad(e)) _padUp(e, cancel: true);
           },
           onPointerSignal: (e) {
             if (e is PointerScrollEvent) {
@@ -569,7 +729,8 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
             child: connecting
                 ? const SizedBox.expand()
                 : Builder(builder: (context) {
-                    final r = _fitRect(box);
+                    final r = _viewRect(box);
+                    final mobile = const [TargetPlatform.android, TargetPlatform.iOS].contains(Theme.of(context).platform);
                     return ClipRect(
                       child: Stack(children: [
                         Positioned.fromRect(
@@ -582,6 +743,26 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
                             placeholder: const Center(child: CircularProgressIndicator()),
                           ),
                         ),
+                        // touchpad mode: our own pointer (the remote capture may hide the real one)
+                        if (_touchpad && mobile && _canControl)
+                          Positioned(
+                            left: r.left + _cursor.dx * r.width - 2,
+                            top: r.top + _cursor.dy * r.height - 1,
+                            child: const IgnorePointer(child: CustomPaint(size: Size(16, 22), painter: _ArrowCursor())),
+                          ),
+                        if (_touchpad && mobile && _canControl && _touchHint)
+                          Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 16,
+                            child: IgnorePointer(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.72), borderRadius: BorderRadius.circular(12)),
+                                child: Text(S.of(context)('touchpad_hint'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.35)),
+                              ),
+                            ),
+                          ),
                       ]),
                     );
                   }),
@@ -693,6 +874,8 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
     }
   }
 
+  bool _ownDevice(RemoteState st) => context.read<DevicesStore>().isMine(st.peer);
+
   void _voiceCall(RemoteState st) {
     context.read<CallStore>().start('d:${st.peer}', minimized: true).catchError((_) {});
   }
@@ -767,7 +950,12 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
               ),
               item(AppIcons.fileUpload, s('send_file'), _sendFile),
               item(AppIcons.paste, s('sync_clipboard'), _sendClipboard),
-              item(AppIcons.call, s('voice_call'), st.peer.isEmpty ? null : () => _voiceCall(st)),
+              // (calling one of my own devices would just call myself: no button)
+              if (!_ownDevice(st)) item(AppIcons.call, s('voice_call'), st.peer.isEmpty ? null : () => _voiceCall(st)),
+              item(AppIcons.mouse, _touchpad ? s('touch_direct') : s('touch_trackpad'), () => setState(() {
+                    _touchpad = !_touchpad;
+                    _zoom = 1;
+                  })),
               item(AppIcons.command, 'Ctrl+Alt+Del', _canControl ? _ctrlAltDel : null),
               SwitchListTile(
                 secondary: const Icon(AppIcons.activity),
@@ -884,7 +1072,11 @@ class _RemoteViewerScreenState extends State<RemoteViewerScreen> {
                 child: _tb(AppIcons.chat, s('chat'), () => _setChat(!_chatOpen), active: _chatOpen),
               ),
               _tb(AppIcons.fileUpload, s('send_file'), _sendFile),
-              _tb(AppIcons.call, s('voice_call'), st.peer.isEmpty ? null : () => _voiceCall(st)),
+              if (!_ownDevice(st)) _tb(AppIcons.call, s('voice_call'), st.peer.isEmpty ? null : () => _voiceCall(st)),
+              _tb(AppIcons.mouse, _touchpad ? s('touch_direct') : s('touch_trackpad'), () => setState(() {
+                    _touchpad = !_touchpad;
+                    _zoom = 1;
+                  }), active: _touchpad),
               _tb(AppIcons.command, 'Ctrl+Alt+Del', _canControl ? _ctrlAltDel : null),
               PopupMenuButton<String>(
                 tooltip: s('more'),
@@ -1033,4 +1225,29 @@ class _AfterSession extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A classic arrow pointer with a dark outline (readable on any background).
+class _ArrowCursor extends CustomPainter {
+  const _ArrowCursor();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Path()
+      ..moveTo(0, 0)
+      ..lineTo(0, size.height * 0.82)
+      ..lineTo(size.width * 0.3, size.height * 0.6)
+      ..lineTo(size.width * 0.5, size.height)
+      ..lineTo(size.width * 0.66, size.height * 0.93)
+      ..lineTo(size.width * 0.46, size.height * 0.55)
+      ..lineTo(size.width * 0.86, size.height * 0.55)
+      ..close();
+    canvas.drawPath(p, Paint()..color = Colors.white);
+    canvas.drawPath(p, Paint()
+      ..color = Colors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

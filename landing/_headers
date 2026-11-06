@@ -28,6 +28,12 @@
   Cache-Control: no-cache
   Content-Type: application/json; charset=utf-8
 
+# Android App Links verification (QR codes / shared links open the app directly).
+/.well-known/assetlinks.json
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
+  Access-Control-Allow-Origin: *
+
 /developers/sdk/*
   Content-Type: text/plain; charset=utf-8
   Cache-Control: public, max-age=3600, must-revalidate

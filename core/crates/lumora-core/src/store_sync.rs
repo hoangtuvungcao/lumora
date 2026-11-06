@@ -27,7 +27,9 @@ pub const K_GKEY: u8 = 7;
 pub fn kv_synced(k: &str) -> bool {
     // `retention.<conv>`: the chat's history policy (mirrors the `retention` table)
     const PREFIXES: &[&str] = &["profile.", "privacy.", "wallpaper.", "mute_until.", "retention."];
-    k == "ui.lang" || k == "storage.policy" || k == "nostr.events" || PREFIXES.iter().any(|p| k.starts_with(p))
+    // `botfather.bots`: the bots this account manages (tokens stay inside the account's own,
+    // end-to-end encrypted device links) — a bot made on one device shows up on the others
+    k == "ui.lang" || k == "storage.policy" || k == "nostr.events" || k == "botfather.bots" || PREFIXES.iter().any(|p| k.starts_with(p))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -718,9 +720,8 @@ impl Store {
             SyncItem::Contact(r) => self.import_contact(c, r)?,
             SyncItem::Kv { key, value, rev } => {
                 // what the main device knows about friends' app versions (bootstrap only)
-                // (and the bots this account manages — tokens, for management only)
-                if (key.starts_with("peer.proto.") && key.len() < 80) || key == "botfather.bots" {
-                    if let Some(v) = value.as_ref().filter(|v| v.len() == 4 || key == "botfather.bots") {
+                if key.starts_with("peer.proto.") && key.len() < 80 {
+                    if let Some(v) = value.as_ref().filter(|v| v.len() == 4) {
                         c.execute("INSERT OR IGNORE INTO kv(k,v) VALUES(?1,?2)", params![key, &v[..]])?;
                     }
                     return Ok(Imported::Stored);
@@ -996,7 +997,7 @@ impl Store {
             for (k, v) in rows {
                 if k.starts_with("peer.proto.") {
                     out.push(SyncItem::Kv { key: k, value: Some(ByteBuf::from(v)), rev: 0 });
-                } else if kv_synced(&k) || k == "botfather.bots" {
+                } else if kv_synced(&k) {
                     let rev: i64 = c.query_row("SELECT rev FROM lww WHERE key=?1", params![format!("kv:{k}")], |r| r.get(0)).optional().ok().flatten().unwrap_or(1);
                     out.push(SyncItem::Kv { key: k, value: Some(ByteBuf::from(v)), rev: rev.max(1) });
                 }
@@ -1289,6 +1290,25 @@ mod tests {
         assert_eq!(dst.sync_import(&it, &a, true).unwrap(), Imported::Nothing, "older value doesn't win");
         assert!(!s.sync_wants(K_KV, b"profile.bio", &[0]));
         assert!(dst.sync_wants(K_MSG, &[2; 16], &[1, 0]));
+    }
+
+    #[test]
+    fn bots_made_on_one_device_reach_the_others_live() {
+        // used to arrive only once, at link time: a bot made afterwards stayed on its device
+        let a = PeerId([9; 32]);
+        let src = Store::open_memory().unwrap();
+        src.set_sync_enabled(true);
+        src.kv_set("botfather.bots", b"list-v1").unwrap();
+        assert!(src.sync_log_since(0, 100).iter().any(|(_, k, key)| *k == K_KV && key == b"botfather.bots"), "a change is logged for sync");
+        let dst = Store::open_memory().unwrap();
+        let it = src.sync_export(K_KV, b"botfather.bots").unwrap();
+        assert!(matches!(dst.sync_import(&it, &a, true).unwrap(), Imported::Kv { .. }));
+        assert_eq!(dst.kv_get("botfather.bots").unwrap(), b"list-v1");
+        // a later change (new bot / revoked bot) replaces the older list
+        src.kv_set("botfather.bots", b"list-v2").unwrap();
+        let it2 = src.sync_export(K_KV, b"botfather.bots").unwrap();
+        assert!(matches!(dst.sync_import(&it2, &a, true).unwrap(), Imported::Kv { .. }));
+        assert_eq!(dst.kv_get("botfather.bots").unwrap(), b"list-v2");
     }
 
     #[test]

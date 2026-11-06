@@ -43,11 +43,27 @@ class BotBadge extends StatelessWidget {
 
 enum _Step { idle, askName, askUsername }
 
+/// One line of the BotFather chat. [kind] says which card goes with a reply
+/// ('docs', 'token' for [user]'s bot, 'bots' = my bots); [token] is only
+/// held in memory for the reply that created it (never saved).
 class _Msg {
-  _Msg(this.mine, {this.text, this.child});
+  _Msg(this.mine, this.text, {this.kind = '', this.user = '', this.token});
   final bool mine;
-  final String? text;
-  final Widget? child;
+  final String text;
+  final String kind;
+  final String user;
+  final String? token;
+
+  Map<String, dynamic> toJson() => {
+        'mine': mine,
+        'text': text,
+        'ts': DateTime.now().millisecondsSinceEpoch,
+        if (kind.isNotEmpty) 'kind': kind,
+        if (user.isNotEmpty) 'u': user,
+      };
+
+  static _Msg fromJson(Map<String, dynamic> j) =>
+      _Msg(j['mine'] == true, j['text']?.toString() ?? '', kind: j['kind']?.toString() ?? '', user: j['u']?.toString() ?? '');
 }
 
 class BotFatherChat extends StatefulWidget {
@@ -58,20 +74,36 @@ class BotFatherChat extends StatefulWidget {
 }
 
 class _BotFatherChatState extends State<BotFatherChat> {
+  /// The conversation: kept by the core (synced to the account's devices,
+  /// last 200 lines), so it is still here after leaving the chat or a restart.
   final List<_Msg> _msgs = [];
   final _input = TextEditingController();
   final _scroll = ScrollController();
   _Step _step = _Step.idle;
   String _name = '';
   bool _busy = false;
+  late final LumoraApi _api = context.read<LumoraApi>();
+
+  /// Saves run one after another (the core appends in that order).
+  Future<void> _saving = Future.value();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final s = S.read(context);
-      _bot(s('bf_welcome'));
-    });
+    _load();
+  }
+
+  Future<void> _load() async {
+    List<Map<String, dynamic>> saved;
+    try {
+      saved = await _api.botfatherHistory();
+    } catch (_) {
+      return; // older core: this visit only
+    }
+    if (!mounted || saved.isEmpty) return;
+    // (lines typed while it was loading stay after the saved ones)
+    setState(() => _msgs.insertAll(0, saved.map(_Msg.fromJson)));
+    _toEnd(jump: true);
   }
 
   @override
@@ -81,23 +113,26 @@ class _BotFatherChatState extends State<BotFatherChat> {
     super.dispose();
   }
 
-  void _bot(String text, {Widget? child}) {
-    setState(() => _msgs.add(_Msg(false, text: text, child: child)));
+  void _add(_Msg m) {
+    setState(() => _msgs.add(m));
     _toEnd();
+    final api = _api;
+    _saving = _saving.then((_) => api.botfatherAppend([m.toJson()])).catchError((_) {});
   }
 
-  void _me(String text) {
-    setState(() => _msgs.add(_Msg(true, text: text)));
-    _toEnd();
-  }
+  void _bot(String text, {String kind = '', String user = '', String? token}) => _add(_Msg(false, text, kind: kind, user: user, token: token));
 
-  void _toEnd() => WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) _scroll.animateTo(_scroll.position.maxScrollExtent, duration: Motion.normal, curve: Motion.curve);
+  void _me(String text) => _add(_Msg(true, text));
+
+  void _toEnd({bool jump = false}) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_scroll.hasClients) return;
+        final end = _scroll.position.maxScrollExtent;
+        jump ? _scroll.jumpTo(end) : _scroll.animateTo(end, duration: Motion.normal, curve: Motion.curve);
       });
 
   Future<void> _handle(String raw) async {
     final s = S.read(context);
-    final api = context.read<LumoraApi>();
+    final api = _api;
     final text = raw.trim();
     if (text.isEmpty) return;
     _me(text);
@@ -114,7 +149,7 @@ class _BotFatherChatState extends State<BotFatherChat> {
     }
     if (text == '/help' || text == '/start') {
       _step = _Step.idle;
-      _bot(s('bf_help'), child: _docsButton(s));
+      _bot(s('bf_help'), kind: 'docs');
       return;
     }
     if (text == '/cancel') {
@@ -137,7 +172,7 @@ class _BotFatherChatState extends State<BotFatherChat> {
         try {
           final b = await api.botCreate(_name, u);
           _step = _Step.idle;
-          _bot(s('bf_created', {'name': b.name, 'handle': b.handle.isEmpty ? '@${b.username}' : b.handle}), child: TokenCard(token: b.token ?? ''));
+          _bot(s('bf_created', {'name': b.name, 'handle': b.handle.isEmpty ? '@${b.username}' : b.handle}), kind: 'token', user: b.username, token: b.token ?? '');
         } catch (e) {
           _bot('${s('bf_error')} ${e is ApiException ? e.message : e}');
         } finally {
@@ -151,12 +186,13 @@ class _BotFatherChatState extends State<BotFatherChat> {
   Future<void> _listBots() async {
     final s = S.read(context);
     try {
-      final bots = await context.read<LumoraApi>().botList();
+      final bots = await _api.botList();
+      if (!mounted) return;
       if (bots.isEmpty) {
         _bot(s('bf_no_bots'));
         return;
       }
-      _bot(s('bf_your_bots', {'n': bots.length}), child: Column(children: [for (final b in bots) BotCard(bot: b, onChanged: _listBots)]));
+      _bot(s('bf_your_bots', {'n': bots.length}), kind: 'bots');
     } catch (e) {
       _bot('${s('bf_error')} $e');
     }
@@ -170,6 +206,24 @@ class _BotFatherChatState extends State<BotFatherChat> {
           label: Text(s('bf_docs')),
         ),
       );
+
+  /// The card under a reply. A saved token reply shows the bot's current
+  /// token (hidden; it may have been revoked since); only the newest
+  /// "my bots" reply carries the live list.
+  Widget? _cardOf(_Msg m, int i, S s) {
+    switch (m.kind) {
+      case 'docs':
+        return _docsButton(s);
+      case 'token':
+        final t = m.token;
+        if (t != null) return TokenCard(token: t);
+        return m.user.isEmpty ? null : _SavedTokenCard(username: m.user);
+      case 'bots':
+        final newest = _msgs.lastIndexWhere((x) => x.kind == 'bots') == i;
+        return newest ? _MyBotsList(key: ValueKey('bots$i')) : null;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,9 +241,11 @@ class _BotFatherChatState extends State<BotFatherChat> {
         child: ListView.builder(
           controller: _scroll,
           padding: const EdgeInsets.all(16),
-          itemCount: _msgs.length,
+          itemCount: _msgs.length + 1,
           itemBuilder: (context, i) {
-            final m = _msgs[i];
+            // the greeting always opens the chat (not saved)
+            final m = i == 0 ? _Msg(false, s('bf_welcome')) : _msgs[i - 1];
+            final child = i == 0 ? null : _cardOf(m, i - 1, s);
             return Align(
               alignment: m.mine ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
@@ -202,8 +258,8 @@ class _BotFatherChatState extends State<BotFatherChat> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  if (m.text != null) Text(m.text!, style: TextStyle(color: m.mine ? Colors.white : lc.text, height: 1.4)),
-                  if (m.child != null) ...[const SizedBox(height: 8), m.child!],
+                  if (m.text.isNotEmpty) Text(m.text, style: TextStyle(color: m.mine ? Colors.white : lc.text, height: 1.4)),
+                  if (child != null) ...[const SizedBox(height: 8), child],
                 ]),
               ),
             );
@@ -237,6 +293,50 @@ class _BotFatherChatState extends State<BotFatherChat> {
     ]);
     return widget.embedded ? Material(color: lc.bg, child: body) : Scaffold(body: SafeArea(child: body));
   }
+}
+
+/// A saved "bot created" reply: the bot's current token, hidden (nothing
+/// when the bot is gone).
+class _SavedTokenCard extends StatefulWidget {
+  const _SavedTokenCard({required this.username});
+  final String username;
+  @override
+  State<_SavedTokenCard> createState() => _SavedTokenCardState();
+}
+
+class _SavedTokenCardState extends State<_SavedTokenCard> {
+  late final Future<String> _token = context.read<LumoraApi>().botToken(widget.username);
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String>(
+        future: _token,
+        builder: (_, snap) => (snap.data ?? '').isEmpty ? const SizedBox.shrink() : TokenCard(token: snap.data!, hidden: true),
+      );
+}
+
+/// "My bots" reply: the current list with its actions.
+class _MyBotsList extends StatefulWidget {
+  const _MyBotsList({super.key});
+  @override
+  State<_MyBotsList> createState() => _MyBotsListState();
+}
+
+class _MyBotsListState extends State<_MyBotsList> {
+  List<BotAccount> _bots = const [];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final b = await context.read<LumoraApi>().botList();
+      if (mounted) setState(() => _bots = b);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, children: [for (final b in _bots) BotCard(bot: b, onChanged: _load)]);
 }
 
 /// Token card with copy + "keep it secret" warning + docs link.

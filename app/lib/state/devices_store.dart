@@ -41,6 +41,10 @@ class DevicesStore extends ChangeNotifier {
   Stream<ApiEvent> get linkEvents => _link.stream;
 
   bool get isPrimary => list?.primary ?? true;
+
+  /// [peer] (a device or account id) is one of my own devices / my own account.
+  bool isMine(String peer) =>
+      peer.isNotEmpty && ((list?.devices.any((d) => d.device == peer) ?? false) || peer == (list?.account ?? ''));
   int get count => list?.devices.length ?? 1;
 
   /// History was being copied during this session (the screen then stays,
@@ -128,6 +132,19 @@ class DevicesStore extends ChangeNotifier {
         } else {
           loadContact(peer).catchError((_) => const <DeviceInfo>[]);
         }
+      case 'presence':
+        // a friend's device came / went: its dot in their device list (and the
+        // remote device picker) follows without reopening it
+        final peer = d['peer']?.toString() ?? '';
+        final dev = d['device']?.toString() ?? '';
+        final list = contactDevices[peer];
+        if (list == null || dev.isEmpty) break;
+        final i = list.indexWhere((x) => x.device == dev);
+        if (i < 0) break;
+        final on = d['device_online'] is bool ? d['device_online'] as bool : d.containsKey('remote_addr');
+        if (list[i].online == on) break;
+        contactDevices[peer] = List.of(list)..[i] = list[i].withPresence(online: on, lastSeen: DateTime.now().millisecondsSinceEpoch);
+        notifyListeners();
       case 'history_sync':
         _setHistory(history.update(d));
         notifyListeners();

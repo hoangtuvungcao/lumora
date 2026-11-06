@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_view.dart';
@@ -101,6 +102,8 @@ class _NoticeTile extends StatelessWidget {
       NoticeKind.remote => (AppIcons.screenShare, LC.warning, s('notice_remote', {'name': n.title})),
       NoticeKind.system => (AppIcons.info, context.lc.muted, n.title),
       NoticeKind.reminder => (AppIcons.reminder, LC.warning, s('notice_reminder', {'title': n.title})),
+      NoticeKind.scheduledFailed => (AppIcons.warning, LC.danger, s('notice_sched_failed', {'text': n.title})),
+      NoticeKind.storageLow => (AppIcons.storage, LC.danger, n.title.isNotEmpty ? n.title : s('notice_storage_low')),
     };
     return InkWell(
       onTap: () {
@@ -143,11 +146,18 @@ class _NoticeTile extends StatelessWidget {
               Flows.openConv(context, n.conv!);
             }),
           ],
-          if (n.kind == NoticeKind.friendRequest && n.peer != null)
-            _Act(icon: AppIcons.check, tip: s('accept'), onTap: () {
-              context.read<ContactsStore>().accept(n.peer!);
-              n.read = true;
-              context.read<NotificationStore>().markAllRead();
+          // only while the request is still open (it may have been accepted or
+          // withdrawn on another device since)
+          if (n.kind == NoticeKind.friendRequest && n.peer != null && context.select<ContactsStore, bool>((c) => c[n.peer!]?.status == ContactStatus.received))
+            _Act(icon: AppIcons.check, tip: s('accept'), onTap: () async {
+              final notices = context.read<NotificationStore>();
+              try {
+                await context.read<ContactsStore>().accept(n.peer!);
+                n.read = true;
+                notices.markAllRead();
+              } catch (e) {
+                if (context.mounted) toastError(context, e);
+              }
             }),
           if (!n.read) Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: const BoxDecoration(color: LC.primary, shape: BoxShape.circle)),
         ]),

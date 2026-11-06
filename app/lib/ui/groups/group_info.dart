@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -41,10 +42,33 @@ class _GroupInfoViewState extends State<GroupInfoView> {
     if (c != null) Scrollable.ensureVisible(c, duration: Motion.normal, curve: Motion.curve);
   }
 
+  StreamSubscription<Map<String, dynamic>>? _events;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // Changes made elsewhere (another admin, my other device, being removed)
+    // show at once: no admin buttons left after a kick, a rename, new members…
+    _events = context.read<LumoraApi>().events.listen((raw) {
+      final e = ApiEvent.parse(raw);
+      if ((e.name == 'group' || e.name == 'group_removed') && e.data['gid']?.toString() == widget.gid) _scheduleLoad();
+    });
+  }
+
+  Timer? _reload;
+  void _scheduleLoad() {
+    _reload?.cancel();
+    _reload = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _events?.cancel();
+    _reload?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -331,6 +355,9 @@ class _GroupInfoViewState extends State<GroupInfoView> {
                       : (m.role == 'admin' ? const Icon(AppIcons.shield, color: LC.accent, size: 18) : null)),
             ),
           const SizedBox(height: 16),
+          if (g.myRole == 'none')
+            Center(child: Text(s('group_removed_banner'), style: context.tt.bodySmall?.copyWith(color: context.lc.muted)))
+          else
           LCard(
             padding: const EdgeInsets.all(4),
             child: ListTile(
@@ -342,8 +369,9 @@ class _GroupInfoViewState extends State<GroupInfoView> {
                 final chat = context.read<ChatStore>();
                 final nav = context.read<NavStore>();
                 await context.read<LumoraApi>().groupLeave(g.gid);
-                chat.convs.remove(conv);
-                chat.load();
+                // the core deletes the chat (`conversation_removed`); no reload —
+                // a reload racing that would only bring it back for a moment
+                chat.onGroupRemoved(conv, left: true);
                 nav.openConv(null);
                 nav.toggleInfo(false);
                 if (!widget.embedded && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);

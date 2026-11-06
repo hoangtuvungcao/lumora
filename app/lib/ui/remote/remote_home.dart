@@ -13,6 +13,9 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/secure_input.dart';
 import '../devices/device_picker.dart';
+import '../devices/qr_scan.dart' show lumoraQrScanner;
+import '../../core/links.dart';
+import '../flows.dart' show Flows;
 import 'wake_device.dart';
 import '../../platform/apple_services.dart';
 
@@ -141,7 +144,7 @@ class _AllowCardState extends State<_AllowCard> {
                     ),
                     IconButton(
                       tooltip: s('copy_link'),
-                      onPressed: () => copyText(context, 'lumora://remote/${id.replaceAll(' ', '')}'),
+                      onPressed: () => copyText(context, LumoraLink.remoteLink(id)),
                       icon: const Icon(AppIcons.link, color: Colors.white),
                     ),
                   ],
@@ -244,8 +247,21 @@ class _ConnectCardState extends State<_ConnectCard> {
 
   bool get _valid => _id.text.replaceAll(RegExp(r'\D'), '').length == 9 && _pw.text.isNotEmpty;
 
+  /// Takes a pre-filled ID (a link, a profile's Remote button, a recent
+  /// device) — also one set before this card was built.
   void _prefill() {
-    _id.text = _prefillId.value;
+    final v = _prefillId.value;
+    if (v.isEmpty) return;
+    _id.text = v;
+    _prefillId.value = '';
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _scan() async {
+    final l = await Flows.scanQr(context);
+    if (l == null || !mounted) return;
+    if (l.kind != LinkKind.remote) return Flows.openLink(context, l);
+    _id.text = formatShortId(l.shortId!);
     setState(() {});
   }
 
@@ -253,6 +269,11 @@ class _ConnectCardState extends State<_ConnectCard> {
   void initState() {
     super.initState();
     _prefillId.addListener(_prefill);
+    final v = _prefillId.value;
+    if (v.isNotEmpty) {
+      _id.text = v;
+      _prefillId.value = '';
+    }
   }
 
   Future<void> _connect() async {
@@ -296,6 +317,11 @@ class _ConnectCardState extends State<_ConnectCard> {
             style: TextStyle(fontSize: 19, fontWeight: FontWeight.w600, letterSpacing: 2, color: context.lc.text),
             decoration: secureInputDecoration(context, hint: '123 456 789', icon: AppIcons.channel),
           ),
+          if (lumoraQrScanner != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(onPressed: _scan, icon: const Icon(AppIcons.scan, size: 18), label: Text(s('scan_qr'))),
+            ),
           const SizedBox(height: 16),
           PasswordField(
             controller: _pw,

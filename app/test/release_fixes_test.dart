@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lumora/app.dart';
 import 'package:lumora/core/mock_api.dart';
 import 'package:lumora/state/stores.dart';
+import 'package:lumora/ui/chats/chat_info.dart';
 import 'package:lumora/ui/chats/chat_view.dart';
 
 import 'helpers.dart';
@@ -62,6 +63,70 @@ void main() {
     await t.tap(_menu);
     await settle(t);
     expect(find.text('Gọi thoại'), findsNothing);
+    await _done(t, sv);
+  });
+
+  // Core events reach the stores in the real-async zone (see helpers / makeServices).
+  Future<void> flush(WidgetTester t) async {
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await settle(t);
+  }
+
+  testWidgets('a message deleted elsewhere (removed) leaves the open chat at once', (t) async {
+    final sv = await makeServices(t);
+    final conv = _direct(sv);
+    await _openChat(t, sv, conv, 900);
+    final th = sv.chat.thread(conv);
+    expect(th.messages, isNotEmpty);
+    final victim = th.messages.last;
+    (sv.api as MockLumoraApi).emitForTest('message_update', {'conv': conv, 'id': victim.id, 'removed': true});
+    await flush(t);
+    expect(th.messages.any((m) => m.id == victim.id), isFalse);
+    await _done(t, sv);
+  });
+
+  testWidgets('"delete for both" removes the message from my screen at once', (t) async {
+    final sv = await makeServices(t);
+    final conv = _direct(sv);
+    await _openChat(t, sv, conv, 900);
+    final th = sv.chat.thread(conv);
+    final mine = th.messages.lastWhere((m) => m.mine);
+    await t.runAsync(() => sv.chat.deleteFor(conv, mine.id, forEveryone: true));
+    await flush(t);
+    expect(th.messages.any((m) => m.id == mine.id), isFalse);
+    await _done(t, sv);
+  });
+
+  testWidgets('phone: a chat deleted elsewhere closes its page; history cleared empties it', (t) async {
+    final sv = await makeServices(t);
+    final convs = sv.chat.convs.values.where((c) => c.id.startsWith('d:') && !c.isSaved).map((c) => c.id).take(2).toList();
+    setSize(t, const Size(400, 800));
+    await t.pumpWidget(LumoraApp(services: sv, overlays: false, home: Builder(builder: (ctx) {
+      return Scaffold(body: Center(child: TextButton(
+        onPressed: () => Navigator.of(ctx).push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: convs[0]))),
+        child: const Text('open'))));
+    })));
+    await settle(t);
+    await t.tap(find.text('open'));
+    await settle(t);
+    expect(find.byType(ChatView), findsOneWidget);
+    // cleared on another device: the open thread empties, the page stays
+    (sv.api as MockLumoraApi).emitForTest('history_cleared', {'conv': convs[0]});
+    await flush(t);
+    expect(sv.chat.thread(convs[0]).messages, isEmpty);
+    expect(find.byType(ChatView), findsOneWidget);
+    // its info page is on top (the user was looking at it)
+    Navigator.of(t.element(find.byType(ChatView))).push(MaterialPageRoute<void>(builder: (_) => Scaffold(body: ChatInfoPanel(conv: convs[0]))));
+    await settle(t);
+    expect(find.byType(ChatInfoPanel), findsOneWidget);
+    // deleted for both by the other side: back to the list, the chat is gone —
+    // the chat page itself closes, not just the info page on top of it
+    (sv.api as MockLumoraApi).emitForTest('conversation_removed', {'conv': convs[0]});
+    await flush(t);
+    expect(find.byType(ChatInfoPanel), findsNothing);
+    expect(find.byType(ChatView, skipOffstage: false), findsNothing);
+    expect(find.text('open'), findsOneWidget);
+    expect(sv.chat.convs.containsKey(convs[0]), isFalse);
     await _done(t, sv);
   });
 }

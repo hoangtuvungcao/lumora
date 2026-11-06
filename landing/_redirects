@@ -7,6 +7,12 @@
 /api           /developers/api/ 301
 /bot           /developers/ 301
 
+# Lumora QR codes / shared links: one static page reads the link in the browser
+# (assets/js/open.js). 200 = rewrite, the address bar keeps the link.
+/add/*         /open/       200
+/join/*        /open/       200
+/remote/*      /open/       200
+
 # Cloudflare Pages limits single files to 25 MiB, so installers are usually
 # hosted elsewhere (Cloudflare R2 public bucket, GitHub Releases, a VPS...).
 # Uncomment ONE line and keep releases.json "baseUrl" = "/downloads/":

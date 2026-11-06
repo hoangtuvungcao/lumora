@@ -932,7 +932,9 @@ class MockLumoraApi extends LumoraApi {
 
   void _emit(String event, Map<String, dynamic> data) {
     if (_events.isClosed) return;
-    _events.add({'event': event, ...data});
+    // like the core: messages of a locked chat (account setting) say so
+    final locked = event == 'message' && (_lockedChats?.contains(data['conv']) ?? false);
+    _events.add({'event': event, ...data, if (locked) 'locked': true});
   }
 
   void _later(Duration d, void Function() f) {
@@ -973,6 +975,26 @@ class MockLumoraApi extends LumoraApi {
   /// Public demo hooks (used by the "Demo" section in Settings).
   /// Emits any core event (tests).
   void emitForTest(String event, [Map<String, dynamic> data = const {}]) => _emit(event, data);
+
+  /// History copied in from another device (tests): `count` older messages land
+  /// before the oldest one of [conv], without `message` events (like the core).
+  void importHistoryForTest(String conv, int count) {
+    final list = _msgs.putIfAbsent(conv, () => []);
+    final oldest = list.isEmpty ? _now : list.map((m) => m['hlc'] as int).reduce(math.min);
+    final peer = conv.startsWith('d:') ? conv.substring(2) : myPeer;
+    final old = [
+      for (var i = count; i > 0; i--) _mkMsg(conv, peer, 'old $i', _now, status: 2)..['hlc'] = oldest - i * 1000,
+    ];
+    list.insertAll(0, old);
+  }
+
+  /// My role in a group changes (tests); `none`: I'm no longer a member.
+  void setGroupRoleForTest(String gid, String role) {
+    final g = _groups[gid];
+    if (g == null) return;
+    g['my_role'] = role;
+    if (role == 'none') (g['members'] as List).removeWhere((m) => m['peer'] == myPeer);
+  }
 
   /// A friend's message arrives in [conv] (tests).
   void simulateIncomingMessage(String conv, String text) {
@@ -1336,6 +1358,20 @@ class MockLumoraApi extends LumoraApi {
 
   /// `ui_secret_get/set`: the core keeps these in its encrypted database.
   final Map<String, String> _uiSecrets = {};
+
+  /// `locked_chats_get/set`: the account's locked chats (synced setting in the
+  /// core); null until a device saved a list.
+  List<String>? _lockedChats;
+
+  /// Tests: another device of the account changed the locked chats (the core
+  /// imports the synced value and tells the app).
+  void lockedChatsFromOtherDevice(List<String> chats) {
+    _lockedChats = List.of(chats);
+    _emit('settings', {'key': 'privacy.locked_chats'});
+  }
+
+  /// `botfather_*`: the BotFather conversation (synced, last 200 lines).
+  final List<Map<String, dynamic>> _botfatherChat = [];
 
   @override
   Future<dynamic> request(String cmd, [Map<String, dynamic> args = const {}]) async {
@@ -2034,6 +2070,31 @@ class MockLumoraApi extends LumoraApi {
         final b = {'username': u, 'name': args['name'], 'handle': '@$u·${_hex(6)}', 'peer': _peerId(u), 'short_id': _shortId(u.length + 50), 'created': _now, 'token': 'lumora_bot_${_hex(56)}'};
         _bots[u] = b;
         return Map.of(b);
+      case 'locked_chats_get':
+        return {'chats': List.of(_lockedChats ?? const <String>[]), 'set': _lockedChats != null};
+      case 'locked_chats_set':
+        final l = <String>[];
+        for (final c in (args['chats'] as List)) {
+          final v = '$c'.trim();
+          if (v.isEmpty) throw ApiException('bad conversation id', cmd: cmd);
+          if (!l.contains(v)) l.add(v);
+        }
+        _lockedChats = l;
+        return {'chats': List.of(l)};
+      case 'botfather_history':
+        return {'entries': [for (final e in _botfatherChat) Map.of(e)]};
+      case 'botfather_append':
+        for (final e in (args['entries'] as List).whereType<Map>()) {
+          final text = '${e['text'] ?? ''}'.replaceAll(RegExp(r'lumora_bot_[a-z0-9]+'), 'lumora_bot_…');
+          final kind = '${e['kind'] ?? ''}';
+          if (text.isEmpty && kind.isEmpty) continue;
+          _botfatherChat.add({'mine': e['mine'] == true, 'text': text, 'ts': e['ts'] ?? _now, if (kind.isNotEmpty) 'kind': kind, if (e['u'] != null) 'u': '${e['u']}'});
+        }
+        if (_botfatherChat.length > 200) _botfatherChat.removeRange(0, _botfatherChat.length - 200);
+        return {'entries': [for (final e in _botfatherChat) Map.of(e)]};
+      case 'botfather_clear':
+        _botfatherChat.clear();
+        return null;
       case 'bot_list':
         return [for (final b in _bots.values) Map.of(b)..remove('token')];
       case 'bot_token':
@@ -2225,8 +2286,11 @@ class MockLumoraApi extends LumoraApi {
         _emit('group', g);
         return null;
       case 'group_leave':
+        // like the core: my own Leave deletes the chat
         _groups.remove(args['gid']);
         _convs.remove('g:${args['gid']}');
+        _emit('conversation_removed', {'conv': 'g:${args['gid']}'});
+        _emit('group_removed', {'gid': args['gid'], 'conv': 'g:${args['gid']}', 'left': true});
         return null;
       case 'spaces':
         return _spaces;

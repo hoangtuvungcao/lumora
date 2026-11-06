@@ -750,3 +750,122 @@ async fn send_client_id_is_idempotent_and_last_mine_is_reported() {
     assert!(!mine(&n, &dconv), "a system line counts as mine");
     n.shutdown();
 }
+
+fn drain(ev: &mut tokio::sync::broadcast::Receiver<Value>) -> Vec<Value> {
+    let mut v = Vec::new();
+    while let Ok(e) = ev.try_recv() {
+        v.push(e);
+    }
+    v
+}
+
+/// Leaving a group deleted nothing: the app removed the chat, reloaded the list and the
+/// group came back with a "you were removed" line (meant for being kicked).
+#[tokio::test(flavor = "multi_thread")]
+async fn leaving_a_group_deletes_its_chat() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let bob = Identity::generate().peer_id();
+    let v = n.create_group("G", vec![bob], 0).await.unwrap();
+    let gid = gid_of(&v);
+    let conv = format!("g:{}", hex::encode(gid));
+    assert!(n.conversations().unwrap().iter().any(|c| c.id == conv));
+    let mut ev = n.subscribe();
+    n.group_leave(gid).await.unwrap();
+    let evs = drain(&mut ev);
+    assert!(!n.conversations().unwrap().iter().any(|c| c.id == conv), "the left group's chat is still listed");
+    assert!(n.store.messages(&conv, None, 50).unwrap().is_empty());
+    assert!(evs.iter().any(|e| e["event"] == "conversation_removed" && e["conv"] == conv.as_str()));
+    let removed = evs.iter().find(|e| e["event"] == "group_removed").expect("no group_removed");
+    assert_eq!(removed["left"], true);
+    assert!(!evs.iter().any(|e| e["event"] == "message" && e["body"]["code"] == "sys.you_removed"), "Leave reported as a kick");
+    n.shutdown();
+}
+
+/// A kick keeps the chat (read-only) with the "you were removed" line.
+#[tokio::test(flavor = "multi_thread")]
+async fn being_removed_keeps_the_chat_with_a_notice() {
+    let t1 = tempfile::tempdir().unwrap();
+    let t2 = tempfile::tempdir().unwrap();
+    let n = quiet_node(t1.path()).await; // owner
+    let c = quiet_node(t2.path()).await; // member
+    let v = n.create_group("G", vec![c.me], 0).await.unwrap();
+    let gid = gid_of(&v);
+    let k0 = n.store.group_key_get(&gid, 0).unwrap();
+    let st = n.groups.read().get(&gid).cloned().unwrap();
+    c.store.group_key_put(&gid, 0, &k0).unwrap();
+    c.store.group_save(&st.gid, &rmp_serde::to_vec(&st).unwrap()).unwrap();
+    c.groups.write().insert(st.gid, st.clone());
+    c.store.ensure_conv(&st.conv_id(), 1, "G").unwrap();
+    n.group_remove(gid, c.me).await.unwrap();
+    let mut ev = c.subscribe();
+    let kick = my_envs(&n, &gid, &k0, |p| matches!(p, Payload::Op(GroupOp::Remove { .. })));
+    assert_eq!(kick.len(), 1);
+    let s = group::open_envelope(&k0, &gid, &kick[0]).unwrap();
+    assert!(c.apply_group_payload(&st, &s).await.unwrap());
+    let evs = drain(&mut ev);
+    assert!(c.conversations().unwrap().iter().any(|x| x.id == st.conv_id()), "a kick deleted the chat");
+    assert_eq!(evs.iter().find(|e| e["event"] == "group_removed").expect("no group_removed")["left"], false);
+    assert!(evs.iter().any(|e| e["event"] == "message" && e["body"]["code"] == "sys.you_removed"));
+    n.shutdown();
+    c.shutdown();
+}
+
+/// A rename changed the title in the store but the chat list / chat header never heard.
+#[tokio::test(flavor = "multi_thread")]
+async fn rename_updates_the_conversation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let v = n.create_group("Old", vec![Identity::generate().peer_id()], 0).await.unwrap();
+    let gid = gid_of(&v);
+    let mut ev = n.subscribe();
+    n.group_rename(gid, "New").await.unwrap();
+    let evs = drain(&mut ev);
+    let conv = format!("g:{}", hex::encode(gid));
+    let c = evs.iter().find(|e| e["event"] == "conversation" && e["id"] == conv.as_str()).expect("no conversation event");
+    assert_eq!(c["title"], "New");
+    n.shutdown();
+}
+
+/// "Seen by" went out with send_now (online devices only): a member's device that was
+/// offline never learned it. Now reliable — and only the newest receipt waits per member.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_read_receipts_are_queued_for_offline_members() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let bob = Identity::generate().peer_id();
+    let v = n.create_group("G", vec![bob], 0).await.unwrap();
+    let conv = format!("g:{}", hex::encode(gid_of(&v)));
+    let queued = |n: &Node| {
+        n.store
+            .outbox_for(&bob)
+            .unwrap()
+            .into_iter()
+            .filter(|(_, p)| matches!(rmp_serde::from_slice::<PeerMsg>(p), Ok(PeerMsg::Wrapped { inner, .. }) if matches!(*inner, PeerMsg::GroupRead { .. })))
+            .count()
+    };
+    n.mark_read(&conv).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(queued(&n), 1, "receipt not queued for the offline member");
+    n.store.insert_message(&[9; 16], &conv, &bob, n.hlc.tick(), "text", &json!({"text": "hi"}), 2, None, None).unwrap();
+    n.mark_read(&conv).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(queued(&n), 1, "older receipts pile up");
+    n.shutdown();
+}
+
+/// Group members who aren't contacts showed as a short id: messages carry the name they
+/// gave the group, and @mentions a preview.
+#[tokio::test(flavor = "multi_thread")]
+async fn group_messages_carry_the_member_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let bob = Identity::generate().peer_id();
+    let v = n.create_group("G", vec![bob], 0).await.unwrap();
+    let conv = format!("g:{}", hex::encode(gid_of(&v)));
+    n.set_member_name(&bob, "Bình");
+    n.store.insert_message(&[8; 16], &conv, &bob, n.hlc.tick(), "text", &json!({"text": "hi"}), 2, None, None).unwrap();
+    let m = n.store.message(&[8; 16]).unwrap();
+    assert_eq!(n.msg_json(&m)["author_name"], "Bình");
+    n.shutdown();
+}

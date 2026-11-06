@@ -217,11 +217,7 @@ impl Node {
                             }
                         }
                         proto::STREAM_MEDIA => node.remote.on_media_stream(&node, &p, recv).await,
-                        proto::STREAM_SYNC => {
-                            if let Err(e) = node.receive_sync_stream(&p, recv).await {
-                                tracing::info!("sync stream from {:?}: {e:#}", p.peer);
-                            }
-                        }
+                        proto::STREAM_SYNC => node.on_sync_stream(&p, recv).await,
                         _ => {}
                     }
                 });
@@ -261,7 +257,7 @@ impl Node {
                 // an account is offline only once none of its devices is connected
                 node.emit(
                     "presence",
-                    json!({"peer": pc.account.to_base32(), "device": pc.peer.to_base32(), "online": node.is_online(&pc.account) && !pc.own, "own": pc.own}),
+                    json!({"peer": pc.account.to_base32(), "device": pc.peer.to_base32(), "online": node.is_online(&pc.account) && !pc.own, "own": pc.own, "device_online": false}),
                 );
                 if pc.own {
                     node.emit_devices();
@@ -303,7 +299,7 @@ impl Node {
         self.store.device_touch(&peer, None);
         self.emit(
             "presence",
-            json!({"peer": pc.account.to_base32(), "device": peer.to_base32(), "own": pc.own, "online": !pc.own, "path": pc.path,
+            json!({"peer": pc.account.to_base32(), "device": peer.to_base32(), "own": pc.own, "online": !pc.own, "device_online": true, "path": pc.path,
                    "remote_addr": crate::util::canon(pc.conn.remote_address()).to_string()}),
         );
         if pc.own {

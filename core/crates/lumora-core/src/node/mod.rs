@@ -3,6 +3,7 @@
 pub mod botfather;
 mod bridge;
 mod chat;
+pub mod chat_locks;
 mod conn;
 pub mod devices;
 mod extras;
@@ -283,6 +284,9 @@ pub struct Node {
     /// Offline/unreachable devices: when their queued messages may next go out again as
     /// sealed signaling mail, and the current back-off.
     pub(crate) mail_retry: Mutex<HashMap<PeerId, (Instant, Duration)>>,
+    /// Last queued "seen up to" receipt per (group chat, member): a newer one replaces it
+    /// in the outbox instead of piling up for an offline member.
+    pub(crate) group_read_ids: Mutex<HashMap<(String, PeerId), [u8; 16]>>,
     /// Acks owed to devices that reached us only by signaling mail (batched).
     pub(crate) mail_acks: Mutex<HashMap<PeerId, Vec<[u8; 16]>>>,
 }
@@ -604,6 +608,7 @@ impl Node {
             sync: Default::default(),
             solicited: Mutex::new(HashMap::new()),
             mail_retry: Mutex::new(HashMap::new()),
+            group_read_ids: Mutex::new(HashMap::new()),
             mail_acks: Mutex::new(HashMap::new()),
         });
         *node.self_ref.lock() = Some(Arc::downgrade(&node));

@@ -343,6 +343,27 @@ impl Node {
         }
     }
 
+    /// I left the group (here or on another of my devices): its chats (main + channels)
+    /// are deleted like "delete chat" — a left group isn't kept as a read-only chat.
+    fn forget_left_group(&self, gid: &Gid) {
+        for conv in self.store.group_convs(&conv_for(gid, "")) {
+            let _ = self.clear_local(&conv, u64::MAX, true);
+        }
+    }
+
+    /// Whether I'm out of `st` because of my own Leave (not a Remove / Ban by an admin).
+    fn my_exit_was_leave(&self, st: &GroupState) -> bool {
+        st.ops
+            .iter()
+            .rev()
+            .find_map(|o| match &o.payload {
+                Payload::Op(GroupOp::Leave) if o.author == self.me => Some(true),
+                Payload::Op(GroupOp::Remove { peer } | GroupOp::Ban { peer }) if *peer == self.me => Some(false),
+                _ => None,
+            })
+            .unwrap_or(false)
+    }
+
     fn display(&self, p: &PeerId) -> String {
         if *p == self.me {
             return self.name();
@@ -647,7 +668,10 @@ impl Node {
                 }
                 let actor = self.display(&s.author);
                 let peer_name = |p: &PeerId| self.display(p);
+                // my own Leave (from this device or another of mine): the chat goes away
+                let i_left = matches!(op, GroupOp::Leave) && s.author == self.me && before.is_member(&self.me);
                 let line: Option<(&str, Vec<(&str, String)>)> = match op {
+                    _ if i_left => None,
                     GroupOp::Add { peer } => Some(("sys.member_added", vec![("actor", actor.clone()), ("peer", peer_name(peer))])),
                     GroupOp::Remove { peer } => Some(("sys.member_removed", vec![("actor", actor.clone()), ("peer", peer_name(peer))])),
                     GroupOp::Ban { peer } => Some(("sys.member_banned", vec![("actor", actor.clone()), ("peer", peer_name(peer))])),
@@ -655,6 +679,14 @@ impl Node {
                     GroupOp::Rename { name } => {
                         // (a late rename that lost to a newer one doesn't change the title)
                         self.store.ensure_conv(&after.conv_id(), 1, &after.name)?;
+                        // and the channel chats this device has ("<group> › #<channel>")
+                        let have = self.store.group_convs(&after.conv_id());
+                        for ch in after.channels.iter().filter(|c| !c.voice) {
+                            let conv = conv_for(&gid, &ch.name);
+                            if conv != after.conv_id() && have.contains(&conv) {
+                                self.store.ensure_conv(&conv, 1, &format!("{} › #{}", after.name, ch.name))?;
+                            }
+                        }
                         Some(("sys.group_renamed", vec![("actor", actor.clone()), ("name", name.clone())]))
                     }
                     GroupOp::SetRole { peer, role } => Some((
@@ -677,10 +709,20 @@ impl Node {
                 // → rotate again; key of the current epoch missing → ask for it.
                 self.after_group_change(&after);
                 if !after.is_member(&self.me) && before.is_member(&self.me) {
-                    self.system_msg(&gid, "sys.you_removed", &[]);
-                    self.emit("group_removed", json!({"gid": hex::encode(gid), "conv": after.conv_id(), "left": matches!(op, GroupOp::Leave)}));
+                    if i_left {
+                        self.forget_left_group(&gid);
+                    } else {
+                        self.system_msg(&gid, "sys.you_removed", &[]);
+                    }
+                    self.emit("group_removed", json!({"gid": hex::encode(gid), "conv": after.conv_id(), "left": i_left}));
                 }
                 self.emit("group", self.group_info(&gid)?);
+                if matches!(op, GroupOp::Rename { .. }) && !i_left {
+                    // the chat list and the chat header show the new title
+                    for conv in self.store.group_convs(&after.conv_id()) {
+                        self.emit_conv(&conv);
+                    }
+                }
                 Ok(true)
             }
             Payload::Msg { channel, msg } => {
@@ -1306,12 +1348,17 @@ impl Node {
         if changed && self.revalidate_keys(&merged) {
             got_key = true;
         }
-        if removed {
-            self.system_msg(&w.gid, "sys.you_removed", &[]);
+        let left = removed && self.my_exit_was_leave(&merged);
+        if removed && ex.is_member(&self.me) {
+            if left {
+                self.forget_left_group(&w.gid);
+            } else {
+                self.system_msg(&w.gid, "sys.you_removed", &[]);
+            }
         }
         drop(guard);
-        if removed {
-            self.emit("group_removed", json!({"gid": hex::encode(w.gid), "conv": merged.conv_id()}));
+        if removed && ex.is_member(&self.me) {
+            self.emit("group_removed", json!({"gid": hex::encode(w.gid), "conv": merged.conv_id(), "left": left}));
         }
         self.emit("group", self.group_info(&w.gid)?);
         if got_key {
@@ -1543,6 +1590,7 @@ impl Node {
             self.deliver_sealed(*m, &w, |sealed| PeerMsg::GroupWelcome { sealed }).await?;
         }
         self.save_group(&after)?;
+        self.forget_left_group(&st.gid);
         self.emit("group_removed", json!({"gid": hex::encode(st.gid), "conv": after.conv_id(), "left": true}));
         self.emit("group", self.group_info(&st.gid)?);
         Ok(())

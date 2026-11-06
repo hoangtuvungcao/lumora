@@ -5,10 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/api.dart';
+import '../../core/links.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../devices/qr_scan.dart' show lumoraQrScanner;
+import '../flows.dart';
 
 /// Creates an invite link and shows it with QR + copy.
 Future<void> showInvite(BuildContext context, {required String gid, required String name}) {
@@ -40,7 +43,8 @@ class _InviteViewState extends State<_InviteView> {
       _error = null;
     });
     try {
-      final l = await context.read<LumoraApi>().createInvite(widget.gid, hours: _hours);
+      // shared as https on Lumora's site: any camera / chat app can open it
+      final l = LumoraLink.shareInvite(await context.read<LumoraApi>().createInvite(widget.gid, hours: _hours));
       if (mounted) setState(() => _link = l);
     } catch (e) {
       if (mounted) setState(() => _error = errorMessage(S.read(context), e));
@@ -67,6 +71,7 @@ class _InviteViewState extends State<_InviteView> {
               child: _link == null
                   ? Center(child: _error == null ? const CircularProgressIndicator() : Text(_error!, style: const TextStyle(color: LC.danger)))
                   : QrImageView(
+                      key: ValueKey('qr:$_link'),
                       data: _link!,
                       padding: EdgeInsets.zero,
                       eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.circle, color: Color(0xFF14162B)),
@@ -142,9 +147,25 @@ class _JoinViewState extends State<_JoinView> {
     super.dispose();
   }
 
+  /// The invite in the field, in the form the core reads (`lumora://join/…`);
+  /// the https form, the app form and a link inside pasted text all work.
+  String? get _coreLink {
+    final l = LumoraLink.find(_link.text);
+    return l != null && l.kind == LinkKind.join ? l.app : null;
+  }
+
+  Future<void> _scan() async {
+    final l = await Flows.scanQr(context);
+    if (l == null || !mounted) return;
+    if (l.kind != LinkKind.join) return Flows.openElsewhere(context, l);
+    _link.text = l.https;
+    setState(() => _error = null);
+    _inspect();
+  }
+
   Future<void> _inspect() async {
-    final t = _link.text.trim();
-    if (!t.startsWith('lumora://')) {
+    final t = _coreLink;
+    if (t == null) {
       setState(() => _info = null);
       return;
     }
@@ -165,7 +186,7 @@ class _JoinViewState extends State<_JoinView> {
     final chat = context.read<ChatStore>();
     final spaces = context.read<SpacesStore>();
     try {
-      await api.joinInvite(_link.text.trim());
+      await api.joinInvite(_coreLink ?? _link.text.trim());
       await Future.wait([chat.load(), spaces.load()]);
       if (mounted) {
         toast(context, S.read(context)('joined'));
@@ -194,7 +215,7 @@ class _JoinViewState extends State<_JoinView> {
           autofocus: true,
           onChanged: (_) => _inspect(),
           decoration: InputDecoration(
-            hintText: 'lumora://join/…',
+            hintText: '$kLinkHost/join/…',
             prefixIcon: const Icon(AppIcons.link),
             suffixIcon: IconButton(
               tooltip: s('paste'),
@@ -209,6 +230,10 @@ class _JoinViewState extends State<_JoinView> {
             ),
           ),
         ),
+        if (lumoraQrScanner != null) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(onPressed: _scan, icon: const Icon(AppIcons.scan, size: 18), label: Text(s('scan_qr'))),
+        ],
         if (i != null) ...[
           const SizedBox(height: 12),
           LCard(

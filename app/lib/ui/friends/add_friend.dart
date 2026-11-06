@@ -5,25 +5,34 @@ import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/api.dart';
+import '../../core/links.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../devices/qr_scan.dart' show lumoraQrScanner;
+import '../flows.dart';
 
-Future<void> showAddFriend(BuildContext context) {
+/// Add friend. [initial]: an "add" link / QR (the form is filled in; the
+/// request goes only when the user taps "Send request").
+Future<void> showAddFriend(BuildContext context, {LumoraLink? initial}) {
   if (isDesktop(context)) {
     return showDialog<void>(
       context: context,
-      builder: (_) => const Dialog(child: SizedBox(width: 480, child: AddFriendForm())),
+      builder: (_) => Dialog(child: SizedBox(width: 480, child: AddFriendForm(initial: initial))),
     );
   }
   return Navigator.of(context).push(MaterialPageRoute<void>(
-    builder: (_) => const Scaffold(body: SafeArea(child: SingleChildScrollView(child: AddFriendForm()))),
+    builder: (_) => Scaffold(body: SafeArea(child: SingleChildScrollView(child: AddFriendForm(initial: initial)))),
   ));
 }
 
 class AddFriendForm extends StatefulWidget {
-  const AddFriendForm({super.key});
+  const AddFriendForm({super.key, this.initial});
+
+  /// From a scanned QR code / opened link (kind add).
+  final LumoraLink? initial;
+
   @override
   State<AddFriendForm> createState() => _AddFriendFormState();
 }
@@ -35,6 +44,40 @@ class _AddFriendFormState extends State<AddFriendForm> {
   bool _busy = false;
   String? _error;
   List<Map<String, dynamic>>? _found;
+  LumoraLink? _from;
+
+  @override
+  void initState() {
+    super.initState();
+    final l = widget.initial;
+    if (l != null && l.kind == LinkKind.add) WidgetsBinding.instance.addPostFrameCallback((_) => _fill(l));
+  }
+
+  /// Fills the form from an add link: the full ID when the link has it (the
+  /// request goes exactly to that person), else the 9-digit ID.
+  void _fill(LumoraLink l) {
+    if (!mounted) return;
+    setState(() {
+      _tab = 0;
+      _error = null;
+      _found = null;
+      _from = l;
+      _id.text = l.peer ?? formatShortId(l.shortId!);
+    });
+    _lookup();
+  }
+
+  Future<void> _scan() async {
+    final l = await Flows.scanQr(context);
+    if (l == null || !mounted) return;
+    if (l.kind != LinkKind.add) return Flows.openElsewhere(context, l);
+    final me = context.read<SessionStore>().me;
+    if (me != null && (l.peer == me.peer || (l.peer == null && l.shortId == me.shortId.replaceAll(RegExp(r'\D'), '')))) {
+      toast(context, S.read(context)('link_is_you'));
+      return;
+    }
+    _fill(l);
+  }
 
   @override
   void dispose() {
@@ -48,6 +91,15 @@ class _AddFriendFormState extends State<AddFriendForm> {
   bool get _valid => RegExp(r'^\d{9}$').hasMatch(_raw) || RegExp(r'^[a-z2-7]{52}$').hasMatch(_raw) || (_isHandle && (_found?.isNotEmpty ?? false));
 
   Future<void> _lookup() async {
+    // filled from a link with both IDs: show whose it is (only if they match)
+    final from = _from;
+    if (from != null && from.peer != null && _raw == from.peer && from.shortId != null) {
+      try {
+        final r = await context.read<LumoraApi>().lookup(formatShortId(from.shortId!));
+        if (mounted && _raw == from.peer) setState(() => _found = [for (final x in r) if (x['peer'] == from.peer) x]);
+      } catch (_) {}
+      return;
+    }
     if (_isHandle) {
       try {
         final r = await context.read<LumoraApi>().resolveUsername(_id.text.trim().substring(1));
@@ -112,15 +164,22 @@ class _AddFriendFormState extends State<AddFriendForm> {
             : Padding(
                 padding: const EdgeInsets.all(20),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text(s('add_friend_hint'), style: context.tt.bodySmall?.copyWith(height: 1.5)),
+                  Text(s(_from != null ? 'link_add_check' : 'add_friend_hint'), style: context.tt.bodySmall?.copyWith(height: 1.5)),
+                  if (lumoraQrScanner != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(onPressed: _scan, icon: const Icon(AppIcons.scan, size: 18), label: Text(s('scan_qr'))),
+                  ],
                   const SizedBox(height: 14),
                   TextField(
                     controller: _id,
-                    autofocus: true,
+                    autofocus: widget.initial == null,
                     style: const TextStyle(fontSize: 18, letterSpacing: 1.2, fontWeight: FontWeight.w600),
                     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9a-zA-Z @_·]')), LengthLimitingTextInputFormatter(60)],
                     onChanged: (_) {
-                      setState(() => _error = null);
+                      setState(() {
+                        _error = null;
+                        _from = null;
+                      });
                       _lookup();
                     },
                     decoration: InputDecoration(
@@ -178,7 +237,8 @@ class _AddFriendFormState extends State<AddFriendForm> {
   }
 }
 
-/// "My ID" card with QR code (encodes a lumora:// add link).
+/// "My ID" card with QR code (the shared https add link, see core/links.dart)
+/// and the 9-digit ID under it, so it can also be typed by hand.
 class MyIdCard extends StatelessWidget {
   const MyIdCard({super.key, this.compact = false});
   final bool compact;
@@ -188,7 +248,7 @@ class MyIdCard extends StatelessWidget {
     final s = S.of(context);
     final me = context.select<SessionStore, Me?>((x) => x.me);
     if (me == null) return const SizedBox.shrink();
-    final link = 'lumora://add/${me.peer}?id=${me.shortId.replaceAll(' ', '')}';
+    final link = LumoraLink.addLink(me.peer, shortId: me.shortId);
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (!compact) ...[
         Text(s('your_id'), style: context.tt.titleMedium),
@@ -201,6 +261,7 @@ class MyIdCard extends StatelessWidget {
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Radii.lg)),
           child: QrImageView(
+            key: ValueKey('qr:$link'),
             data: link,
             size: compact ? 180 : 200,
             padding: EdgeInsets.zero,
@@ -232,6 +293,8 @@ class MyIdCard extends StatelessWidget {
           ),
         ),
       ]),
+      const SizedBox(height: 4),
+      TextButton.icon(onPressed: () => copyText(context, link), icon: const Icon(AppIcons.link, size: 17), label: Text(s('copy_link'))),
     ]);
   }
 }

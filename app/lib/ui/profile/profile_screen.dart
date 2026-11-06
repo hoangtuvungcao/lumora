@@ -341,10 +341,10 @@ class _CommonGroupsState extends State<_CommonGroups> {
   }
 }
 
-/// "Share my profile": deep link + QR (`lumora://add/PEER`).
+/// "Share my profile": https add link + QR, with the 9-digit ID to type by hand.
 Future<void> showShareProfile(BuildContext context, String peer, String shortId, String name) {
   final s = S.read(context);
-  final link = Flows.addLink(peer);
+  final link = Flows.addLink(peer, shortId: shortId);
   return showDialog<void>(
     context: context,
     builder: (c) => AlertDialog(
@@ -355,7 +355,7 @@ Future<void> showShareProfile(BuildContext context, String peer, String shortId,
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(Radii.lg)),
-            child: QrImageView(data: link, size: 200, padding: EdgeInsets.zero),
+            child: QrImageView(key: ValueKey('qr:$link'), data: link, size: 200, padding: EdgeInsets.zero),
           ),
           const SizedBox(height: 12),
           Text(shortId, style: c.tt.titleLarge?.copyWith(letterSpacing: 2, fontWeight: FontWeight.w700)),

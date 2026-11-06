@@ -65,6 +65,32 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Lumora QR codes / shared links (lib/core/links.dart): verified App
+                 Links on the project's site (landing/.well-known/assetlinks.json);
+                 MainActivity hands them to Dart on the `lumora/links` channel. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"/>
+                <data android:host="getlumora.pages.dev"/>
+                <data android:pathPrefix="/add/"/>
+                <data android:pathPrefix="/join/"/>
+                <data android:pathPrefix="/remote/"/>
+            </intent-filter>
+            <!-- App-only form (older QR codes, the site's "Open with Lumora" button).
+                 lumora://link/… (device linking) is deliberately not listed. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="lumora"/>
+                <data android:host="add"/>
+                <data android:host="join"/>
+                <data android:host="remote"/>
+            </intent-filter>
+            <!-- Links are routed by Dart (DesktopLinks), not as Navigator routes. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
         </activity>
         <service
             android:name=".LumoraService"

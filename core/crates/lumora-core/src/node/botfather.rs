@@ -61,6 +61,79 @@ impl BotToken {
     }
 }
 
+/// The BotFather conversation (what was typed and answered), kept per account: a synced
+/// setting, so it survives leaving the chat / restarts and shows on every device. Tokens
+/// are never kept in it (the app stores only the bot's username and fetches the current
+/// token when asked).
+pub const TRANSCRIPT_KEY: &str = "privacy.botfather_chat";
+pub const TRANSCRIPT_MAX: usize = 200;
+const TRANSCRIPT_MAX_BYTES: usize = 64 * 1024;
+const TRANSCRIPT_TEXT_MAX: usize = 4000;
+
+/// Masks anything that looks like a bot token (`lumora_bot_…`) in a transcript text.
+fn redact_tokens(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(TOKEN_PREFIX) {
+        out.push_str(&rest[..i]);
+        out.push_str(TOKEN_PREFIX);
+        out.push('…');
+        let tail = &rest[i + TOKEN_PREFIX.len()..];
+        let end = tail.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(tail.len());
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// One transcript line, as the app sends it — only known fields, bounded.
+fn transcript_entry(v: &Value) -> Option<Value> {
+    let o = v.as_object()?;
+    let text: String = o.get("text").and_then(|x| x.as_str()).unwrap_or("").chars().take(TRANSCRIPT_TEXT_MAX).collect();
+    let kind: String = o.get("kind").and_then(|x| x.as_str()).unwrap_or("").chars().take(16).collect();
+    let user: String = o.get("u").and_then(|x| x.as_str()).unwrap_or("").chars().take(64).collect();
+    if text.is_empty() && kind.is_empty() {
+        return None;
+    }
+    let mut e = json!({
+        "mine": o.get("mine").and_then(|x| x.as_bool()).unwrap_or(false),
+        "text": redact_tokens(&text),
+        "ts": o.get("ts").and_then(|x| x.as_u64()).unwrap_or_else(now_ms),
+    });
+    if !kind.is_empty() {
+        e["kind"] = json!(kind);
+    }
+    if !user.is_empty() {
+        e["u"] = json!(user);
+    }
+    Some(e)
+}
+
+pub fn transcript(store: &crate::store::Store) -> Vec<Value> {
+    store.kv_get(TRANSCRIPT_KEY).and_then(|v| serde_json::from_slice::<Vec<Value>>(&v).ok()).unwrap_or_default()
+}
+
+/// Appends lines, keeping the last [TRANSCRIPT_MAX] (and at most 64 KB in all).
+pub fn transcript_append(store: &crate::store::Store, entries: &[Value]) -> Result<Vec<Value>> {
+    let mut all = transcript(store);
+    all.extend(entries.iter().filter_map(transcript_entry));
+    if all.len() > TRANSCRIPT_MAX {
+        all.drain(..all.len() - TRANSCRIPT_MAX);
+    }
+    let mut raw = serde_json::to_vec(&all)?;
+    while raw.len() > TRANSCRIPT_MAX_BYTES && !all.is_empty() {
+        let drop = (all.len() / 8).max(1);
+        all.drain(..drop);
+        raw = serde_json::to_vec(&all)?;
+    }
+    store.kv_set(TRANSCRIPT_KEY, &raw)?;
+    Ok(all)
+}
+
+pub fn transcript_clear(store: &crate::store::Store) -> Result<()> {
+    store.kv_set(TRANSCRIPT_KEY, b"[]")
+}
+
 impl Node {
     fn my_bots(&self) -> Vec<BotToken> {
         self.store
@@ -177,5 +250,37 @@ mod tests {
         forged.username = "other_bot".into();
         assert!(BotToken::decode(&forged.encode()).is_err());
         assert_eq!(bot_tag(&owner.peer_id(), "shop_bot").len(), 6);
+    }
+    #[test]
+    fn transcript_is_bounded_redacted_and_synced() {
+        use crate::store::Store;
+        let s = Store::open_memory().unwrap();
+        s.set_sync_enabled(true);
+        assert!(transcript(&s).is_empty());
+        let me = Identity::generate().peer_id();
+        // older lines drop out past the cap
+        let many: Vec<Value> = (0..TRANSCRIPT_MAX + 30).map(|i| json!({"mine": i % 2 == 0, "text": format!("line {i}")})).collect();
+        let all = transcript_append(&s, &many).unwrap();
+        assert_eq!(all.len(), TRANSCRIPT_MAX);
+        assert_eq!(all[0]["text"], "line 30");
+        // junk is dropped, unknown fields stripped, tokens masked
+        let all = transcript_append(&s, &[json!(5), json!({"text": "", "kind": ""}), json!({"text": "t lumora_bot_abc234xyz end", "kind": "token", "u": "shop_bot", "x": 1})]).unwrap();
+        let last = all.last().unwrap();
+        assert_eq!(last["text"], "t lumora_bot_… end");
+        assert_eq!(last["u"], "shop_bot");
+        assert!(last.get("x").is_none());
+        // the byte bound holds even for long lines
+        let big: Vec<Value> = (0..50).map(|_| json!({"text": "x".repeat(3999)})).collect();
+        transcript_append(&s, &big).unwrap();
+        assert!(s.kv_get(TRANSCRIPT_KEY).unwrap().len() <= TRANSCRIPT_MAX_BYTES);
+        // it is an account setting: another device of the account gets it
+        assert!(crate::store::sync::kv_synced(TRANSCRIPT_KEY));
+        let it = s.sync_export(crate::store::sync::K_KV, TRANSCRIPT_KEY.as_bytes()).unwrap();
+        let other = Store::open_memory().unwrap();
+        other.sync_import(&it, &me, true).unwrap();
+        assert_eq!(transcript(&other), transcript(&s));
+        assert!(other.bootstrap_items().iter().any(|i| matches!(i, crate::store::sync::SyncItem::Kv { key, .. } if key == TRANSCRIPT_KEY)));
+        transcript_clear(&s).unwrap();
+        assert!(transcript(&s).is_empty());
     }
 }

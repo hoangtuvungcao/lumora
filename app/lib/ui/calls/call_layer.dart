@@ -308,13 +308,14 @@ class CallScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(s('screen_of', {'name': sp.key == me?.peer ? s('you') : contacts.nameOf(sp.key)}), style: const TextStyle(color: Colors.white70)),
+          Text(s('screen_of', {'name': sp.key == me?.peer ? s('you') : _participantName(contacts, call, sp.key)}), style: const TextStyle(color: Colors.white70)),
         ]),
       );
     } else if (!group) {
       // Only a stream the core announced for this peer: guessing an id could
       // show another stream (e.g. our own self-view) when they have no camera.
-      final remoteStream = call.streams[call.peer];
+      // (by account: a friend on a linked device sends frames under that device's key)
+      final remoteStream = call.streamOf(call.peer);
       stage = Stack(children: [
         Positioned.fill(
           child: call.video && active && remoteStream != null
@@ -357,12 +358,12 @@ class CallScreen extends StatelessWidget {
                   width: math.min(w, h * aspect),
                   height: math.min(h, w / aspect),
                   child: _Tile(
-                    name: p == me?.peer ? (me?.name ?? '') : contacts.nameOf(p),
-                    label: p == me?.peer ? '${me?.name ?? ''} (${s('you')})' : contacts.nameOf(p),
-                    seed: p,
+                    name: p == me?.peer ? (me?.name ?? '') : _participantName(contacts, call, p),
+                    label: p == me?.peer ? '${me?.name ?? ''} (${s('you')})' : _participantName(contacts, call, p),
+                    seed: call.accountOf(p),
                     speaking: call.speaking.contains(p),
-                    muted: p == me?.peer ? !store.mic : p.hashCode % 4 == 0,
-                    video: call.video && (p == me?.peer ? store.cam : true) && call.streams.containsKey(p),
+                    muted: p == me?.peer ? !store.mic : store.peerMuted(p),
+                    video: call.video && (p == me?.peer ? store.cam : !store.peerCamOff(p)) && call.streams.containsKey(p),
                     stream: call.streams[p] ?? -1,
                     effects: beauty && p == me?.peer && store.cam,
                     flip: p == me?.peer && cam != null && cam.flipSelfView,
@@ -1048,4 +1049,14 @@ class _CameraNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A call participant's name: the name I saved for their account (they may
+/// be on a linked device), else the one the core knows, else a short id.
+String _participantName(ContactsStore contacts, CallState call, String participant) {
+  final account = call.accountOf(participant);
+  final saved = contacts[account]?.displayName ?? '';
+  if (saved.isNotEmpty) return saved;
+  final known = call.names[participant] ?? '';
+  return known.isNotEmpty ? known : contacts.nameOf(account);
 }

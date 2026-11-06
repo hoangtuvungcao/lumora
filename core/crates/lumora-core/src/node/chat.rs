@@ -49,6 +49,17 @@ impl Node {
         let mut v = serde_json::to_value(m).unwrap_or(Value::Null);
         v["mine"] = Value::Bool(m.author == self.me.to_base32());
         v["silent"] = Value::Bool(m.meta["silent"].as_bool().unwrap_or(false));
+        // a locked chat (account setting): every device hides its notification content
+        if self.chat_locked(&m.conv) {
+            v["locked"] = Value::Bool(true);
+        }
+        // group members who aren't my contacts: the name they gave the group (else the app
+        // can only show a short id)
+        if m.conv.starts_with("g:") && !v["mine"].as_bool().unwrap_or(false) {
+            if let Some(n) = self.store.kv_get(&format!("member.name.{}", m.author)).and_then(|v| String::from_utf8(v).ok()).filter(|n| !n.is_empty()) {
+                v["author_name"] = Value::String(n);
+            }
+        }
         // attach local file state so the UI can show the picture/progress inline
         if m.kind == "file" || m.kind == "voice" {
             if let Some(f) = self.file_of_message(m) {
@@ -328,7 +339,13 @@ impl Node {
 
     pub(super) fn check_mention(&self, conv: &str, m: &ChatMsg) {
         if m.author != self.me && (m.meta.mention_all || m.meta.mentions.contains(&self.me)) {
-            self.emit("mention", json!({"conv": conv, "id": hex::encode(m.id), "author": m.author.to_base32()}));
+            // (a short preview: the notification list shows what was said)
+            let text: String = m.body.preview().chars().take(140).collect();
+            let mut ev = json!({"conv": conv, "id": hex::encode(m.id), "author": m.author.to_base32(), "text": text});
+            if self.chat_locked(conv) {
+                ev["locked"] = Value::Bool(true); // (see msg_json)
+            }
+            self.emit("mention", ev);
         }
     }
 
@@ -812,8 +829,23 @@ impl Node {
             if receipts {
                 if let Some(last) = self.store.messages(conv, None, 1)?.last() {
                     let members: Vec<PeerId> = self.groups.read().get(&gid).map(|g| g.members.keys().copied().collect()).unwrap_or_default();
-                    for m in members.into_iter().filter(|m| *m != self.me).take(256) {
-                        self.send_now(&m, PeerMsg::GroupRead { gid, conv: conv.to_string(), upto_hlc: last.hlc as u64 });
+                    // Reliable, to every device of each member (an offline one gets it when
+                    // it's back): "seen by" is the same on all of their devices. Only the
+                    // newest receipt per member waits in the outbox.
+                    if let Some(me) = self.self_ref.lock().as_ref().and_then(|w| w.upgrade()) {
+                        let (conv, upto) = (conv.to_string(), last.hlc as u64);
+                        tokio::spawn(async move {
+                            for m in members.into_iter().filter(|m| *m != me.me).take(256) {
+                                let id: [u8; 16] = crate::crypto::random_bytes();
+                                let prev = me.group_read_ids.lock().insert((conv.clone(), m), id);
+                                if let Some(prev) = prev {
+                                    for dev in me.delivery_targets(&m) {
+                                        let _ = me.store.outbox_remove(&prev, &dev);
+                                    }
+                                }
+                                me.deliver(m, id, PeerMsg::GroupRead { gid, conv: conv.clone(), upto_hlc: upto }, false).await;
+                            }
+                        });
                     }
                 }
             }

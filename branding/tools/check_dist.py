@@ -153,6 +153,34 @@ for f in sorted(D.rglob('*')):
 for f in D.rglob('*'):
     if re.match(r'(?i)readme', f.name) or f.suffix == '.md': errors.append(f'internal file published: {f}')
 
+# Lumora QR codes / shared links (app/lib/core/links.dart): Android App Links verification
+# file, served as JSON, and the static fallback page the link paths are rewritten to.
+al = D / '.well-known' / 'assetlinks.json'
+if not al.exists():
+    errors.append('.well-known/assetlinks.json missing (Android App Links)')
+else:
+    try:
+        stmts = json.loads(al.read_text(encoding='utf-8'))
+        ok = any(st.get('target', {}).get('package_name') == 'vn.lumora.lumora'
+                 and 'delegate_permission/common.handle_all_urls' in st.get('relation', [])
+                 and st['target'].get('sha256_cert_fingerprints')
+                 and all(re.fullmatch(r'(?:[0-9A-F]{2}:){31}[0-9A-F]{2}', fp) for fp in st['target']['sha256_cert_fingerprints'])
+                 for st in stmts)
+        if not ok: errors.append('assetlinks.json: no valid statement for vn.lumora.lumora')
+    except Exception as e:
+        errors.append(f'assetlinks.json: {e}')
+hdrs = (D / '_headers').read_text(encoding='utf-8') if (D / '_headers').exists() else ''
+if not re.search(r'^/\.well-known/assetlinks\.json\n(?:  .*\n)*?  Content-Type: application/json', hdrs, re.M):
+    errors.append('_headers: /.well-known/assetlinks.json must be served as application/json')
+redir = (D / '_redirects').read_text(encoding='utf-8') if (D / '_redirects').exists() else ''
+for fam in ('add', 'join', 'remote'):
+    if not re.search(rf'^/{fam}/\*\s+/open/\s+200\s*$', redir, re.M):
+        errors.append(f'_redirects: /{fam}/* must be rewritten (200) to /open/')
+if not (D / 'open' / 'index.html').exists() or not (D / 'assets' / 'js' / 'open.js').exists():
+    errors.append('open/: shared-link fallback page missing')
+if (D / '_worker.js').exists() or (D / 'functions').exists():
+    errors.append('server-side code (_worker.js / functions/) must not be published: static site only')
+
 # The privacy policy tells people which switch turns a feature off ("…" ở/in Cài đặt / Settings):
 # every quoted name must be a real label in the app (VI in the page, EN in legal.js), and the
 # features that are on by default must name their switch.

@@ -4,6 +4,7 @@
 Generates (static, committed output — the site itself has no build step):
   landing/download/index.html
   landing/404.html
+  landing/open/index.html              (fallback for shared links /add/, /join/, /remote/ — see _redirects)
   landing/developers/**                (developer docs, see dev_pages.py: overview, quickstart, guides,
                                         SDK reference, examples, production, SDK files and packages)
   landing/developers/api/index.html    (rendered from docs/src/dev/api-public.md)
@@ -166,6 +167,77 @@ def build_404():
     write(L / "404.html", head_for("404", "/404", "404 — Lumora", "Không tìm thấy trang.", noindex=True) + main + FOOT)
 
 
+# ---------------------------------------------------------------- open (shared links)
+def build_open():
+    """Fallback page for Lumora QR codes / shared links (/add/…, /join/…, /remote/…).
+
+    _redirects rewrites those paths here (status 200, the address bar keeps the link).
+    Static only: assets/js/open.js reads the link from the address in the browser,
+    shows the matching text, points "Open with Lumora" at lumora://… and the download
+    button comes from app.js (releases.json, with its built-in fallback). The page
+    renders the same whether or not the link is valid."""
+    def kinds(tag, cls, key_base, texts):
+        out = []
+        for kind, vi in texts:
+            hidden = "" if kind == "other" else " hidden"
+            out.append(f'<{tag} class="{cls} js-kind" data-kind="{kind}" data-i18n="{key_base}.{kind}"{hidden}>{vi}</{tag}>')
+        return "\n      ".join(out)
+    titles = kinds("h1", "hero__title", "op.title", [
+        ("add", "Lời mời kết bạn trên Lumora"), ("join", "Lời mời vào nhóm Lumora"),
+        ("remote", "Hỗ trợ máy tính từ xa"), ("other", "Mở trong Lumora")])
+    leads = kinds("p", "op-lead", "op.lead", [
+        ("add", "Một người bạn muốn kết bạn với bạn trên Lumora. Mở bằng Lumora để xem và gửi lời mời kết bạn."),
+        ("join", "Bạn được mời vào một nhóm trên Lumora. Mở bằng Lumora để xem nhóm rồi bấm Tham gia."),
+        ("remote", "Mở bằng Lumora để kết nối tới máy này. Bạn vẫn cần mật khẩu tạm thời do người bên kia đọc cho bạn."),
+        ("other", "Liên kết này dành cho ứng dụng Lumora.")])
+    main = f'''<main id="main">
+  <section class="page-head">
+    <div class="container">
+      <p class="badge-gold">{I("sparkles", "ic ic--sm")}<span data-i18n="hero.badge">Miễn phí trọn đời · Không quảng cáo</span></p>
+      {titles}
+      {leads}
+    </div>
+  </section>
+
+  <section class="section section--tight">
+    <div class="container container--narrow">
+      <div class="glass op-card">
+        <div class="op-id" id="op-id" hidden>
+          <p class="overline" data-i18n="op.idLabel">ID Lumora</p>
+          <p class="op-id__value" id="op-id-value"></p>
+          <p class="sub-p js-kind" data-kind="add" data-i18n="op.idHint.add" hidden>Không mở được? Trong Lumora, chọn Thêm bạn và nhập ID này.</p>
+          <p class="sub-p js-kind" data-kind="remote" data-i18n="op.idHint.remote" hidden>Không mở được? Trong Lumora, mở Điều khiển từ xa và nhập ID này.</p>
+        </div>
+        <p class="op-broken" id="op-broken" data-i18n="op.broken" hidden>Liên kết này có vẻ chưa đầy đủ. Hãy nhờ người gửi chia sẻ lại.</p>
+        <div class="hero__cta op-cta">
+          <a class="btn btn--primary btn--xl" id="op-open" href="/download/">
+            {I("arrow-right")}<span data-i18n="op.open">Mở bằng Lumora</span>
+          </a>
+          <a class="btn btn--glass btn--xl" id="primary-dl" href="/download/">
+            {I("download")}<span id="primary-dl-label" data-i18n="op.get">Tải Lumora miễn phí</span>
+          </a>
+        </div>
+        <p class="hero__meta" id="primary-dl-meta" aria-live="polite"></p>
+      </div>
+
+      <div class="glass op-steps">
+        <h2 class="sub-h" data-i18n="op.stepsTitle">Chưa có Lumora?</h2>
+        <ol>
+          <li data-i18n="op.step1">Tải và cài Lumora. Miễn phí, không cần đăng ký.</li>
+          <li data-i18n="op.step2">Quay lại trang này và bấm “Mở bằng Lumora”, hoặc quét lại mã QR bằng Lumora.</li>
+        </ol>
+        <p class="sub-p"><a class="link-strong" href="/download/"><span data-i18n="op.other">Xem bản cho thiết bị khác</span>{I("arrow-right", "ic ic--sm")}</a></p>
+      </div>
+    </div>
+  </section>
+'''
+    head = head_for("open", "/open/", "Mở trong Lumora", "Mở liên kết này bằng ứng dụng Lumora, hoặc tải Lumora miễn phí.",
+                    noindex=True, page_js="open.js")
+    head = head.replace('data-page="open"', 'data-page="open" data-title-en="Open in Lumora" '
+                        'data-desc-en="Open this link with the Lumora app, or get Lumora for free."', 1)
+    write(L / "open" / "index.html", head + main + FOOT)
+
+
 # ---------------------------------------------------------------- developers (see dev_pages.py)
 import dev_pages
 
@@ -322,6 +394,7 @@ def build_legal():
 if __name__ == "__main__":
     build_download()
     build_404()
+    build_open()
     subprocess.run([sys.executable, str(ROOT / "sdk" / "tools" / "gen_reference.py")], check=True)
     dev_pages.build(head_for, FOOT, I, code)
     build_api()

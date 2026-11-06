@@ -3,10 +3,18 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../core/links.dart';
 import '../ui/flows.dart' show pendingDeepLink;
 
-/// `lumora://` links that reach an already running Lumora on Windows and Linux.
+/// Lumora links handed over by the OS, on the `lumora/links` channel.
 ///
+/// Android: `https://getlumora.pages.dev/{add,join,remote}/…` (verified App
+/// Links) and `lumora://{add,join,remote}/…` — MainActivity keeps the link of
+/// the launch intent until Dart calls `ready`, later ones (onNewIntent) come as
+/// `open`. iOS / macOS: the `lumora://` URL scheme (CFBundleURLTypes), same
+/// protocol (AppDelegate / MainFlutterWindow `LumoraLinks`).
+///
+/// Windows and Linux (`lumora://`, URL protocol / x-scheme-handler):
 /// Lumora runs once per data folder there. A second launch (a clicked invite
 /// link, the desktop entry, a shortcut) hands its link to the running instance
 /// and exits: Windows via WM_COPYDATA (windows/runner/lumora_links.cpp), Linux
@@ -15,8 +23,8 @@ import '../ui/flows.dart' show pendingDeepLink;
 /// [pendingDeepLink], exactly like a link given on the command line at start.
 ///
 /// Links that arrive before Dart listens are kept natively and returned by
-/// `ready`. macOS apps are single-instance by design; Lumora registers no URL
-/// scheme on Apple platforms, so there is nothing to route there.
+/// `ready`. Every link goes through [acceptIncomingLink]: device-link codes
+/// are never taken from outside the app.
 class DesktopLinks {
   DesktopLinks._();
 
@@ -26,7 +34,7 @@ class DesktopLinks {
   @visibleForTesting
   static bool? debugSupported;
 
-  static bool get supported => debugSupported ?? (!kIsWeb && (Platform.isWindows || Platform.isLinux));
+  static bool get supported => debugSupported ?? (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isAndroid || Platform.isIOS || Platform.isMacOS));
 
   static bool _started = false;
 
@@ -53,8 +61,9 @@ class DesktopLinks {
   }
 
   static void _open(String? link) {
-    if (link == null || !link.startsWith('lumora://')) return;
-    pendingDeepLink.value = link; // home_shell / link_join consume and clear it
+    final ok = acceptIncomingLink(link);
+    if (ok == null) return;
+    pendingDeepLink.value = ok; // the home shell consumes and clears it
   }
 
   @visibleForTesting

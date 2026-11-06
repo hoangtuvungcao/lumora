@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'core/api_factory.dart';
+import 'core/links.dart';
 import 'debug_driver.dart';
 import 'platform/desktop_links.dart';
 import 'ui/codec_licenses.dart';
@@ -77,9 +78,9 @@ Future<void> _launch(List<String> args) async {
   runApp(snapDir == null
       ? LumoraApp(services: services)
       : RepaintBoundary(key: snapshotKey, child: LumoraApp(services: services)));
-  final link = args.where((a) => a.startsWith('lumora://')).firstOrNull;
+  final link = args.map(acceptIncomingLink).nonNulls.firstOrNull;
   if (link != null) pendingDeepLink.value = link;
-  // Windows/Linux: links from later launches (Lumora runs once per data folder).
+  // Links from the OS: other apps (Android / Apple), later launches (Windows / Linux).
   unawaited(DesktopLinks.init());
   await services.boot();
   if (snapDir != null) {
