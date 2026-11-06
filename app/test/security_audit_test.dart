@@ -131,7 +131,9 @@ void main() {
       await lock.loadSecrets();
       lock.setPin('1357');
       lock.setChatLocked('d:SECRET', true);
-      await Future<void>.delayed(const Duration(milliseconds: 60));
+      // wait for the (atomic) settings write itself, not a fixed delay (flaky on slow CI)
+      await Future<void>.delayed(Duration.zero);
+      await st.flushed();
       lock.detach();
 
       // 2) attacker edits the plain settings file while the app is closed
