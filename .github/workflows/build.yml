@@ -669,7 +669,7 @@ jobs:
         include:
           - { os: ubuntu-24.04, out: lumora-bot-runner-linux-x86_64, bin: lumorad }
           - { os: windows-latest, out: lumora-bot-runner-windows-x86_64.exe, bin: lumorad.exe }
-          - { os: macos-14, out: lumora-bot-runner-macos-universal, bin: lumorad }
+          - { os: macos-15, out: lumora-bot-runner-macos-universal, bin: lumorad }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
