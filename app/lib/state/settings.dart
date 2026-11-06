@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -329,6 +330,15 @@ class Settings extends ChangeNotifier {
 
   bool _saving = false;
   bool _dirty = false;
+  Completer<void>? _idle;
+
+  /// Completes once every pending change is on disk.
+  Future<void> flushed() async {
+    while (_saving) {
+      await (_idle ??= Completer<void>()).future;
+    }
+  }
+
   Future<void> _save() async {
     final f = file;
     if (f == null) return;
@@ -341,12 +351,19 @@ class Settings extends ChangeNotifier {
       do {
         _dirty = false;
         await f.parent.create(recursive: true);
-        await f.writeAsString(jsonEncode(toJson()));
+        // Atomic replace: a crash mid-write must never leave a cut file — load() would fall
+        // back to defaults and forget `pin_set`, i.e. drop the lock screen.
+        final tmp = File('${f.path}.tmp');
+        await tmp.writeAsString(jsonEncode(toJson()), flush: true);
+        await tmp.rename(f.path);
       } while (_dirty);
     } catch (_) {
       // Non-fatal.
     } finally {
       _saving = false;
+      final idle = _idle;
+      _idle = null;
+      idle?.complete();
     }
   }
 }

@@ -14,9 +14,10 @@ void main() {
   setUp(() => tmp = Directory.systemTemp.createTempSync('lumora-lock-'));
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  Future<Map<String, dynamic>> fileJson(File f) async {
-    // settings save asynchronously
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+  Future<Map<String, dynamic>> fileJson(File f, Settings st) async {
+    // settings save asynchronously: wait for the write itself, not a fixed delay
+    await Future<void>.delayed(Duration.zero);
+    await st.flushed();
     return jsonDecode(await f.readAsString()) as Map<String, dynamic>;
   }
 
@@ -35,7 +36,7 @@ void main() {
     final stored = jsonDecode((await api.uiSecretGet(AppLock.secretKey))!) as Map<String, dynamic>;
     expect(stored['hash'], hash);
     expect(stored['fails'], 2);
-    final j = await fileJson(f);
+    final j = await fileJson(f, st);
     expect(j.containsKey('pin_hash'), isFalse);
     expect(j.containsKey('pin_fails'), isFalse);
     expect(j['pin_set'], isTrue);
@@ -69,8 +70,22 @@ void main() {
     lock.removePin();
     await Future<void>.delayed(Duration.zero);
     expect(await api.uiSecretGet(AppLock.secretKey), isNull);
-    expect((await fileJson(f))['pin_set'], isFalse);
+    expect((await fileJson(f, st))['pin_set'], isFalse);
     lock.detach();
+  });
+
+  test('settings are replaced atomically: rapid changes leave a valid file and no temp file', () async {
+    final f = File('${tmp.path}/ui_settings.json');
+    final st = await Settings.load(f);
+    for (var i = 0; i < 50; i++) {
+      st.update((s) => s.pinSet = i.isEven);
+    }
+    await Future<void>.delayed(Duration.zero);
+    await st.flushed();
+    final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+    expect(j['pin_set'], isFalse, reason: 'the last change wins');
+    expect(File('${f.path}.tmp').existsSync(), isFalse);
+    expect((await Settings.load(f)).pinSet, isFalse);
   });
 
   test('core keys must start with ui.', () async {
