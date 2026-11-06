@@ -6,9 +6,11 @@ import 'package:provider/provider.dart';
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../../state/app_lock.dart';
+import '../../state/moderation.dart';
 import '../../state/stores.dart';
 import '../lock/app_lock_screen.dart' show LockedChatGate, toggleChatLock;
 import 'delete_dialogs.dart';
+import 'report_dialogs.dart';
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
@@ -207,11 +209,15 @@ class _ChatViewState extends State<ChatView> {
 
   static bool _isPhoto(Message m) => m.isFile && !m.deleted && (FileRef.parse(m.body)?.isImage ?? false);
 
+  /// Group members whose messages I hide (Settings › Privacy › Hidden members).
+  Set<String> _hidden = const {};
+
   List<_Entry> _entries(List<Message> all, bool hasMore) {
     // Collapse runs of photos (same author, ≤60 s apart) into albums.
     final msgs = <Message>[];
     final albums = <String, List<Message>>{};
     for (final m in all) {
+      if (_hidden.isNotEmpty && !m.mine && _hidden.contains(m.author)) continue;
       if (msgs.isNotEmpty && _isPhoto(m)) {
         final prev = msgs.last;
         if (_isPhoto(prev) && prev.author == m.author && (m.ts - prev.ts).abs() < 60000 && m.replyTo == null) {
@@ -389,6 +395,7 @@ class _ChatViewState extends State<ChatView> {
   Widget _buildList(BuildContext context) {
     final me = context.select<SessionStore, String>((s) => s.me?.peer ?? '');
     final isGroup = widget.conv.startsWith('g:');
+    _hidden = isGroup ? context.select<ModerationStore, Set<String>>((x) => x.hiddenMembers) : const {};
     return ListenableBuilder(
       listenable: _thread,
       builder: (context, _) {
@@ -398,6 +405,10 @@ class _ChatViewState extends State<ChatView> {
           onReply: _composer.reply,
           onEdit: _composer.edit,
           onDelete: (m) => askDeleteMessage(context, widget.conv, m),
+          onReport: isGroup
+              ? (m) => reportGroupContent(context,
+                  gid: widget.conv.substring(2).split('#').first, peer: m.author, name: context.read<ContactsStore>().nameOf(m.author), message: m)
+              : null,
           onReact: (m, e) => context.read<ChatStore>().toggleReaction(widget.conv, m, e, me),
           onJumpTo: (id) => _jumpTo(id, entries),
           onForward: (m) => _forward([m]),
@@ -612,6 +623,12 @@ class _ChatHeader extends StatelessWidget {
                 askClearChat(context, conv, deleteChat: false);
               case 'delchat':
                 askClearChat(context, conv, deleteChat: true);
+              case 'report':
+                if (peer != null) {
+                  reportContact(context, peer: peer, name: title, conv: conv);
+                } else if (conv.startsWith('g:')) {
+                  reportGroup(context, gid: conv.substring(2).split('#').first, name: title);
+                }
             }
           },
           itemBuilder: (_) => [
@@ -638,6 +655,8 @@ class _ChatHeader extends StatelessWidget {
             const PopupMenuDivider(),
             _menuItem('clear', AppIcons.eraser, s('clear_history')),
             _menuItem('delchat', AppIcons.delete, s('delete_chat')),
+            if ((peer != null && contact?.status != ContactStatus.blocked) || (conv.startsWith('g:') && channelName == null))
+              _menuItem('report', AppIcons.report, peer != null ? s('report') : s('report_group')),
           ],
         ),
         if (channelName == null && conv != 's:me' && desktop && !narrow)

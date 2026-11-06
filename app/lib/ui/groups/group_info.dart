@@ -10,6 +10,7 @@ import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_info.dart';
 import '../chats/delete_dialogs.dart';
+import '../chats/report_dialogs.dart';
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
@@ -321,38 +322,47 @@ class _GroupInfoViewState extends State<GroupInfoView> {
               title: Text(m.peer == me ? '${m.name} (${s('you')})' : (contacts[m.peer]?.displayName ?? m.name),
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(s('role_${m.role}'), style: context.tt.bodySmall),
-              trailing: m.role == 'owner'
-                  ? const Icon(AppIcons.owner, color: LC.warning, size: 20)
-                  : (g.canManage && m.peer != me
-                      ? PopupMenuButton<String>(
-                          tooltip: s('more'),
-                          icon: const Icon(AppIcons.moreVertical),
-                          onSelected: (v) async {
-                            switch (v) {
-                              case 'admin':
-                                _run((api) => api.groupSetRole(g.gid, m.peer, m.role == 'admin' ? 'member' : 'admin'));
-                              case 'remove':
-                                if (await confirm(context, title: s('remove_member'), body: s('remove_member_body', {'name': m.name}), action: s('remove'), danger: true)) {
-                                  _run((api) => api.groupRemove(g.gid, m.peer));
-                                }
-                              case 'ban':
-                                if (await confirm(context, title: s('ban_member'), body: s('ban_member_body', {'name': m.name}), action: s('ban'), danger: true)) {
-                                  _run((api) => api.groupBan(g.gid, m.peer, true));
-                                }
-                              case 'purge':
-                                if (await confirm(context, title: s('purge_member'), body: s('purge_member_body', {'name': m.name}), action: s('delete'), danger: true)) {
-                                  _run((api) => api.groupPurgeMember(g.gid, m.peer));
-                                }
-                            }
-                          },
-                          itemBuilder: (_) => [
+              trailing: m.peer == me
+                  ? (m.role == 'owner'
+                      ? const Icon(AppIcons.owner, color: LC.warning, size: 20)
+                      : (m.role == 'admin' ? const Icon(AppIcons.shield, color: LC.accent, size: 18) : null))
+                  : Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (m.role == 'owner') const Icon(AppIcons.owner, color: LC.warning, size: 20),
+                      if (m.role == 'admin' && !g.canManage) const Icon(AppIcons.shield, color: LC.accent, size: 18),
+                      PopupMenuButton<String>(
+                        tooltip: s('more'),
+                        icon: const Icon(AppIcons.moreVertical),
+                        onSelected: (v) async {
+                          switch (v) {
+                            case 'admin':
+                              _run((api) => api.groupSetRole(g.gid, m.peer, m.role == 'admin' ? 'member' : 'admin'));
+                            case 'remove':
+                              if (await confirm(context, title: s('remove_member'), body: s('remove_member_body', {'name': m.name}), action: s('remove'), danger: true)) {
+                                _run((api) => api.groupRemove(g.gid, m.peer));
+                              }
+                            case 'ban':
+                              if (await confirm(context, title: s('ban_member'), body: s('ban_member_body', {'name': m.name}), action: s('ban'), danger: true)) {
+                                _run((api) => api.groupBan(g.gid, m.peer, true));
+                              }
+                            case 'purge':
+                              if (await confirm(context, title: s('purge_member'), body: s('purge_member_body', {'name': m.name}), action: s('delete'), danger: true)) {
+                                _run((api) => api.groupPurgeMember(g.gid, m.peer));
+                              }
+                            case 'report':
+                              if (context.mounted) await reportGroupContent(context, gid: g.gid, peer: m.peer, name: contacts[m.peer]?.displayName ?? m.name);
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          if (g.canManage && m.role != 'owner') ...[
                             PopupMenuItem(value: 'admin', child: Text(m.role == 'admin' ? s('revoke_admin') : s('make_admin'))),
                             PopupMenuItem(value: 'remove', child: Text(s('remove_member'), style: const TextStyle(color: LC.danger))),
                             PopupMenuItem(value: 'ban', child: Text(s('ban_member'), style: const TextStyle(color: LC.danger))),
                             PopupMenuItem(value: 'purge', child: Text(s('purge_member'), style: const TextStyle(color: LC.danger))),
                           ],
-                        )
-                      : (m.role == 'admin' ? const Icon(AppIcons.shield, color: LC.accent, size: 18) : null)),
+                          if (g.myRole != 'none') PopupMenuItem(value: 'report', child: Text(s('report_member'))),
+                        ],
+                      ),
+                    ]),
             ),
           const SizedBox(height: 16),
           if (g.myRole == 'none')
@@ -361,6 +371,7 @@ class _GroupInfoViewState extends State<GroupInfoView> {
           LCard(
             padding: const EdgeInsets.all(4),
             child: ListTile(
+              key: const ValueKey('leave_group'),
               leading: const Icon(AppIcons.signOut, color: LC.danger),
               title: Text(s('leave_group'), style: const TextStyle(color: LC.danger)),
               onTap: () async {
@@ -373,6 +384,20 @@ class _GroupInfoViewState extends State<GroupInfoView> {
                 // a reload racing that would only bring it back for a moment
                 chat.onGroupRemoved(conv, left: true);
                 nav.openConv(null);
+                nav.toggleInfo(false);
+                if (!widget.embedded && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          LCard(
+            padding: const EdgeInsets.all(4),
+            child: ListTile(
+              leading: const Icon(AppIcons.report, color: LC.danger),
+              title: Text(s('report_group'), style: const TextStyle(color: LC.danger)),
+              onTap: () async {
+                final nav = context.read<NavStore>();
+                if (!await reportGroup(context, gid: g.gid, name: g.name)) return;
                 nav.toggleInfo(false);
                 if (!widget.embedded && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
               },

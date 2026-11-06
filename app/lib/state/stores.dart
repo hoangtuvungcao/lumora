@@ -1957,16 +1957,19 @@ class StoryStore extends ChangeNotifier {
 
 // ---------------------------------------------------------- notifications
 
-enum NoticeKind { mention, friendRequest, missedCall, file, remote, system, reminder, scheduledFailed, storageLow }
+enum NoticeKind { mention, friendRequest, missedCall, file, remote, system, reminder, scheduledFailed, storageLow, report }
 
 class Notice {
-  Notice({required this.kind, required this.title, this.body = '', this.conv, this.peer, int? ts})
+  Notice({required this.kind, required this.title, this.body = '', this.conv, this.peer, this.ref, int? ts})
       : ts = ts ?? DateTime.now().millisecondsSinceEpoch;
   final NoticeKind kind;
   final String title;
   final String body;
   final String? conv;
   final String? peer;
+
+  /// What the notice is about when it can be handled elsewhere (report id).
+  final String? ref;
   final int ts;
   bool read = false;
 }
@@ -1983,6 +1986,13 @@ class NotificationStore extends ChangeNotifier {
     items.insert(0, n);
     if (items.length > 100) items.removeLast();
     notifyListeners();
+  }
+
+  /// Drops the notices about [refs] (e.g. reports handled on another device).
+  void removeRefs(Set<String> refs) {
+    final before = items.length;
+    items.removeWhere((n) => n.ref != null && refs.contains(n.ref));
+    if (items.length != before) notifyListeners();
   }
 
   void markAllRead() {
@@ -2225,6 +2235,12 @@ class EventHub {
   /// Extra handlers that see every event (multi-device store, core restarts).
   final List<void Function(String name, Map<String, dynamic> data)> listeners = [];
 
+  /// Extra stores loaded with the others (after unlock / a core restart).
+  final List<Future<void> Function()> loaders = [];
+
+  /// Members whose messages I hide: no mention notices from them either.
+  bool Function(String peer)? isHiddenMember;
+
   void attach() {
     _sub ??= api.events.listen(_on);
   }
@@ -2237,6 +2253,7 @@ class EventHub {
       remote.load().catchError((_) {}),
       net.load().catchError((_) {}),
       stories.load(),
+      for (final l in loaders) l().catchError((_) {}),
       spaces.load().then((_) {
         chat.communityConvs = {
           for (final s in spaces.spaces)
@@ -2276,6 +2293,7 @@ class EventHub {
         if (conv != null && conv == nav.readingConv) break;
         if (c != null) chat.onConversation({'id': c.id, 'kind': c.isGroup ? 1 : 0, 'community': c.isCommunity, 'title': c.title, 'last_ts': c.lastTs, 'unread': c.unread, 'muted': c.muted, 'pinned': c.pinned, 'last_text': c.lastText, 'last_mine': c.lastMine, 'archived': c.archived, 'mentions': c.mentions + 1});
         if (c != null && c.muted) break;
+        if (isHiddenMember?.call(d['author']?.toString() ?? '') ?? false) break;
         notices.add(Notice(
           kind: NoticeKind.mention,
           title: contacts.nameOf(d['author']?.toString() ?? d['peer']?.toString() ?? ''),

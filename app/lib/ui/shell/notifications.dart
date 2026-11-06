@@ -6,6 +6,8 @@ import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_view.dart';
+import '../chats/report_dialogs.dart';
+import '../../state/moderation.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../flows.dart';
@@ -104,6 +106,7 @@ class _NoticeTile extends StatelessWidget {
       NoticeKind.reminder => (AppIcons.reminder, LC.warning, s('notice_reminder', {'title': n.title})),
       NoticeKind.scheduledFailed => (AppIcons.warning, LC.danger, s('notice_sched_failed', {'text': n.title})),
       NoticeKind.storageLow => (AppIcons.storage, LC.danger, n.title.isNotEmpty ? n.title : s('notice_storage_low')),
+      NoticeKind.report => (AppIcons.report, LC.danger, s('notice_report', {'name': n.title})),
     };
     return InkWell(
       onTap: () {
@@ -111,6 +114,14 @@ class _NoticeTile extends StatelessWidget {
         context.read<NotificationStore>().markAllRead();
         final conv = n.conv;
         final navigator = Navigator.of(context);
+        // a report to review (admin): its actions, not just the chat
+        final report = n.kind == NoticeKind.report && n.ref != null ? context.read<ModerationStore>().byId(n.ref!) : null;
+        if (report != null) {
+          final root = navigator.context;
+          navigator.pop();
+          if (root.mounted) showReportReview(root, report);
+          return;
+        }
         navigator.pop();
         final nav = context.read<NavStore>();
         if (conv != null) {

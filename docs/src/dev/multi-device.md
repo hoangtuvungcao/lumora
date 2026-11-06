@@ -281,6 +281,8 @@ After the restart, N connects to E as a sibling and sends `Ext HistoryRequest { 
 | 0x22 | HistoryStatus | |
 | 0x30 | GroupRekeyRequest | |
 | 0x31 | GroupKeyRequest | `{gid, epoch}`: a member without that epoch's key asks members; answered with sealed `GroupKey` |
+| 0x32 | GroupReport | `{id, gid, msg_id, excerpt, member, reason, note, ts}`: a member reports a message / member to each owner / admin device (node/reports.rs) |
+| 0x33 | GroupReportDone | `{ids}`: own devices only — reports handled on the sender |
 | 0x40 | Proxy | legacy bridge, to own primary only |
 
 - **Gating:** `PeerConn.proto: AtomicU32` is set from `Hello.version`, and the maximum is persisted in `contacts.proto` / `devices.proto`.

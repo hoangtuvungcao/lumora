@@ -244,7 +244,10 @@ class _JoinViewState extends State<_JoinView> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(i.valid ? i.name : s('invite_invalid'), style: context.tt.titleSmall),
-                  if (i.valid) Text(i.alreadyMember ? s('already_member') : s('n_members', {'n': i.members}), style: context.tt.bodySmall),
+                  if (i.valid && i.blocked)
+                    Text(s('invite_group_blocked'), style: context.tt.bodySmall?.copyWith(color: LC.danger))
+                  else if (i.valid)
+                    Text(i.alreadyMember ? s('already_member') : s('n_members', {'n': i.members}), style: context.tt.bodySmall),
                 ]),
               ),
               Icon(i.valid ? AppIcons.checkCircle : AppIcons.error, color: i.valid ? LC.success : LC.danger),
@@ -258,7 +261,7 @@ class _JoinViewState extends State<_JoinView> {
           icon: AppIcons.signIn,
           expand: true,
           busy: _busy,
-          onPressed: i != null && i.valid && !i.alreadyMember ? _join : null,
+          onPressed: i != null && i.valid && !i.alreadyMember && !i.blocked ? _join : null,
         ),
       ]),
     );

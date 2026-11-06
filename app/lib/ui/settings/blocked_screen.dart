@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
+import '../../state/moderation.dart';
 import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -164,6 +165,167 @@ class BlockedChatGate extends StatelessWidget {
           FilledButton(onPressed: () => unblockContact(context, c), child: Text(s('unblock'))),
         ]),
       ),
+    );
+  }
+}
+
+// ------------------------------------------------ blocked groups / hidden members
+// (account settings: they apply on every device of the account)
+
+Future<void> _openPage(BuildContext context, Widget page) {
+  if (isDesktop(context)) {
+    return showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(clipBehavior: Clip.antiAlias, child: SizedBox(width: 520, height: 560, child: page)),
+    );
+  }
+  return Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(body: SafeArea(child: page))));
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        leading: Icon(icon, size: 20, color: context.lc.muted),
+        minLeadingWidth: 20,
+        title: Text(title, style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+        subtitle: Text(subtitle, style: context.tt.bodySmall),
+        trailing: const Icon(AppIcons.chevronRight, size: 18),
+        onTap: onTap,
+      );
+}
+
+/// Settings › Privacy row: "Blocked groups · N".
+class BlockedGroupsRow extends StatelessWidget {
+  const BlockedGroupsRow({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final n = context.select<ModerationStore, int>((m) => m.blockedGroups.length);
+    return _SettingsRow(
+      icon: AppIcons.report,
+      title: s('blocked_groups'),
+      subtitle: n == 0 ? s('blocked_groups_none') : s('blocked_groups_count', {'n': n}),
+      onTap: () => _openPage(context, const BlockedGroupsList()),
+    );
+  }
+}
+
+/// Settings › Privacy row: "Hidden members · N".
+class HiddenMembersRow extends StatelessWidget {
+  const HiddenMembersRow({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final n = context.select<ModerationStore, int>((m) => m.hiddenMembers.length);
+    return _SettingsRow(
+      icon: AppIcons.hide,
+      title: s('hidden_members'),
+      subtitle: n == 0 ? s('hidden_members_none') : s('blk_count', {'n': n}),
+      onTap: () => _openPage(context, const HiddenMembersList()),
+    );
+  }
+}
+
+class _ListPage extends StatelessWidget {
+  const _ListPage({required this.title, required this.hint, required this.empty, required this.tiles});
+  final String title;
+  final String hint;
+  final String empty;
+  final List<Widget> tiles;
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: context.lc.bg,
+      child: Column(children: [
+        PaneHeader(title: Text(title), onBack: () => Navigator.of(context).maybePop()),
+        Expanded(
+          child: tiles.isEmpty
+              ? EmptyState(icon: AppIcons.shieldCheck, title: empty, subtitle: hint)
+              : ListView(padding: const EdgeInsets.all(16), children: [
+                  Text(hint, style: context.tt.bodySmall),
+                  const SizedBox(height: 12),
+                  LCard(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(children: [
+                      for (final (i, t) in tiles.indexed) ...[
+                        if (i > 0) Divider(height: 1, indent: 68, color: context.lc.divider),
+                        t,
+                      ],
+                    ]),
+                  ),
+                ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class BlockedGroupsList extends StatelessWidget {
+  const BlockedGroupsList({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final list = context.select<ModerationStore, List<BlockedGroup>>((m) => m.blockedGroups);
+    return _ListPage(
+      title: s('blocked_groups'),
+      hint: s('blocked_groups_hint'),
+      empty: s('blocked_groups_none'),
+      tiles: [
+        for (final g in list.reversed)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            leading: Opacity(opacity: 0.75, child: Avatar(name: g.name.isEmpty ? '?' : g.name, seed: g.gid, size: 42, group: true)),
+            title: Text(g.name.isEmpty ? g.gid.substring(0, g.gid.length.clamp(0, 8)) : g.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+            trailing: OutlinedButton(
+              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () async {
+                try {
+                  await context.read<ModerationStore>().unblockGroup(g.gid);
+                  if (context.mounted) toast(context, s('group_unblocked', {'name': g.name}));
+                } catch (e) {
+                  if (context.mounted) toastError(context, e);
+                }
+              },
+              child: Text(s('unblock')),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class HiddenMembersList extends StatelessWidget {
+  const HiddenMembersList({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final list = context.select<ModerationStore, Set<String>>((m) => m.hiddenMembers);
+    final contacts = context.watch<ContactsStore>();
+    return _ListPage(
+      title: s('hidden_members'),
+      hint: s('hidden_members_hint'),
+      empty: s('hidden_members_none'),
+      tiles: [
+        for (final p in list)
+          ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            leading: PeerAvatar(peer: p, fallbackName: contacts.nameOf(p), size: 42, presence: false),
+            title: Text(contacts.nameOf(p), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+            trailing: OutlinedButton(
+              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => context.read<ModerationStore>().setHidden(p, false).catchError((Object e) {
+                if (context.mounted) toastError(context, e);
+              }),
+              child: Text(s('show_again')),
+            ),
+          ),
+      ],
     );
   }
 }

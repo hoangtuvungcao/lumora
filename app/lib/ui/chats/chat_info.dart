@@ -16,6 +16,7 @@ import '../settings/blocked_screen.dart';
 import '../settings/storage_screen.dart';
 import 'attachments.dart';
 import 'delete_dialogs.dart';
+import 'report_dialogs.dart';
 import 'message_bubble.dart';
 import 'wallpaper.dart';
 import '../../state/app_lock.dart';
@@ -152,6 +153,20 @@ class _DirectInfo extends StatelessWidget {
                   onTap: () async {
                     if (await confirm(context, title: s('block_title', {'name': c.displayName}), body: s('block_body'), action: s('block'), danger: true)) {
                       if (context.mounted) context.read<ContactsStore>().block(c.peer);
+                    }
+                  },
+                ),
+              if (c.status != ContactStatus.blocked)
+                ListTile(
+                  leading: const Icon(AppIcons.report, color: LC.danger),
+                  title: Text(s('report'), style: const TextStyle(color: LC.danger)),
+                  onTap: () async {
+                    final nav = context.read<NavStore>();
+                    final chats = context.read<ChatStore>();
+                    final done = await reportContact(context, peer: c.peer, name: c.displayName, conv: conv);
+                    if (done && !chats.convs.containsKey(conv)) {
+                      nav.toggleInfo(false);
+                      if (!embedded && context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
                     }
                   },
                 ),

@@ -214,6 +214,7 @@ abstract final class AppIcons {
   static const IconData show = PhosphorIconsRegular.eye; // lucide: eye
   static const IconData hide = PhosphorIconsRegular.eyeSlash; // lucide: eyeOff
   static const IconData block = PhosphorIconsRegular.prohibit; // lucide: ban
+  static const IconData report = PhosphorIconsRegular.flag; // new
   static const IconData warning = PhosphorIconsRegular.warning; // lucide: triangleAlert
   static const IconData error = PhosphorIconsRegular.warningCircle; // lucide: circleAlert
 

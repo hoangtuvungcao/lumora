@@ -224,6 +224,85 @@ class MockLumoraApi extends LumoraApi {
     _emit('group_flood', {'gid': gid, 'conv': 'g:$gid', 'author': author, 'name': name, 'reason': reason, 'admin': admin, 'suggest_slow_mode_s': s, 'text': text});
   }
 
+  // ------------------------------------------------------------ reports
+
+  /// Reports waiting on this (admin) device (`group_reports`).
+  final List<Map<String, dynamic>> _reports = [];
+  final Set<String> _reportsDone = {};
+
+  /// `privacy.blocked_groups` / `privacy.hidden_members` (synced settings).
+  final List<Map<String, dynamic>> _blockedGroups = [];
+  final List<String> _hiddenMembers = [];
+
+  /// Reports this account sent (tests).
+  final List<Map<String, dynamic>> sentReports = [];
+
+  /// Public groups the directory knows (stable ids, so they can be blocked).
+  late final List<Map<String, dynamic>> _directoryGroups = [
+    {'gid': _hex(32), 'title': 'Flutter Việt Nam', 'about': 'Cộng đồng lập trình Flutter lớn nhất VN', 'members': 4120, 'handle': '@flutter_vn·a8d2k1', 'admin': _friend(1), 'verified': true},
+    {'gid': _hex(32), 'title': 'Rust Việt Nam', 'about': 'Hỏi đáp Rust, async, tokio', 'members': 980, 'handle': '@rust_vn·m2k9q1', 'admin': _friend(2), 'verified': false},
+  ];
+
+  /// The group a (demo) invite link leads to: one stable id per link.
+  final Map<String, String> _linkGids = {};
+  String _inviteGid(String link) => _linkGids.putIfAbsent(link, () => _hex(32));
+
+  static String _clip(String t, int n) => t.runes.length <= n ? t : String.fromCharCodes(t.runes.take(n));
+
+  bool _groupBlocked(String gid) => _blockedGroups.any((b) => b['gid'] == gid);
+
+  /// Tests / demo: a member reported a message (or a member) of group [gid]
+  /// to this admin device (`group_report`). Returns the report id.
+  String simulateGroupReport(String gid, {String? msgId, String? member, String reason = 'spam', String note = ''}) {
+    final g = _groups[gid];
+    final members = ((g?['members'] as List?) ?? const []).cast<Map>();
+    final others = members.map((m) => m['peer'] as String).where((p) => p != myPeer).toList();
+    final m = msgId == null ? null : _find('g:$gid', msgId);
+    final target = member ?? (m?['author'] as String?) ?? (others.isNotEmpty ? others.first : _friend(1));
+    final reporter = others.firstWhere((p) => p != target, orElse: () => _friend(2));
+    String nameOf(String p) => (_contacts[p]?['name'] as String?) ?? (members.firstWhere((x) => x['peer'] == p, orElse: () => const {})['name'] as String?) ?? 'Ai đó';
+    final r = <String, dynamic>{
+      'id': _hex(32), 'gid': gid, 'conv': 'g:$gid', 'group_name': g?['name'] ?? '',
+      'msg_id': msgId, 'excerpt': _clip(m == null || m['body'] is! String ? '' : m['body'] as String, 200), 'msg_exists': m != null && m['deleted'] != true,
+      'member': target, 'member_name': nameOf(target), 'member_in_group': members.any((x) => x['peer'] == target),
+      'reporter': reporter, 'reporter_name': nameOf(reporter), 'reason': reason, 'note': note, 'ts': _now,
+    };
+    _reports.insert(0, r);
+    _emit('group_report', Map.of(r));
+    return r['id'] as String;
+  }
+
+  /// Tests: the id of the seeded group whose name starts with [prefix].
+  String debugGroupIdNamed(String prefix) => _groups.values.firstWhere((g) => '${g['name']}'.startsWith(prefix))['gid'] as String;
+
+  /// Tests: another of my devices handled these reports (`Ext GROUP_REPORT_DONE`).
+  void reportsHandledElsewhere(List<String> ids) {
+    _reportsDone.addAll(ids);
+    _reports.removeWhere((r) => ids.contains(r['id']));
+    _emit('group_report_handled', {'ids': ids});
+  }
+
+  /// Tests: another of my devices blocked a group (synced setting + its Leave).
+  void groupBlockedElsewhere(String gid, {String name = ''}) {
+    if (!_groupBlocked(gid)) _blockedGroups.add({'gid': gid, 'name': name.isNotEmpty ? name : (_groups[gid]?['name'] ?? ''), 'at': _now});
+    _forgetGroup(gid);
+    _emit('settings', {'key': 'privacy.blocked_groups'});
+  }
+
+  /// Tests: "hide this member's messages" chosen on another of my devices.
+  void memberHiddenElsewhere(String peer, {bool hidden = true}) {
+    _hiddenMembers.remove(peer);
+    if (hidden) _hiddenMembers.add(peer);
+    _emit('settings', {'key': 'privacy.hidden_members'});
+  }
+
+  void _forgetGroup(String gid) {
+    if (_groups.remove(gid) == null && !_convs.containsKey('g:$gid')) return;
+    _convs.remove('g:$gid');
+    _emit('conversation_removed', {'conv': 'g:$gid'});
+    _emit('group_removed', {'gid': gid, 'conv': 'g:$gid', 'left': true});
+  }
+
   /// Turns this demo account's device into a linked (not main) device.
   void debugMakeLinkedDevice() {
     _isPrimary = false;
@@ -1866,13 +1945,17 @@ class MockLumoraApi extends LumoraApi {
         final gid = _invites[link];
         if (gid != null) return {'name': _groups[gid]?['name'] ?? '', 'valid': true, 'already_member': true, 'members': (_groups[gid]?['members'] as List?)?.length ?? 0};
         if (link.startsWith('lumora://join/') && link.length > 20) {
-          return {'name': 'Cộng đồng Rust Việt Nam', 'valid': true, 'already_member': false, 'members': 2150, 'kind': 1};
+          final g = _inviteGid(link);
+          return {'gid': g, 'name': 'Cộng đồng Rust Việt Nam', 'valid': true, 'already_member': false, 'members': 2150, 'kind': 1, 'blocked': _groupBlocked(g)};
         }
         return {'name': '', 'valid': false, 'already_member': false};
       case 'join_invite':
         final link = (args['link'] as String).trim();
         if (!link.startsWith('lumora://join/')) throw ApiException('Liên kết mời không hợp lệ', cmd: cmd);
-        final gid = _hex(32);
+        if (_groupBlocked(_invites[link] ?? _inviteGid(link))) {
+          throw ApiException('Bạn đã chặn nhóm này. Hãy bỏ chặn trong Cài đặt › Quyền riêng tư để tham gia lại.', cmd: cmd, code: 'err.group_blocked');
+        }
+        final gid = _inviteGid(link);
         _groups[gid] = {'gid': gid, 'name': 'Cộng đồng Rust Việt Nam', 'owner': _friend(2), 'epoch': 1, 'my_role': 'member', 'kind': 1,
           'members': [{'peer': myPeer, 'name': _me['name'], 'role': 'member'}]};
         final conv = 'g:$gid';
@@ -1939,13 +2022,13 @@ class MockLumoraApi extends LumoraApi {
         ];
       case 'search_groups':
         final q = (args['q'] as String).toLowerCase();
+        final d = _directoryGroups;
         return [
-          if ('flutter việt nam'.contains(q) || q.contains('flutter'))
-            {'gid': _hex(32), 'title': 'Flutter Việt Nam', 'about': 'Cộng đồng lập trình Flutter lớn nhất VN', 'members': 4120, 'handle': '@flutter_vn·a8d2k1', 'admin': _friend(1), 'verified': true},
-          if ('rust'.contains(q) || q.contains('rust'))
-            {'gid': _hex(32), 'title': 'Rust Việt Nam', 'about': 'Hỏi đáp Rust, async, tokio', 'members': 980, 'handle': '@rust_vn·m2k9q1', 'admin': _friend(2), 'verified': false},
-        ];
+          if ('flutter việt nam'.contains(q) || q.contains('flutter')) d[0],
+          if ('rust'.contains(q) || q.contains('rust')) d[1],
+        ].where((g) => !_groupBlocked(g['gid'] as String)).map(Map<String, dynamic>.of).toList();
       case 'join_public':
+        if (_groupBlocked(args['gid'] as String)) throw ApiException('Bạn đã chặn nhóm này. Hãy bỏ chặn trong Cài đặt › Quyền riêng tư để tham gia lại.', cmd: cmd, code: 'err.group_blocked');
         return {'pending': true};
       case 'group_visibility':
         final g = _groups[args['gid']]!;
@@ -1967,6 +2050,50 @@ class MockLumoraApi extends LumoraApi {
         }
         g['banned'] = banned;
         return null;
+      case 'group_report':
+        final gid = args['gid'] as String;
+        final g = _groups[gid];
+        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd, code: 'err.group_not_found');
+        if (!const ['spam', 'harassment', 'adult', 'other'].contains(args['reason'])) throw ApiException('Hãy chọn một lý do.', cmd: cmd, code: 'err.report_reason');
+        var target = args['peer'] as String?;
+        final mid = args['msg_id'] as String?;
+        if (mid != null) target = _find('g:$gid', mid)?['author'] as String? ?? target;
+        if (target == null || target == myPeer) throw ApiException('Không thể báo cáo nội dung này.', cmd: cmd, code: 'err.report_target');
+        final admins = (g['members'] as List).cast<Map>().where((m) => (m['role'] == 'owner' || m['role'] == 'admin') && m['peer'] != myPeer && m['peer'] != target).length;
+        if (admins == 0) throw ApiException('Nhóm này không có quản trị viên nào khác để nhận báo cáo.', cmd: cmd, code: 'err.report_no_admins');
+        sentReports.add(Map.of(args));
+        if (args['hide'] == true && !_hiddenMembers.contains(target)) _hiddenMembers.add(target);
+        return {'id': _hex(32), 'sent_to': admins};
+      case 'group_reports':
+        return [for (final r in _reports) Map.of(r)];
+      case 'group_report_done':
+        final ids = [...((args['ids'] as List?) ?? const []).map((e) => '$e'), if (args['id'] != null) '${args['id']}'];
+        _reportsDone.addAll(ids);
+        _reports.removeWhere((r) => ids.contains(r['id']));
+        _emit('group_report_handled', {'ids': ids});
+        return null;
+      case 'group_block':
+        final gid = args['gid'] as String;
+        if (!_groupBlocked(gid)) {
+          _blockedGroups.add({'gid': gid, 'name': _groups[gid]?['name'] ?? args['name'] ?? '', 'at': _now});
+        }
+        _forgetGroup(gid);
+        _emit('settings', {'key': 'privacy.blocked_groups'});
+        return [for (final b in _blockedGroups) Map.of(b)];
+      case 'group_unblock':
+        _blockedGroups.removeWhere((b) => b['gid'] == args['gid']);
+        _emit('settings', {'key': 'privacy.blocked_groups'});
+        return [for (final b in _blockedGroups) Map.of(b)];
+      case 'blocked_groups':
+        return [for (final b in _blockedGroups) Map.of(b)];
+      case 'hidden_members':
+        return List.of(_hiddenMembers);
+      case 'set_member_hidden':
+        final p = args['peer'] as String;
+        _hiddenMembers.remove(p);
+        if (args['hidden'] != false) _hiddenMembers.add(p);
+        _emit('settings', {'key': 'privacy.hidden_members'});
+        return List.of(_hiddenMembers);
       case 'group_purge_member':
         _msgs['g:${args['gid']}']?.removeWhere((m) => m['author'] == args['peer']);
         return null;

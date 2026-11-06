@@ -314,12 +314,15 @@ impl Node {
             "gid": hex::encode(inv.gid), "name": inv.name, "inviter": inv.inviter.to_base32(),
             "expires": inv.expires, "valid": inv.expires > now_ms(),
             "already_member": self.groups.read().get(&inv.gid).map(|g| g.is_member(&self.me)).unwrap_or(false),
+            "blocked": self.group_blocked(&inv.gid),
         }))
     }
 
     pub async fn join_invite(self: &Arc<Self>, link: &str) -> Result<Value> {
         let inv = parse_invite(link)?;
         anyhow::ensure!(inv.expires > now_ms(), crate::i18n::user_err("err.invite_expired"));
+        // a group I reported and blocked (on any of my devices): unblock it first
+        anyhow::ensure!(!self.group_blocked(&inv.gid), crate::i18n::user_err("err.group_blocked"));
         self.store.kv_set(&format!("join.pending.{}", hex::encode(inv.gid)), b"1")?;
         self.send_to(inv.inviter, PeerMsg::JoinRequest { gid: inv.gid, expires: inv.expires, sig: inv.sig }).await?;
         Ok(json!({"gid": hex::encode(inv.gid), "name": inv.name, "pending": true}))

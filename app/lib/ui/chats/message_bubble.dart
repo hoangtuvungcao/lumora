@@ -62,8 +62,12 @@ class BubbleActions {
     required this.onSave,
     required this.onSelect,
     required this.onVote,
+    this.onReport,
     this.selecting = false,
   });
+
+  /// Group messages of others: report to the group's admins (null: not offered).
+  final void Function(Message m)? onReport;
   final void Function(Message m) onForward;
   final void Function(Message m) onPin;
   final void Function(Message m) onSave;
@@ -280,6 +284,7 @@ class _MessageTileState extends State<MessageTile> {
         if (widget.isGroup && m.mine) ('seen', AppIcons.checkDouble, s('seen_by')),
         ('select', AppIcons.checkCircle, s('select')),
         if (canEditMessage(m)) ('edit', AppIcons.edit, s('edit')),
+        if (widget.isGroup && !m.mine && m.kind != 'system' && widget.actions.onReport != null) ('report', AppIcons.report, s('report')),
         ('delete', AppIcons.delete, s('delete')),
       ];
 
@@ -306,6 +311,8 @@ class _MessageTileState extends State<MessageTile> {
         widget.actions.onEdit(m);
       case 'delete':
         widget.actions.onDelete(m);
+      case 'report':
+        widget.actions.onReport?.call(m);
     }
   }
 

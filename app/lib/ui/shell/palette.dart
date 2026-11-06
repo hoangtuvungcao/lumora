@@ -11,6 +11,7 @@ import '../../state/app_lock.dart';
 import '../../state/settings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_view.dart';
+import '../chats/report_dialogs.dart';
 import '../friends/add_friend.dart';
 import '../groups/create_group.dart';
 import '../groups/group_safety.dart';
@@ -22,8 +23,11 @@ import '../widgets/common.dart';
 import '../widgets/peer_avatar.dart';
 
 class _Item {
-  _Item({required this.section, required this.title, this.subtitle, required this.leading, required this.run, this.shortcut, this.verified = false});
+  _Item({required this.section, required this.title, this.subtitle, required this.leading, required this.run, this.shortcut, this.verified = false, this.onReport});
   final String section;
+
+  /// Public group results: "Report group" (leave + block it everywhere).
+  final VoidCallback? onReport;
 
   /// Public group listing proven to come from the group's own admin.
   final bool verified;
@@ -265,6 +269,11 @@ class _CommandPaletteState extends State<CommandPalette> {
           ].where((x) => '$x'.isNotEmpty).join(' · '),
           leading: Avatar(name: g['title']?.toString() ?? '?', seed: g['gid']?.toString(), size: 32, group: true),
           shortcut: s('join'),
+          onReport: () => close(() async {
+            // (the palette is closing: ask from the navigator's context)
+            final host = root.context;
+            if (host.mounted) await reportGroup(host, gid: g['gid'].toString(), name: g['title']?.toString() ?? g['name']?.toString() ?? '');
+          }),
           run: () => close(() async {
             try {
               await ctx.read<LumoraApi>().joinPublic(g['gid'].toString(), g['admin'].toString());
@@ -367,6 +376,13 @@ class _CommandPaletteState extends State<CommandPalette> {
                                   ]),
                                 ),
                                 if (it.shortcut != null) Pill(it.shortcut!, color: context.lc.muted),
+                                if (it.onReport != null)
+                                  IconButton(
+                                    tooltip: s('report_group'),
+                                    visualDensity: VisualDensity.compact,
+                                    icon: Icon(AppIcons.report, size: 16, color: context.lc.muted),
+                                    onPressed: it.onReport,
+                                  ),
                                 if (i == _sel) ...[const SizedBox(width: 8), Icon(AppIcons.enterKey, size: 16, color: context.lc.muted)],
                               ]),
                             ),

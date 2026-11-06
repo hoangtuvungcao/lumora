@@ -201,6 +201,30 @@ Group members who aren't contacts: `group_info.members[]` has `name` (from the n
 with), `short_id` and `friend`. Bots can't join groups by themselves (`join_public` → `err.bot_join_public`);
 privacy-mode bots follow membership changes (they get the signed ops without the key) and can `group_leave`.
 
+### Reports ("Báo cáo") — no server, no moderation team
+A report goes to the people who can act on it (design: `node/reports.rs`).
+
+| cmd | args | data |
+|---|---|---|
+| `group_report` | `gid, msg_id? \| peer?, reason: "spam"\|"harassment"\|"adult"\|"other", note? (≤ 300), hide?` | `{id, sent_to}` — sent (`Ext GROUP_REPORT` 0x32, outbox) to every device of the group's owner and admins, never to the reported member. `msg_id`: a message of this group (its author is the reported member; text excerpt ≤ 200 chars). `hide`: also `set_member_hidden`. Errors `err.group_not_found`, `err.not_member`, `err.report_reason`, `err.report_target` (own message, another chat, not a member), `err.report_no_admins`, `err.message_not_found` |
+| `group_reports` | – | admin: reports waiting on this device, newest first: `[GroupReport]` |
+| `group_report_done` | `ids: [id]` (or `id`) | – : handled (dismissed / acted on). Gone here and on my other devices (`Ext GROUP_REPORT_DONE` 0x33, own devices only); a late copy of a handled report is dropped |
+| `group_block` | `gid, name?` | `[{gid, name, at}]` — report a whole group: leave it (if a member), delete its chats, block it. Account setting `privacy.blocked_groups` (synced): hidden from `groups` / `search_groups`, `join_invite` / `join_public` → `err.group_blocked`, `inspect_invite` gains `blocked`, welcomes (being added) ignored |
+| `group_unblock` | `gid` | `[{gid, name, at}]` |
+| `blocked_groups` | – | `[{gid, name, at}]` |
+| `hidden_members` | – | `[peer]` — account setting `privacy.hidden_members` (synced); the app hides their group messages |
+| `set_member_hidden` | `peer, hidden` | `[peer]` |
+
+`GroupReport`: `{id, gid, conv, group_name, msg_id?, excerpt, msg_exists, member, member_name, member_in_group,
+reporter, reporter_name, reason, note, ts}` — `excerpt` is the admin device's own copy of the message, never
+the reporter's text. The admin's device keeps a report only when the reporter is a current member, the message
+is in that group and by the reported member (or the member is / was in it), the reason is known, it isn't a
+duplicate, and the reporter is under 5 reports per 10 minutes (then 1 every 2 min).
+
+Events: `group_report` (`GroupReport`, admin devices), `group_report_handled {ids}` (handled here or on another
+of my devices), `settings {key: "privacy.blocked_groups" | "privacy.hidden_members"}` (changed here or synced
+from another device; a group blocked elsewhere also gets `group_removed {left: true}` and is left here too).
+
 ### Input events (`remote_input.ev`)
 ```json
 {"t":"move","x":0.5,"y":0.25}          // normalised 0..1

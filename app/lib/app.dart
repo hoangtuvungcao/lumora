@@ -12,6 +12,7 @@ import 'platform/camera_bridge.dart';
 import 'state/app_lock.dart';
 import 'state/data_rescue.dart';
 import 'state/devices_store.dart';
+import 'state/moderation.dart';
 import 'state/settings.dart';
 import 'state/stores.dart';
 import 'ui/calls/call_layer.dart';
@@ -44,6 +45,7 @@ class AppServices {
       notices = NotificationStore(),
       stories = StoryStore(api),
       devices = DevicesStore(api),
+      moderation = ModerationStore(api),
       nav = NavStore() {
     camera = CameraBridge(calls);
     // The in-memory demo never asks for the camera (and tests run without a binding).
@@ -65,6 +67,17 @@ class AppServices {
       nav: nav,
     );
     hub.listeners.add(devices.onEvent);
+    // reports / blocked groups / hidden members (synced between my devices)
+    hub.listeners.add(moderation.onEvent);
+    hub.loaders.add(moderation.load);
+    hub.isHiddenMember = moderation.isHidden;
+    moderation.onReport = (r) => notices.add(Notice(kind: NoticeKind.report, title: r.groupName, body: r.excerpt.isNotEmpty ? r.excerpt : r.memberName, conv: r.conv, peer: r.member, ref: r.id));
+    moderation.onHandled = notices.removeRefs;
+    moderation.onGroupBlocked = (gid) {
+      final conv = 'g:$gid';
+      if (chat.convs.containsKey(conv)) chat.onGroupRemoved(conv, left: true);
+      if (nav.conv == conv) nav.openConv(null);
+    };
     hub.listeners.add(_onDeviceEvent);
     appLock = AppLock(settings, api: api)..attach();
     hub.listeners.add(appLock.onCoreEvent); // locked chats changed on another device
@@ -79,7 +92,7 @@ class AppServices {
       _life = AppLifecycleListener(onResume: _readVisible);
     } catch (_) {} // no Flutter binding (plain unit tests)
     appLock.addListener(_readVisible);
-    notices.filter = (n) => n.conv != null && settings.lockedChats.contains(n.conv) ? Notice(kind: NoticeKind.system, title: S(settings.locale != 'en')('locked_message'), conv: n.conv, ts: n.ts) : n;
+    notices.filter = (n) => n.conv != null && settings.lockedChats.contains(n.conv) ? Notice(kind: NoticeKind.system, title: S(settings.locale != 'en')('locked_message'), conv: n.conv, ref: n.ref, ts: n.ts) : n;
     _syncPrivacy();
     settings.addListener(_syncPrivacy);
   }
@@ -138,6 +151,7 @@ class AppServices {
   final NotificationStore notices;
   final StoryStore stories;
   final DevicesStore devices;
+  final ModerationStore moderation;
   late final EventHub hub;
 
   /// The exception behind [SessionPhase.error] (technical details).
@@ -574,6 +588,7 @@ class LumoraApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: sv.appLock),
         ChangeNotifierProvider.value(value: sv.camera),
         ChangeNotifierProvider.value(value: sv.devices),
+        ChangeNotifierProvider.value(value: sv.moderation),
       ],
       child: Builder(
         builder: (context) {

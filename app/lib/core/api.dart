@@ -401,6 +401,31 @@ abstract class LumoraApi {
   Future<void> groupBan(String gid, String peer, bool ban) => request('group_ban', {'gid': gid, 'peer': peer, 'ban': ban});
   Future<void> groupPurgeMember(String gid, String peer) => request('group_purge_member', {'gid': gid, 'peer': peer});
   Future<void> groupClearHistory(String gid) => request('group_clear_history', {'gid': gid});
+
+  // ---- reports (no server: they go to the group's owner and admins)
+
+  /// Reports a group message ([msgId]) or member ([peer]) to the group's owner
+  /// and admins. [reason]: spam | harassment | adult | other. [hide]: also hide
+  /// the member's messages on all my devices. Returns how many admins get it.
+  Future<int> groupReport(String gid, {String? msgId, String? peer, required String reason, String note = '', bool hide = false}) async =>
+      (_map(await request('group_report', {'gid': gid, 'msg_id': ?msgId, 'peer': ?peer, 'reason': reason, 'note': note, 'hide': hide}))['sent_to'] as num?)?.toInt() ?? 0;
+
+  /// Admin: reports waiting on this device (newest first).
+  Future<List<GroupReport>> groupReports() async => _list(await request('group_reports')).map(GroupReport.fromJson).toList();
+
+  /// Admin: handled (dismissed / acted on) — gone on all my devices.
+  Future<void> groupReportDone(List<String> ids) => request('group_report_done', {'ids': ids});
+
+  /// Report a whole group: leave it and block it on all my devices.
+  Future<List<BlockedGroup>> groupBlock(String gid, {String name = ''}) async =>
+      _list(await request('group_block', {'gid': gid, 'name': name})).map(BlockedGroup.fromJson).toList();
+  Future<List<BlockedGroup>> groupUnblock(String gid) async => _list(await request('group_unblock', {'gid': gid})).map(BlockedGroup.fromJson).toList();
+  Future<List<BlockedGroup>> blockedGroups() async => _list(await request('blocked_groups')).map(BlockedGroup.fromJson).toList();
+
+  /// Members whose group messages I hide (account setting, synced).
+  Future<List<String>> hiddenMembers() async => ((await request('hidden_members') as List?) ?? const []).map((e) => '$e').toList();
+  Future<List<String>> setMemberHidden(String peer, bool hidden) async =>
+      ((await request('set_member_hidden', {'peer': peer, 'hidden': hidden}) as List?) ?? const []).map((e) => '$e').toList();
   Future<List<String>> seenBy(String msgId) async {
     final v = await request('seen_by', {'msg_id': msgId});
     return v is List ? v.map((e) => e is Map ? (e['peer']?.toString() ?? '') : e.toString()).where((e) => e.isNotEmpty).toList() : const [];
@@ -1549,6 +1574,73 @@ class PeerNames {
   }
 }
 
+/// A report waiting for an admin (`group_report` event / `group_reports`).
+class GroupReport {
+  const GroupReport({
+    required this.id,
+    required this.gid,
+    required this.conv,
+    required this.groupName,
+    this.msgId,
+    this.excerpt = '',
+    this.msgExists = false,
+    required this.member,
+    required this.memberName,
+    this.memberInGroup = true,
+    required this.reporter,
+    required this.reporterName,
+    required this.reason,
+    this.note = '',
+    required this.ts,
+  });
+  final String id;
+  final String gid;
+  final String conv;
+  final String groupName;
+  final String? msgId;
+
+  /// The admin's own copy of the message text (empty: not text / not here).
+  final String excerpt;
+  final bool msgExists;
+  final String member;
+  final String memberName;
+  final bool memberInGroup;
+  final String reporter;
+  final String reporterName;
+
+  /// spam | harassment | adult | other
+  final String reason;
+  final String note;
+  final int ts;
+
+  factory GroupReport.fromJson(Map<String, dynamic> j) => GroupReport(
+        id: _s(j, 'id'),
+        gid: _s(j, 'gid'),
+        conv: _s(j, 'conv', 'g:${_s(j, 'gid')}'),
+        groupName: _s(j, 'group_name'),
+        msgId: j['msg_id']?.toString(),
+        excerpt: _s(j, 'excerpt'),
+        msgExists: _b(j, 'msg_exists'),
+        member: _s(j, 'member'),
+        memberName: _s(j, 'member_name'),
+        memberInGroup: j['member_in_group'] != false,
+        reporter: _s(j, 'reporter'),
+        reporterName: _s(j, 'reporter_name'),
+        reason: _s(j, 'reason', 'other'),
+        note: _s(j, 'note'),
+        ts: _i(j, 'ts'),
+      );
+}
+
+/// A group I reported / blocked (`privacy.blocked_groups`).
+class BlockedGroup {
+  const BlockedGroup({required this.gid, this.name = '', this.at = 0});
+  final String gid;
+  final String name;
+  final int at;
+  factory BlockedGroup.fromJson(Map<String, dynamic> j) => BlockedGroup(gid: _s(j, 'gid'), name: _s(j, 'name'), at: _i(j, 'at'));
+}
+
 class GroupMember {
   const GroupMember({required this.peer, required this.name, this.role = 'member'});
   final String peer;
@@ -1951,8 +2043,11 @@ class ScheduledMessage {
 }
 
 class InviteInfo {
-  const InviteInfo({this.name = '', this.valid = false, this.alreadyMember = false, this.members = 0, this.community = false});
+  const InviteInfo({this.name = '', this.valid = false, this.alreadyMember = false, this.members = 0, this.community = false, this.blocked = false});
   final String name;
+
+  /// A group I reported / blocked (on any of my devices): joining is refused.
+  final bool blocked;
   final bool valid;
   final bool alreadyMember;
   final int members;
@@ -1963,6 +2058,7 @@ class InviteInfo {
         alreadyMember: _b(j, 'already_member'),
         members: _i(j, 'members'),
         community: _i(j, 'kind') == 1,
+        blocked: _b(j, 'blocked'),
       );
 }
 

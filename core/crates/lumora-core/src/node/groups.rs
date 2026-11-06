@@ -6,6 +6,10 @@ use crate::proto::{Body, MsgAction, MsgMeta};
 
 const GOSSIP_FANOUT: usize = 6;
 
+/// Reporting messages / members to the group's admins, blocked groups (node/reports.rs).
+#[path = "reports.rs"]
+pub(super) mod reports;
+
 fn conv_for(gid: &Gid, channel: &str) -> String {
     if channel.is_empty() {
         format!("g:{}", hex::encode(gid))
@@ -323,7 +327,8 @@ impl Node {
     }
 
     pub fn groups_list(&self) -> Vec<Value> {
-        let gids: Vec<Gid> = self.groups.read().keys().copied().collect();
+        // (a blocked group is left; until that op lands it is hidden already)
+        let gids: Vec<Gid> = self.groups.read().keys().copied().filter(|g| !self.group_blocked(g)).collect();
         gids.iter().filter_map(|g| self.group_info(g).ok()).collect()
     }
 
@@ -733,6 +738,10 @@ impl Node {
                 // only the group's own channels (an undeclared one would dodge moderation)
                 if !before.channel_declared(channel) {
                     return Ok(false);
+                }
+                // blocked on another of my devices, our Leave not applied yet: no chat
+                if self.group_blocked(&gid) {
+                    return Ok(true);
                 }
                 // Judged by the rules in effect when it was written — the settings and the
                 // author's role at its hlc, and the author's previous message by creation
@@ -1230,6 +1239,11 @@ impl Node {
         let lock = self.group_lock(&w.gid);
         let guard = lock.lock().await;
         let existing_state = self.groups.read().get(&w.gid).cloned();
+        // a group I reported and blocked: never (re-)joined, by anyone
+        if self.group_blocked(&w.gid) && !existing_state.as_ref().is_some_and(|ex| ex.is_member(&self.me)) {
+            tracing::info!("welcome to blocked group {} ignored", hex::encode(w.gid));
+            return Ok(());
+        }
         if let Some(ex) = &existing_state {
             if ex.is_member(&self.me) {
                 return self.welcome_update(ex, w, sender, from, guard).await;
@@ -1717,6 +1731,9 @@ impl Node {
         anyhow::ensure!(crate::net::nostr::valid_username(&name), crate::i18n::user_err("err.username_invalid"));
         let mut out = vec![];
         for g in self.groups.read().values() {
+            if self.group_blocked(&g.gid) {
+                continue;
+            }
             if g.public && g.handle == name && tag.as_deref().map(|t| t == group::group_tag(&g.gid)).unwrap_or(true) {
                 out.push(json!({"gid": hex::encode(g.gid), "title": g.name, "members": g.members.len(), "joined": g.is_member(&self.me),
                                 "handle": format!("@{}·{}", g.handle, group::group_tag(&g.gid)), "verified": true}));
@@ -1729,7 +1746,8 @@ impl Node {
                 let Ok(gb) = hex::decode(&gid) else { continue };
                 let Ok(gid16) = <[u8; 16]>::try_from(gb.as_slice()) else { continue };
                 let t = group::group_tag(&gid16);
-                if tag.as_deref().map(|x| x == t).unwrap_or(true) && !out.iter().any(|o| o["gid"].as_str() == Some(&gid)) {
+                // a group I reported / blocked isn't offered again
+                if tag.as_deref().map(|x| x == t).unwrap_or(true) && !out.iter().any(|o| o["gid"].as_str() == Some(&gid)) && !self.group_blocked(&gid16) {
                     c["handle"] = json!(format!("@{name}·{t}"));
                     c["joined"] = json!(false);
                     out.push(c);
@@ -1742,6 +1760,7 @@ impl Node {
     /// Join a public group through one of its admins (no invite link needed).
     pub async fn join_public(self: &Arc<Self>, gid: Gid, via: PeerId) -> Result<()> {
         // bots only join when an admin adds them
+        anyhow::ensure!(!self.group_blocked(&gid), crate::i18n::user_err("err.group_blocked"));
         anyhow::ensure!(!self.is_bot(), crate::i18n::user_err("err.bot_join_public"));
         self.store.kv_set(&format!("join.pending.{}", hex::encode(gid)), b"1")?;
         self.send_to(via, PeerMsg::JoinPublic { gid }).await

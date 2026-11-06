@@ -653,6 +653,21 @@ jobs:
           flutter build apk --release --split-per-abi $FLUTTER_HARDEN/android "${bn[@]}"
           for abi in arm64-v8a armeabi-v7a x86_64; do cp "build/app/outputs/flutter-apk/app-$abi-release.apk" "$out/"; done
           ls -la "$out"
+      # Google Play takes an Android App Bundle (Play builds the per-device APKs from it).
+      # Signed with the same key = the Play "upload key"; kept as a PRIVATE workflow artifact.
+      - name: build the Play Store bundle (.aab)
+        working-directory: app
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release $FLUTTER_HARDEN/android-aab --build-name "${{ steps.ver.outputs.name }}" --build-number "${{ steps.ver.outputs.code }}"
+          mkdir -p "$RUNNER_TEMP/aab"
+          cp build/app/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/aab/Lumora-${{ steps.ver.outputs.name }}-play.aab"
+          jarsigner -verify "$RUNNER_TEMP/aab/"*.aab | tail -1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: play-store-aab, path: "${{ runner.temp }}/aab/*.aab", retention-days: 90, if-no-files-found: error }
       - name: verify APK signatures
         run: |
           apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
@@ -835,8 +850,8 @@ jobs:
   # branding/tools/update_releases.py expect. How users verify: docs/src/ops/release.md.
   release:
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
-    # iOS is not published here (TestFlight), so it does not gate the release.
-    needs: [core-tests, app-tests, sdk, website, desktop, macos, android, bot-runner]
+    # iOS: the unsigned .ipa is published for advanced users (AltStore / Sideloadly).
+    needs: [core-tests, app-tests, sdk, website, desktop, macos, ios, android, bot-runner]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -889,6 +904,8 @@ jobs:
           for abi in universal arm64-v8a armeabi-v7a x86_64; do
             cp "$(one "$A/lumora-android/app-$abi-release.apk")" "$D/Lumora-$TAG-android-$abi.apk"
           done
+          # iOS: unsigned .ipa (people sign it with their own Apple ID); never the xcframework
+          cp "$(one "$A/lumora-ios-unsigned/*-ios-unsigned.ipa")" "$D/Lumora-$TAG-ios-unsigned.ipa"
           # Lumora Bot Runner (headless lumorad)
           for p in linux-x86_64 windows-x86_64.exe macos-universal; do
             cp "$(one "$A/lumora-bot-runner-$p/lumora-bot-runner-$p")" "$D/Lumora-bot-runner-$TAG-$p"
@@ -901,6 +918,7 @@ jobs:
             "Lumora-$TAG-linux-x86_64.AppImage" "Lumora-$TAG-linux-amd64.deb" "Lumora-$TAG-linux-x86_64.tar.gz" \
             "Lumora-$TAG-android-universal.apk" "Lumora-$TAG-android-arm64-v8a.apk" \
             "Lumora-$TAG-android-armeabi-v7a.apk" "Lumora-$TAG-android-x86_64.apk" \
+            "Lumora-$TAG-ios-unsigned.ipa" \
             "Lumora-bot-runner-$TAG-linux-x86_64" "Lumora-bot-runner-$TAG-windows-x86_64.exe" \
             "Lumora-bot-runner-$TAG-macos-universal" \
             LICENSE.md THIRD_PARTY_NOTICES.md | LC_ALL=C sort)"
@@ -910,7 +928,7 @@ jobs:
             echo "::error::dist/ does not match the expected release files"; exit 1
           fi
           # nothing private may slip in (belt and braces; the list above is exact)
-          if find "$D" -mindepth 1 -printf '%f\n' | grep -Ei 'symbols|xcframework|\.ipa$|-ios[-.]|\.(map|sym|pdb|dSYM)$'; then
+          if find "$D" -mindepth 1 -printf '%f\n' | grep -Ei 'symbols|xcframework|\.(map|sym|pdb|dSYM)$' || find "$D" -mindepth 1 -printf '%f\n' | grep -i '\.ipa$' | grep -v -- '-ios-unsigned\.ipa$'; then
             echo "::error::private file in dist"; exit 1
           fi
           for f in "$D"/*; do test -s "$f" || { echo "::error::$f is empty"; exit 1; }; done
@@ -946,6 +964,7 @@ jobs:
           | macOS 11+ | \`Lumora-$TAG-macos-universal.dmg\` – $MAC_VI | \`…-macos-universal.dmg\` – $MAC_EN |
           | Linux x86_64 (glibc 2.39+: Ubuntu 24.04, Debian 13, Fedora 40 trở lên / or newer) | \`.deb\` (Debian/Ubuntu), \`.AppImage\` (các bản phân phối khác) hoặc \`.tar.gz\` | \`.deb\` (Debian/Ubuntu), \`.AppImage\` (other distros) or \`.tar.gz\` |
           | Android 8+ | \`android-universal.apk\` — khuyên dùng, cài được trên mọi máy; bản nhẹ hơn: \`arm64-v8a\` (máy 64-bit đời mới), \`armeabi-v7a\` (máy 32-bit), \`x86_64\` (chip Intel). Bản nhẹ báo "gói không hợp lệ" thì dùng bản universal | \`android-universal.apk\` — recommended, installs on every device; lighter builds: \`arm64-v8a\` (recent 64-bit phones), \`armeabi-v7a\` (32-bit phones), \`x86_64\` (Intel chips). If a lighter build says "package appears to be invalid", use the universal one |
+          | iPhone / iPad (iOS 14+) | \`Lumora-$TAG-ios-unsigned.ipa\` – cài thủ công bằng AltStore hoặc Sideloadly với Apple ID của bạn (Apple ID miễn phí: ký lại sau 7 ngày) | \`…-ios-unsigned.ipa\` – install manually with AltStore or Sideloadly using your Apple ID (free Apple ID: re-sign every 7 days) |
           | Bot developers | \`Lumora-bot-runner-$TAG-*\` | \`Lumora-bot-runner-$TAG-*\` |
 
           License: [LICENSE.md](LICENSE.md) (proprietary freeware) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)

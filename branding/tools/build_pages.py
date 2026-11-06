@@ -86,7 +86,11 @@ def build_download():
       <div class="dl-grid" id="dl-grid" data-anchors>
         <noscript><p>JavaScript is required to list files. See /releases.json.</p></noscript>
       </div>
-      <p class="dl-note" data-i18n="dl.note">Bản cho iPhone/iPad: sắp ra mắt.</p>
+      <p class="dl-note" data-i18n="dl.note">iPhone/iPad: có bản cài thủ công cho người dùng nâng cao (xem Tất cả bản tải).</p>
+
+      <h2 class="sub-h" id="all" data-i18n="dp.all">Tất cả bản tải</h2>
+      <p class="sub-p" data-i18n="dp.allLead">Mỗi thiết bị có vài dạng tệp. Không chắc thì chọn bản có nhãn "Khuyên dùng".</p>
+      <div class="dl-all" id="dl-all"></div>
 
       <h2 class="sub-h" data-i18n="dp.howto">Cách cài đặt</h2>
       <div class="howto">

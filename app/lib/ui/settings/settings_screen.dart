@@ -326,7 +326,7 @@ class _Privacy extends StatelessWidget {
         SwitchRow(icon: AppIcons.more, title: s('typing_indicators'), subtitle: s('typing_indicators_hint'), value: st.typingIndicators, onChanged: (v) => st.update((x) => x.typingIndicators = v)),
         SwitchRow(icon: AppIcons.link, title: s('link_previews'), subtitle: s('link_previews_hint'), value: st.linkPreviews, onChanged: (v) => st.update((x) => x.linkPreviews = v)),
       ]),
-      const _Group(children: [BlockedRow()]),
+      const _Group(children: [BlockedRow(), BlockedGroupsRow(), HiddenMembersRow()]),
       _Group(title: s('discovery'), children: [
         SwitchRow(icon: AppIcons.lan, title: s('lan_discovery'), subtitle: s('lan_discovery_hint'), value: st.lanDiscovery, onChanged: (v) => st.update((x) => x.lanDiscovery = v)),
         SwitchRow(icon: AppIcons.package, title: s('store_forward'), subtitle: s('store_forward_hint'), value: st.storeForward, onChanged: (v) => st.update((x) => x.storeForward = v)),

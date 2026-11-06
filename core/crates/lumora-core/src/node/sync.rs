@@ -108,6 +108,8 @@ impl Node {
             ext::DEVICE_REVOKE_REQUEST if pc.own => self.on_revoke_request(pc.peer, &body).await?,
             ext::GROUP_REKEY_REQUEST => self.on_rekey_request(pc.account, &body).await?,
             ext::GROUP_KEY_REQUEST => self.on_group_key_request(pc.account, &body).await?,
+            ext::GROUP_REPORT => self.on_group_report(pc.account, &body)?,
+            ext::GROUP_REPORT_DONE if pc.own => self.on_group_report_done(pc.account, &body)?,
             ext::LINK_HELLO..=ext::LINK_REJECT => self.on_link_ext(pc, kind, &body).await?,
             ext::SELF_SYNC if pc.own => self.on_self_sync(pc, &body)?,
             ext::HISTORY_REQUEST if pc.own => self.on_history_request(pc, &body)?,
@@ -136,6 +138,10 @@ impl Node {
             self.on_rekey_request(from, &body).await?;
         } else if kind == ext::GROUP_KEY_REQUEST {
             self.on_group_key_request(from, &body).await?;
+        } else if kind == ext::GROUP_REPORT {
+            self.on_group_report(from, &body)?;
+        } else if kind == ext::GROUP_REPORT_DONE && from == self.me {
+            self.on_group_report_done(from, &body)?;
         } else if kind == ext::LINK_PRE {
             // multi-device link pre-authentication (before any address is revealed)
             self.on_link_pre_mail(dev, &body).await?;
@@ -344,6 +350,10 @@ impl Node {
                 // let the app refresh at once instead of on the next resume
                 if key.starts_with("privacy.") {
                     self.emit("settings", json!({"key": key}));
+                }
+                // a group reported / blocked on another device: hidden and left here too
+                if key == super::groups::reports::BLOCKED_GROUPS_KEY {
+                    self.on_blocked_groups_synced();
                 }
             }
             Imported::GroupKey { gid, .. } => {

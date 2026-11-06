@@ -645,6 +645,33 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.store.kv_set(&format!("mute_until.{conv}"), &until.to_le_bytes())?;
             json!({"muted": until > 0, "until": until})
         }
+        // ---- reports (node/reports.rs): to the group's admins, no server involved
+        "group_report" => {
+            let msg_id = match r.get("msg_id").and_then(|x| x.as_str()).filter(|x| !x.is_empty()) {
+                Some(_) => Some(id16(r, "msg_id")?),
+                None => None,
+            };
+            let member = match r.get("peer").and_then(|x| x.as_str()).filter(|x| !x.is_empty()) {
+                Some(_) => Some(peer(r, "peer")?),
+                None => None,
+            };
+            let note = r.get("note").and_then(|x| x.as_str()).unwrap_or("");
+            node.group_report(id16(r, "gid")?, msg_id, member, s(r, "reason")?, note, b(r, "hide").unwrap_or(false)).await?
+        }
+        "group_reports" => Value::Array(node.group_reports()),
+        "group_report_done" => {
+            let mut ids: Vec<String> = r.get("ids").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            if let Some(id) = r.get("id").and_then(|x| x.as_str()) {
+                ids.push(id.to_string());
+            }
+            node.group_report_done(&ids).await?;
+            Value::Null
+        }
+        "group_block" => node.group_block(id16(r, "gid")?, r.get("name").and_then(|x| x.as_str()).unwrap_or("")).await?,
+        "group_unblock" => node.group_unblock(&id16(r, "gid")?)?,
+        "blocked_groups" => node.blocked_groups_list(),
+        "hidden_members" => node.hidden_members_list(),
+        "set_member_hidden" => json!(node.set_member_hidden(&peer(r, "peer")?, b(r, "hidden").unwrap_or(true))?),
         "group_purge_member" => {
             node.group_purge_member(id16(r, "gid")?, peer(r, "peer")?).await?;
             Value::Null

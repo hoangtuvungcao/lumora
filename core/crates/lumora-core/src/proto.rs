@@ -440,6 +440,12 @@ pub mod ext {
     /// A group member at an epoch it has no key for asks members for it:
     /// `{gid, epoch}` → answered with ordinary sealed `GroupKey` messages.
     pub const GROUP_KEY_REQUEST: u16 = 0x31;
+    /// A member reports a message / member of a group to its owner and admins (each of
+    /// their devices, via the outbox): `{id, gid, msg_id, excerpt, member, reason, note,
+    /// ts}`. Checked by the admin's device (node/reports.rs).
+    pub const GROUP_REPORT: u16 = 0x32;
+    /// Own devices only: reports handled on the sender (`{ids}` hex), dropped here too.
+    pub const GROUP_REPORT_DONE: u16 = 0x33;
     /// Legacy bridge (Phase 9): to the own primary only.
     pub const PROXY: u16 = 0x40;
     pub const REMOTE_CHALLENGE_V2: u16 = 0x50;

@@ -123,6 +123,10 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("group.quota_full", "This group received too much today, so some new messages were hidden.", "Hôm nay nhóm nhận quá nhiều tin nên một số tin mới đã bị ẩn."),
     ("err.invite_invalid", "This invite link isn't valid. Ask for a new one.", "Liên kết mời không hợp lệ. Hãy xin một liên kết mới."),
     ("err.invite_expired", "This invite link has expired. Ask for a new one.", "Liên kết mời đã hết hạn. Hãy xin một liên kết mới."),
+    ("err.group_blocked", "You blocked this group. Unblock it in Settings › Privacy to join again.", "Bạn đã chặn nhóm này. Hãy bỏ chặn trong Cài đặt › Quyền riêng tư để tham gia lại."),
+    ("err.report_target", "This can't be reported.", "Không thể báo cáo nội dung này."),
+    ("err.report_reason", "Please choose a reason.", "Hãy chọn một lý do."),
+    ("err.report_no_admins", "This group has no other admin to send the report to.", "Nhóm này không có quản trị viên nào khác để nhận báo cáo."),
     ("err.name_empty", "Please enter a name.", "Hãy nhập tên."),
     ("err.channel_empty", "Please enter a channel name.", "Hãy nhập tên kênh."),
     // ---- bots
