@@ -68,7 +68,7 @@ build() {
   echo "==> cargo build lumora-ffi ($kind) for $tgt [$PROFILE, features: ${FEATURES:-none}]"
   (
     cd "$CORE"
-    cargo rustc -p lumora-ffi --lib --locked --target "$tgt" "${profile_flag[@]}" \
+    cargo rustc --color never -p lumora-ffi --lib --locked --target "$tgt" "${profile_flag[@]}" \
       ${FEATURES:+--features "$FEATURES"} --crate-type "$kind" -- --print native-static-libs
   ) 2>&1 | tee "$TARGET_DIR/apple-logs/$tgt.log"
 }
@@ -136,7 +136,8 @@ ios)
   #  - -u for every exported lumora_* symbol: nothing in the Runner calls them (Dart looks
   #    them up at run time with DynamicLibrary.process()), so without -u the linker's dead
   #    code stripping would drop them from the app.
-  native="$(grep -o 'native-static-libs: .*' "$TARGET_DIR/apple-logs/$DEVICE.log" | tail -1 | sed 's/^native-static-libs: //')"
+  # (strip ANSI colour codes: CARGO_TERM_COLOR=always on CI turned -lm into "-lm\e[0m")
+  native="$(sed -E $'s/\x1b\\[[0-9;]*m//g' "$TARGET_DIR/apple-logs/$DEVICE.log" | grep -o 'native-static-libs: .*' | tail -1 | sed 's/^native-static-libs: //')"
   [ -n "$native" ] || die "rustc did not report native-static-libs"
   native="$(sed -E 's/(^| )-lspeexdsp( |$)/ /g; s/  +/ /g; s/^ //; s/ $//' <<<"$native")" # bundled above
   # (nm exits non-zero on the archive's compiler_builtins member: take its listing anyway)
