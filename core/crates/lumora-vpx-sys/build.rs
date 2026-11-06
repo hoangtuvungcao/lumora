@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let src = manifest.join("../../third_party/libvpx").canonicalize().expect("core/third_party/libvpx is missing");
+    let src = plain(manifest.join("../../third_party/libvpx").canonicalize().expect("core/third_party/libvpx is missing"));
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap();
@@ -188,4 +188,14 @@ fn write_config(list: &Path, dst: &Path, os: &str, msvc: bool) {
     }
     h.push_str("#define DECODE_WIDTH_LIMIT 4096\n#define DECODE_HEIGHT_LIMIT 4096\n#endif\n");
     std::fs::write(dst, h).unwrap();
+}
+
+/// `canonicalize` on Windows gives a verbatim `\\?\D:\…` path, which nasm cannot resolve
+/// `%include` against: drop the prefix for ordinary drive paths.
+fn plain(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    match s.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),
+        _ => p,
+    }
 }

@@ -65,6 +65,9 @@ declare -A PKG=(
   [libxdo.so.3]=libxdo3 [libgbm.so.1]=libgbm1 [libEGL.so.1]=libegl1 [libGL.so.1]=libgl1
   [libxcb.so.1]=libxcb1 [libz.so.1]=zlib1g
 )
+# libdartjni.so: native asset of the `jni` package, pulled in by path_provider_android. Only
+# Android ever loads it (it needs libjvm.so); a Linux bundle must not ship it.
+find "$BUNDLE" -name 'libdartjni.so' -delete
 mapfile -t ELFS < <(find "$BUNDLE" -type f \( -name '*.so*' -o -path "$BUNDLE/lumora" \) | sort)
 bundled="$(for f in "${ELFS[@]}"; do basename "$f"; done)"
 declare -A DEPS=()
