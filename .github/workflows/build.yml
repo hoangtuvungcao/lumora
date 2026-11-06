@@ -16,6 +16,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # CMake 4 (macOS/Windows runner images) refuses projects declaring cmake_minimum_required < 3.5,
+  # e.g. the Opus sources built by audiopus_sys
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   # Release hardening (see docs/src/dev/release.md): Dart code is obfuscated and its symbol
   # maps are uploaded only as PRIVATE workflow artifacts (symbols-*), never to a release.
   FLUTTER_HARDEN: --obfuscate --split-debug-info=build/symbols
