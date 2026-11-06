@@ -177,14 +177,38 @@
       "name": "Android",
       "icon": "os-android",
       "simple": {
-        "vi": "Android 8 trở lên · một bản cài được trên mọi máy",
-        "en": "Android 8 or later · one file for every device"
+        "vi": "Điện thoại, máy tính bảng Android 8 trở lên",
+        "en": "Android 8 or later phones and tablets"
       },
       "requirements": {
-        "vi": "Android 8.0 trở lên · không chắc thì chọn bản “Mọi điện thoại Android” — cài được trên mọi máy",
-        "en": "Android 8.0 or later · if unsure, pick “All Android phones” — it installs on every device"
+        "vi": "Android 8.0 trở lên · hầu hết điện thoại chọn bản 64-bit; máy cũ hoặc không chắc thì chọn \"Mọi máy\"",
+        "en": "Android 8.0 or later · most phones: the 64-bit build; older phones or unsure: \"Any phone\""
       },
       "files": [
+        {
+          "id": "android-arm64",
+          "label": {
+            "vi": "Điện thoại 64-bit (khuyên dùng)",
+            "en": "64-bit phones (recommended)"
+          },
+          "ext": ".apk",
+          "arch": "arm64-v8a",
+          "file": "Lumora-v{version}-android-arm64-v8a.apk",
+          "available": true,
+          "desc": {
+            "vi": "Cho hầu hết điện thoại từ 2019 trở lại đây. Nhẹ, cài nhanh.",
+            "en": "For most phones from 2019 on. Small and quick to install."
+          },
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.1/Lumora-v1.0.1-android-arm64-v8a.apk",
+          "sha256": "144227d25300327c91ba0fa490896f3b6d0156162d214c6815c3cef4821d800b",
+          "bytes": 60589195,
+          "size": "58 MB",
+          "short": {
+            "vi": "Điện thoại 64-bit",
+            "en": "64-bit phones"
+          },
+          "primary": true
+        },
         {
           "id": "android-universal",
           "label": {
@@ -195,10 +219,9 @@
           "arch": "universal",
           "file": "Lumora-v{version}-android-universal.apk",
           "available": true,
-          "primary": true,
           "desc": {
-            "vi": "Một tệp cài được trên mọi điện thoại và máy tính bảng. Nặng hơn vì chứa sẵn bản cho mọi loại chip.",
-            "en": "One file that installs on every phone and tablet. Larger because it carries a build for every chip."
+            "vi": "Một tệp cài được trên mọi điện thoại và máy tính bảng, kể cả máy cũ 32-bit. Nặng hơn vì chứa bản cho mọi loại chip.",
+            "en": "One file for every phone and tablet, including older 32-bit ones. Larger because it carries a build for every chip."
           },
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.1/Lumora-v1.0.1-android-universal.apk",
           "sha256": "014d367f9d66624e1479dacb7cc1fe143c45d14602f4a372e3e96a67a5ea750c",
@@ -207,31 +230,8 @@
           "short": {
             "vi": "Mọi máy",
             "en": "Any phone"
-          }
-        },
-        {
-          "id": "android-arm64",
-          "label": {
-            "vi": "Bản nhẹ cho máy 64-bit đời mới",
-            "en": "Lighter build for recent 64-bit phones"
           },
-          "ext": ".apk",
-          "arch": "arm64-v8a",
-          "file": "Lumora-v{version}-android-arm64-v8a.apk",
-          "available": true,
-          "alt": true,
-          "desc": {
-            "vi": "Nhẹ hơn khoảng 100 MB, cho hầu hết điện thoại từ 2019 trở lại đây. Nếu cài báo “gói không hợp lệ”, hãy dùng bản Mọi điện thoại Android.",
-            "en": "About 100 MB smaller, for most phones from 2019 on. If installing says “package appears to be invalid”, use All Android phones instead."
-          },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.1/Lumora-v1.0.1-android-arm64-v8a.apk",
-          "sha256": "144227d25300327c91ba0fa490896f3b6d0156162d214c6815c3cef4821d800b",
-          "bytes": 60589195,
-          "size": "58 MB",
-          "short": {
-            "vi": "Bản nhẹ 64-bit",
-            "en": "Lighter 64-bit"
-          }
+          "alt": true
         },
         {
           "id": "android-armv7",
