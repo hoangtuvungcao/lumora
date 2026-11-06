@@ -18,11 +18,6 @@
 # dylib dependencies) and fails loudly, so CI cannot ship a half-built app.
 set -euo pipefail
 
-# Old bindgen (used by aec-rs-sys) hands clang `arm64-apple-ios-sim`, which Xcode 26's clang
-# rejects; bindgen keeps a --target given here instead of inventing one.
-export BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim="${BINDGEN_EXTRA_CLANG_ARGS_aarch64_apple_ios_sim:---target=arm64-apple-ios-simulator}"
-export BINDGEN_EXTRA_CLANG_ARGS_x86_64_apple_ios="${BINDGEN_EXTRA_CLANG_ARGS_x86_64_apple_ios:---target=x86_64-apple-ios-simulator}"
-
 MODE="${1:-}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CORE="$ROOT/core"
@@ -60,7 +55,14 @@ build() {
   var="${tgt//-/_}"
   # aec-rs-sys runs bindgen: make libclang parse the *target* SDK headers, otherwise
   # size_t/ssize_t come out wrong (or stdio.h is missing) when cross-compiling.
-  export "BINDGEN_EXTRA_CLANG_ARGS_${var}=-isysroot ${sysroot}"
+  # Old bindgen hands clang `arm64-apple-ios-sim`, which Xcode 26's clang rejects; an explicit
+  # --target here is kept as is.
+  local clang_target=""
+  case "$tgt" in
+    aarch64-apple-ios-sim) clang_target="--target=arm64-apple-ios-simulator" ;;
+    x86_64-apple-ios) clang_target="--target=x86_64-apple-ios-simulator" ;;
+  esac
+  export "BINDGEN_EXTRA_CLANG_ARGS_${var}=${clang_target:+$clang_target }-isysroot ${sysroot}"
   rustup target add "$tgt" >/dev/null 2>&1 || true
   mkdir -p "$TARGET_DIR/apple-logs"
   echo "==> cargo build lumora-ffi ($kind) for $tgt [$PROFILE, features: ${FEATURES:-none}]"
