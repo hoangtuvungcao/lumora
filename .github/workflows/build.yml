@@ -733,6 +733,9 @@ jobs:
         working-directory: app
       - run: flutter analyze
         working-directory: app
+      # heic_test decodes a real iPhone photo through the system libheif: the runner image has
+      # libheif but not its HEVC decoder plugin
+      - run: sudo apt-get update && sudo apt-get install -y libheif1 libheif-plugin-libde265
       - name: flutter test (without the screenshot suites)
         working-directory: app
         run: |

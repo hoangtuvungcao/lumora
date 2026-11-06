@@ -136,8 +136,23 @@ DynamicLibrary? _openLibheif() {
   return null;
 }
 
-/// True when the system libheif can be loaded (Linux).
-bool get libheifAvailable => !kIsWeb && Platform.isLinux && _openLibheif() != null;
+/// True when the system libheif can be loaded (Linux) AND has an HEVC decoder:
+/// libheif without its decoder plugin (e.g. no libheif-plugin-libde265) loads
+/// fine but cannot open iPhone photos.
+bool get libheifAvailable {
+  if (kIsWeb || !Platform.isLinux) return false;
+  final lib = _openLibheif();
+  if (lib == null) return false;
+  try {
+    lib.lookupFunction<_HeifError Function(Pointer<Void>), _HeifError Function(Pointer<Void>)>('heif_init')(nullptr);
+  } catch (_) {} // libheif < 1.13 has no heif_init
+  try {
+    const hevc = 1; // heif_compression_HEVC
+    return lib.lookupFunction<Int32 Function(Int32), int Function(int)>('heif_have_decoder_for_format')(hevc) != 0;
+  } catch (_) {
+    return true; // very old libheif: assume its built-in decoder
+  }
+}
 
 /// Decodes the primary image to straight RGBA with libheif (transforms such
 /// as rotation applied). Runs synchronously — call it from an isolate.
