@@ -480,6 +480,12 @@ impl Node {
         }
         // removed/banned members still need to learn they were removed
         if let Payload::Op(GroupOp::Remove { peer } | GroupOp::Ban { peer }) = &s.payload {
+            // The op is applied: they are no co-member any more, so the address gate would
+            // hold this notice forever when we are not friends. We are the ones contacting
+            // them (and they knew our addresses a moment ago): count it as solicited.
+            for dev in self.delivery_targets(peer) {
+                self.note_solicited(dev);
+            }
             self.deliver(*peer, s.id, PeerMsg::Group { gid, env: env.clone() }, true).await;
         }
         // Privacy-mode bots hold no key, so they can't read the op above: keep their view of

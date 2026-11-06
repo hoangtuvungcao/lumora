@@ -910,7 +910,14 @@ def main():
                     for X in (D, E):
                         assert not any(x["id"] == m["id"] for x in X.call("messages", conv=conv)), f"removed {X.name} read a new message"
                 # (what is queued for the removed members is delivered before they go)
-                wait_until(lambda: sum(n.call("storage_stats")["outbox"] for n in nodes) == 0, 60, "outboxes drained")
+                try:
+                    wait_until(lambda: sum(n.call("storage_stats")["outbox"] for n in nodes) == 0, 60, "outboxes drained")
+                except Exception:
+                    names = {n.me["peer"]: n.name for n in nodes + extra_nodes}
+                    for n in nodes:
+                        w = n.call("storage_stats").get("outbox_waiting", [])
+                        print(f"     {n.name} outbox: " + ", ".join(f"{names.get(x['peer'], x['peer'][:8])}×{x['items']} (attempts {x['attempts']})" for x in w))
+                    raise
             finally:
                 for N in extra_nodes:
                     N.stop()

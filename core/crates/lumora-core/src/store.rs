@@ -1719,7 +1719,18 @@ impl Store {
     pub fn stats(&self) -> Value {
         let c = self.conn.lock();
         let q = |sql: &str| c.query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap_or(0);
+        // who still has mail waiting (diagnostics: a stuck outbox names its recipient)
+        let waiting: Vec<Value> = c
+            .prepare("SELECT to_peer, count(*), max(attempts) FROM outbox GROUP BY to_peer ORDER BY count(*) DESC LIMIT 10")
+            .and_then(|mut st| {
+                st.query_map([], |r| {
+                    Ok(serde_json::json!({"peer": b32_pub(&r.get::<_, Vec<u8>>(0)?), "items": r.get::<_, i64>(1)?, "attempts": r.get::<_, i64>(2)?}))
+                })?
+                .collect()
+            })
+            .unwrap_or_default();
         serde_json::json!({
+            "outbox_waiting": waiting,
             "messages": q("SELECT count(*) FROM messages"),
             "contacts": q("SELECT count(*) FROM contacts WHERE status=3"),
             "groups": q("SELECT count(*) FROM groups"),
