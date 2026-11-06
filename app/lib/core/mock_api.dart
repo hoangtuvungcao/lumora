@@ -15,6 +15,7 @@ import 'api.dart';
 import 'bip39.dart' show phraseSecretKey;
 import 'mock_file_previews.dart';
 import 'mock_media.dart';
+import 'text_fold.dart';
 
 
 /// The mock account's recovery phrase: secret 0x01…0x20 as 24 BIP39 words
@@ -87,6 +88,10 @@ class MockLumoraApi extends LumoraApi {
   final Map<String, String?> _wallpapers = {};
   final Map<String, String> _groupAvatars = {};
   final List<Map<String, dynamic>> _stories = [];
+  /// My stories past their 24 h (demo archive).
+  final List<Map<String, dynamic>> _archived = [
+    {'id': 'st_old1', 'author': '', 'created': DateTime.now().millisecondsSinceEpoch - 3 * 86400000, 'text': 'Cuối tuần ở Đà Lạt 🌲', 'has_image': false, 'bg': 'forest', 'seen': true, 'views': 12, 'active': false},
+  ];
   final Map<String, Map<String, dynamic>> _bots = {};
   final List<Map<String, dynamic>> _packs = [];
   final List<Map<String, dynamic>> _recentRemote = [];
@@ -1449,6 +1454,20 @@ class MockLumoraApi extends LumoraApi {
     _emit('settings', {'key': 'privacy.locked_chats'});
   }
 
+  /// A chat muted on another device: like the core, only the account setting
+  /// `mute_until.<conv>` arrives (no `conversation` event).
+  void muteFromOtherDevice(String conv, int until) {
+    final c = _convs[conv];
+    if (c != null) {
+      c['muted'] = until > 0;
+      c['mute_until'] = until;
+    }
+    _emit('settings', {'key': 'mute_until.$conv'});
+  }
+
+  /// Sticker images not on this device (yet): `sticker_get` answers empty.
+  final Set<String> missingStickersForTest = {};
+
   /// `botfather_*`: the BotFather conversation (synced, last 200 lines).
   final List<Map<String, dynamic>> _botfatherChat = [];
 
@@ -1510,7 +1529,7 @@ class MockLumoraApi extends LumoraApi {
         _emit('devices', _devicesJson());
         return _devicesJson();
       case 'device_logout':
-        if (_isPrimary) throw ApiException('Đây là thiết bị chính của tài khoản.', cmd: cmd, code: 'err.already_primary');
+        if (_isPrimary && args['primary_ok'] != true) throw ApiException('Đây là thiết bị chính của tài khoản.', cmd: cmd, code: 'err.primary_logout');
         _soon(const Duration(milliseconds: 400), () => simulateDeviceRevoked(bySelf: true));
         return {'notified': true};
       case 'device_promote':
@@ -2153,6 +2172,7 @@ class MockLumoraApi extends LumoraApi {
         return null;
       case 'sticker_get':
         final h = args['hash'] as String;
+        if (missingStickersForTest.contains(h)) return {'mime': '', 'data': ''};
         if (h.startsWith('file:')) return {'mime': 'image/png', 'data': base64Encode(await File(h.substring(5)).readAsBytes())};
         final key = h.startsWith('st_') ? h.substring(3) : 'coffee';
         final data = await rootBundle.load('assets/mock/$key.jpg');
@@ -2279,6 +2299,24 @@ class MockLumoraApi extends LumoraApi {
         return {'id': id};
       case 'stories':
         return _stories.map((e) => Map.of(e)..remove('image_path')).toList();
+      case 'story_archive':
+        return [
+          for (final e in _stories)
+            if (e['author'] == myPeer) {...e, 'active': true}..remove('image_path'),
+          ..._archived,
+        ];
+      case 'story_delete':
+        final id = args['story_id'];
+        final st = _stories.firstWhere((e) => e['id'] == id, orElse: () => {});
+        final old = _archived.indexWhere((e) => e['id'] == id);
+        if (st.isEmpty && old < 0) return null;
+        if ((st.isNotEmpty ? st['author'] : myPeer) != myPeer) {
+          throw ApiException('Chỉ người đăng tin này mới xoá được.', cmd: cmd, code: 'err.story_not_yours');
+        }
+        _stories.removeWhere((e) => e['id'] == id);
+        if (old >= 0) _archived.removeAt(old);
+        _emit('story_removed', {'id': id});
+        return null;
       case 'story_image':
         final st = _stories.firstWhere((e) => e['id'] == args['story_id'], orElse: () => {});
         if (st['image_path'] is String) {
@@ -2340,10 +2378,11 @@ class MockLumoraApi extends LumoraApi {
         _msgs.remove(args['conv']);
         return null;
       case 'search':
-        final q = (args['q'] as String).toLowerCase();
+        // like the core: case and diacritics ignored ("tieng viet" finds "Tiếng Việt")
+        final q = foldText((args['q'] as String).trim());
         return _msgs.values
             .expand((l) => l)
-            .where((m) => m['kind'] == 'text' && m['body'] is String && (m['body'] as String).toLowerCase().contains(q))
+            .where((m) => m['kind'] == 'text' && m['body'] is String && foldText(m['body'] as String).contains(q))
             .take(50)
             .map((m) => Map.of(m))
             .toList();

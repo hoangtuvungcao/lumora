@@ -177,7 +177,7 @@ class ProfileScreen extends StatelessWidget {
         const SizedBox(height: 18),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(alignment: WrapAlignment.center, spacing: 2, runSpacing: 4, children: [for (final a in actions) SizedBox(width: 66, child: a)]),
+          child: Wrap(alignment: WrapAlignment.center, spacing: 2, runSpacing: 4, children: [for (final a in actions) SizedBox(width: 74, child: a)]),
         ),
         const SizedBox(height: 18),
         if (!mine && contact != null) ...[
@@ -280,8 +280,9 @@ class _Action extends StatelessWidget {
             else
               IconTile(icon, size: IconTileSize.lg, circle: true),
             const SizedBox(height: 6),
-            // Shrink (rather than cut) longer labels such as "Điều khiển".
-            FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, softWrap: false, style: context.tt.bodySmall?.copyWith(color: context.lc.text))),
+            // Same size for every label; a long one ("Chỉnh sửa hồ sơ") wraps to a second line
+            // instead of shrinking next to its neighbours.
+            Text(label, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: context.tt.bodySmall?.copyWith(color: context.lc.text, height: 1.2)),
           ]),
         ),
       );

@@ -115,7 +115,7 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.devices_json()
         }
         "device_revoke" => node.device_revoke(&peer(r, "device")?, b(r, "wipe_media").or_else(|| b(r, "wipe")).unwrap_or(false)).await?,
-        "device_logout" => node.device_logout().await?,
+        "device_logout" => node.device_logout(b(r, "primary_ok").unwrap_or(false), r.get("passphrase").and_then(|x| x.as_str()).map(str::to_owned)).await?,
         "device_promote" => node.device_promote(s(r, "phrase")?, r.get("passphrase").and_then(|x| x.as_str())).await?,
         "contact_devices" => node.contact_devices_json(&peer(r, "peer")?),
         // main device: invite a new device (it scans this QR / types this code)
@@ -552,6 +552,11 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
         "send_contact" => node.send_contact_card(s(r, "conv")?, peer(r, "peer")?).await?,
         "post_story" => node.post_story(r.get("text").and_then(|x| x.as_str()).unwrap_or(""), r.get("image_path").and_then(|x| x.as_str()), r.get("bg").and_then(|x| x.as_str()).unwrap_or("aurora")).await?,
         "stories" => Value::Array(node.store.stories()?),
+        "story_archive" => Value::Array(node.store.story_archive()?),
+        "story_delete" => {
+            node.story_delete(id16(r, "story_id")?).await?;
+            Value::Null
+        }
         "story_image" => json!({"image": node.store.story_image(&id16(r, "story_id")?).map(|a| data_encoding::BASE64.encode(&a))}),
         "story_seen" => {
             node.story_seen(id16(r, "story_id")?).await?;

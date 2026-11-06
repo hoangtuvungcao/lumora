@@ -455,14 +455,148 @@ class SwitchRow extends StatelessWidget {
   }
 }
 
+
+// ---------------------------------------------------------------- top toast
+
+OverlayEntry? _topToast;
+
+/// Short notice that slides down from the top of the screen ("Đã gửi tệp", "Đã sao chép", errors…),
+/// like Telegram/Zalo, instead of a bottom snackbar that covers the message composer.
+/// Pass [overlay] when calling after an `await` (grab it while the context is still mounted).
+void showTopToast(BuildContext? context, String text,
+    {Duration duration = const Duration(seconds: 2), String? actionLabel, VoidCallback? onAction, OverlayState? overlay}) {
+  final o = overlay ?? (context != null && context.mounted ? Overlay.maybeOf(context, rootOverlay: true) : null);
+  if (o == null || !o.mounted) return;
+  _topToast?.remove();
+  late final OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => _TopToast(
+      text: text,
+      duration: duration,
+      actionLabel: actionLabel,
+      onAction: onAction,
+      onGone: () {
+        if (_topToast == entry) _topToast = null;
+        if (entry.mounted) entry.remove();
+      },
+    ),
+  );
+  _topToast = entry;
+  o.insert(entry);
+}
+
+class _TopToast extends StatefulWidget {
+  const _TopToast({required this.text, required this.duration, required this.onGone, this.actionLabel, this.onAction});
+  final String text;
+  final Duration duration;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final VoidCallback onGone;
+  @override
+  State<_TopToast> createState() => _TopToastState();
+}
+
+class _TopToastState extends State<_TopToast> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))..forward();
+  Timer? _timer;
+  bool _leaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.duration, _hide);
+  }
+
+  Future<void> _hide() async {
+    if (_leaving || !mounted) return;
+    _leaving = true;
+    _timer?.cancel();
+    await _c.reverse();
+    widget.onGone();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context).snackBarTheme;
+    final anim = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: SlideTransition(
+            position: Tween(begin: const Offset(0, -1.2), end: Offset.zero).animate(anim),
+            child: FadeTransition(
+              opacity: anim,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Dismissible(
+                    key: const ValueKey('top-toast'),
+                    direction: DismissDirection.up,
+                    onDismissed: (_) {
+                      _leaving = true;
+                      widget.onGone();
+                    },
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Material(
+                        color: theme.backgroundColor ?? LC.darkSurface,
+                        elevation: 6,
+                        shape: theme.shape ?? RoundedRectangleBorder(borderRadius: BorderRadius.circular(Radii.md)),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(Radii.md),
+                          onTap: _hide,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                            child: Row(children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Text(widget.text, style: theme.contentTextStyle ?? const TextStyle(color: LC.darkText)),
+                                ),
+                              ),
+                              if (widget.actionLabel != null)
+                                TextButton(
+                                  onPressed: () {
+                                    _hide();
+                                    widget.onAction?.call();
+                                  },
+                                  child: Text(widget.actionLabel!),
+                                ),
+                            ]),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------- helpers
 
 Future<void> copyText(BuildContext context, String text, {String? message}) async {
   await Clipboard.setData(ClipboardData(text: text));
   if (!context.mounted) return;
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message ?? S.read(context)('copied')), duration: const Duration(seconds: 2)));
+  showTopToast(context, message ?? S.read(context)('copied'));
 }
 
 void toast(BuildContext context, String text) {
@@ -490,13 +624,10 @@ void toast(BuildContext context, String text) {
     }
   }
   final s = S.read(context);
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(text),
+  showTopToast(context, text,
       duration: Duration(seconds: detail == null ? 2 : 5),
-      action: detail == null ? null : SnackBarAction(label: s('technical_details'), onPressed: () => showTechnicalDetails(context, detail)),
-    ));
+      actionLabel: detail == null ? null : s('technical_details'),
+      onAction: detail == null ? null : () => showTechnicalDetails(context, detail));
 }
 
 /// An error whose message is already a plain sentence for the user.
@@ -545,13 +676,10 @@ void toastError(BuildContext context, Object e, {String fallbackKey = 'err_inter
   final s = S.read(context);
   final msg = errorMessage(s, e, fallbackKey: fallbackKey);
   final detail = errorDetails(e);
-  ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(prefix == null ? msg : '$prefix$msg'),
+  showTopToast(context, prefix == null ? msg : '$prefix$msg',
       duration: Duration(seconds: detail == null ? 3 : 5),
-      action: detail == null ? null : SnackBarAction(label: s('technical_details'), onPressed: () => showTechnicalDetails(context, detail)),
-    ));
+      actionLabel: detail == null ? null : s('technical_details'),
+      onAction: detail == null ? null : () => showTechnicalDetails(context, detail));
 }
 
 /// Small "Technical details" link under an inline error message.
@@ -662,22 +790,91 @@ IconData pathIcon(String? path) => switch (path) {
 
 /// Hosts a self-listening, full-screen layer above the app's Navigator with
 /// its own Navigator/Overlay so tooltips, menus and dialogs work inside it.
-class LayerHost extends StatelessWidget {
-  const LayerHost({super.key, required this.child});
+///
+/// Android's Back only reaches the app's Navigator, never this one: a sheet
+/// or dialog open in a layer (call screen "More", audio settings…) stayed open
+/// and Back sent Lumora to the background instead. [LayerBack] routes Back here
+/// first: it closes what the layer has open, else asks [onBack] (true =
+/// handled, e.g. minimise the call). A [barrier] layer (app lock) hides the
+/// layers below it from Back.
+class LayerHost extends StatefulWidget {
+  const LayerHost({super.key, required this.child, this.onBack, this.barrier = false});
   final Widget child;
+  final bool Function(BuildContext context)? onBack;
+  final bool barrier;
+
+  @override
+  State<LayerHost> createState() => _LayerHostState();
+}
+
+class _LayerHostState extends State<LayerHost> {
+  final _nav = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    LayerBack.install();
+    LayerBack.instance._hosts.add(this);
+  }
+
+  @override
+  void dispose() {
+    LayerBack.instance._hosts.remove(this);
+    super.dispose();
+  }
+
+  /// null: not mine, go on with the layer below; true/false: Back handled / leave the app.
+  Future<bool?> _back() async {
+    final nav = _nav.currentState;
+    if (nav != null && nav.canPop()) return nav.maybePop();
+    final ctx = nav?.context;
+    if (widget.onBack != null && ctx != null && ctx.mounted && widget.onBack!(ctx)) return true;
+    if (!widget.barrier) return null;
+    // nothing below a barrier (app lock) may react: leave the app as usual
+    await SystemNavigator.pop();
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
     return HeroControllerScope.none(
       child: Navigator(
+        key: _nav,
         onGenerateRoute: (_) => PageRouteBuilder<void>(
           opaque: false,
           transitionDuration: Motion.normal,
-          pageBuilder: (_, _, _) => child,
+          pageBuilder: (_, _, _) => widget.child,
           transitionsBuilder: (_, a, _, c) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Motion.curve), child: c),
         ),
       ),
     );
+  }
+}
+
+/// Android Back for the [LayerHost]s (newest first) before the app's Navigator.
+/// Installed from main() before runApp so it runs before the app's own
+/// handler (observers are asked in the order they were added); installed
+/// later it still runs whenever the app's Navigator has nothing to pop.
+class LayerBack with WidgetsBindingObserver {
+  LayerBack._();
+  static final LayerBack instance = LayerBack._();
+  bool _installed = false;
+  final List<_LayerHostState> _hosts = [];
+
+  static void install() {
+    if (instance._installed) return;
+    instance._installed = true;
+    WidgetsBinding.instance.addObserver(instance);
+  }
+
+  @override
+  Future<bool> didPopRoute() async {
+    for (final h in _hosts.reversed.toList()) {
+      if (!h.mounted) continue;
+      final r = await h._back();
+      if (r != null) return r;
+    }
+    return false;
   }
 }
 

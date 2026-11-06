@@ -194,6 +194,26 @@ class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStat
     _show();
   }
 
+  Future<void> _delete() async {
+    _progress.stop();
+    final st = _story;
+    final ok = await confirmStoryDelete(context);
+    if (!mounted) return;
+    if (!ok) {
+      _progress.forward();
+      return;
+    }
+    try {
+      await context.read<StoryStore>().delete(st.id);
+      if (!mounted) return;
+      toast(context, S.read(context)('story_deleted'));
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) toastError(context, e);
+      _progress.forward();
+    }
+  }
+
   Future<void> _sendReply() async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
@@ -301,6 +321,17 @@ class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStat
                   const Icon(AppIcons.show, color: Colors.white70, size: 18),
                   const SizedBox(width: 6),
                   Text(s('n_views', {'n': st.views}), style: const TextStyle(color: Colors.white)),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: s('story_archive'),
+                    onPressed: () async {
+                      _progress.stop();
+                      await showStoryArchive(context);
+                      if (mounted) _progress.forward();
+                    },
+                    icon: const Icon(AppIcons.archive, color: Colors.white),
+                  ),
+                  IconButton(tooltip: s('story_delete'), onPressed: _delete, icon: const Icon(AppIcons.delete, color: Colors.white)),
                 ])
               : Row(children: [
                   Expanded(
@@ -427,6 +458,7 @@ class _StoryComposerState extends State<StoryComposer> {
                 child: Row(children: [
                   IconButton(tooltip: S.of(context)('close'), onPressed: () => Navigator.pop(context), icon: const Icon(AppIcons.close, color: Colors.white)),
                   Expanded(child: Text(s('new_story'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16))),
+                  IconButton(tooltip: s('story_archive'), onPressed: () => showStoryArchive(context), icon: const Icon(AppIcons.archive, color: Colors.white)),
                   IconButton(
                     tooltip: s('choose_photo'),
                     onPressed: () async {
@@ -470,3 +502,146 @@ class _StoryComposerState extends State<StoryComposer> {
   }
 }
 
+
+Future<bool> confirmStoryDelete(BuildContext context) {
+  final s = S.read(context);
+  return confirm(context, title: s('story_delete_q'), body: s('story_delete_body'), action: s('delete'), danger: true);
+}
+
+Future<void> showStoryArchive(BuildContext context) =>
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => const StoryArchiveScreen()));
+
+/// My stories, also after their 24 h (only on my side): open one, or delete it.
+class StoryArchiveScreen extends StatefulWidget {
+  const StoryArchiveScreen({super.key});
+  @override
+  State<StoryArchiveScreen> createState() => _StoryArchiveScreenState();
+}
+
+class _StoryArchiveScreenState extends State<StoryArchiveScreen> {
+  List<Story>? _list;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final me = context.read<SessionStore>().me?.peer ?? '';
+    try {
+      final l = await context.read<StoryStore>().archive(me);
+      if (mounted) setState(() => _list = l);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
+    }
+  }
+
+  Future<void> _delete(Story st) async {
+    if (!await confirmStoryDelete(context) || !mounted) return;
+    try {
+      await context.read<StoryStore>().delete(st.id);
+      if (!mounted) return;
+      setState(() => _list = _list?.where((x) => x.id != st.id).toList());
+      toast(context, S.read(context)('story_deleted'));
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final list = _list;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    Widget body;
+    if (_error != null) {
+      body = Center(child: Text(errorMessage(s, _error!)));
+    } else if (list == null) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (list.isEmpty) {
+      body = EmptyState(icon: AppIcons.story, title: s('story_archive_empty'), subtitle: s('story_archive_hint'));
+    } else {
+      body = CustomScrollView(slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          sliver: SliverToBoxAdapter(child: Text(s('story_archive_hint'), style: context.tt.bodySmall?.copyWith(color: context.lc.muted))),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.all(12),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 160, childAspectRatio: 9 / 16, mainAxisSpacing: 8, crossAxisSpacing: 8),
+            delegate: SliverChildBuilderDelegate(childCount: list.length, (c, i) {
+              final st = list[i];
+              final live = now - st.created < 86400000;
+              final day = DateTime.fromMillisecondsSinceEpoch(st.created);
+              return _ArchiveTile(
+                story: st,
+                live: live,
+                date: '${day.day}/${day.month}/${day.year}',
+                onTap: () => openStories(context, [MapEntry(st.author, [st])], 0),
+                onDelete: () => _delete(st),
+              );
+            }),
+          ),
+        ),
+      ]);
+    }
+    return Scaffold(appBar: AppBar(title: Text(s('story_archive'))), body: body);
+  }
+}
+
+class _ArchiveTile extends StatelessWidget {
+  const _ArchiveTile({required this.story, required this.live, required this.date, required this.onTap, required this.onDelete});
+  final Story story;
+  final bool live;
+  final String date;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(Radii.md),
+      child: Material(
+        color: Colors.black,
+        child: InkWell(
+          onTap: onTap,
+          child: Stack(fit: StackFit.expand, children: [
+            WallpaperBackground(spec: WallpaperSpec.parse(story.bg ?? 'aurora') ?? WallpaperSpec.parse('aurora')!),
+            if (story.hasImage)
+              FutureBuilder<Uint8List?>(
+                future: context.read<StoryStore>().image(story.id),
+                builder: (_, snap) => snap.data == null ? const SizedBox() : Image.memory(snap.data!, fit: BoxFit.cover, cacheWidth: 320),
+              ),
+            if (story.text.isNotEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(story.text, maxLines: 4, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])),
+                ),
+              ),
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: Text(live ? s('story_active') : date,
+                  style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600, shadows: [Shadow(color: Colors.black87, blurRadius: 6)])),
+            ),
+            Positioned(
+              right: 0,
+              top: 0,
+              child: IconButton(
+                tooltip: s('story_delete'),
+                onPressed: onDelete,
+                icon: const Icon(AppIcons.delete, color: Colors.white, size: 20, shadows: [Shadow(color: Colors.black87, blurRadius: 6)]),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}

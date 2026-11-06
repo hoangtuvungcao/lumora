@@ -10,6 +10,7 @@ import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/core_events.dart';
 
 const kBotFatherConv = 'bot:father';
 const kDevDocsUrl = 'https://getlumora.pages.dev/developers/';
@@ -87,10 +88,35 @@ class _BotFatherChatState extends State<BotFatherChat> {
   /// Saves run one after another (the core appends in that order).
   Future<void> _saving = Future.value();
 
+  /// The chat went on on another of my devices: shown here at once.
+  CoreEventWatch? _synced;
+
   @override
   void initState() {
     super.initState();
     _load();
+    _synced = CoreEventWatch.settings(_api, const {'privacy.botfather_chat'}, _reloadSynced);
+  }
+
+  /// Takes the core's copy of the chat (lines added or cleared on another
+  /// device). A token shown here stays with its reply (never saved).
+  Future<void> _reloadSynced() async {
+    await _saving; // (my own lines first)
+    List<Map<String, dynamic>> saved;
+    try {
+      saved = await _api.botfatherHistory();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final tokens = {for (final m in _msgs) if (m.kind == 'token' && m.token != null) m.user: m.token};
+    final atEnd = !_scroll.hasClients || _scroll.position.pixels >= _scroll.position.maxScrollExtent - 24;
+    setState(() {
+      _msgs
+        ..clear()
+        ..addAll(saved.map(_Msg.fromJson).map((m) => m.kind == 'token' && tokens.containsKey(m.user) ? _Msg(m.mine, m.text, kind: m.kind, user: m.user, token: tokens.remove(m.user)) : m));
+    });
+    if (atEnd) _toEnd();
   }
 
   Future<void> _load() async {
@@ -108,6 +134,7 @@ class _BotFatherChatState extends State<BotFatherChat> {
 
   @override
   void dispose() {
+    _synced?.cancel();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -305,7 +332,26 @@ class _SavedTokenCard extends StatefulWidget {
 }
 
 class _SavedTokenCardState extends State<_SavedTokenCard> {
-  late final Future<String> _token = context.read<LumoraApi>().botToken(widget.username);
+  late Future<String> _token = _fetch();
+  CoreEventWatch? _bots;
+
+  Future<String> _fetch() => context.read<LumoraApi>().botToken(widget.username).catchError((_) => '');
+
+  @override
+  void initState() {
+    super.initState();
+    // revoked / deleted on another of my devices: the card follows
+    _bots = CoreEventWatch.settings(context.read<LumoraApi>(), const {'botfather.bots'}, () {
+      if (mounted) setState(() => _token = _fetch());
+    });
+  }
+
+  @override
+  void dispose() {
+    _bots?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<String>(
         future: _token,
@@ -322,10 +368,20 @@ class _MyBotsList extends StatefulWidget {
 
 class _MyBotsListState extends State<_MyBotsList> {
   List<BotAccount> _bots = const [];
+  CoreEventWatch? _synced;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // a bot made / deleted on another of my devices
+    _synced = CoreEventWatch.settings(context.read<LumoraApi>(), const {'botfather.bots'}, _load);
+  }
+
+  @override
+  void dispose() {
+    _synced?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -336,7 +392,7 @@ class _MyBotsListState extends State<_MyBotsList> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, children: [for (final b in _bots) BotCard(bot: b, onChanged: _load)]);
+  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, children: [for (final b in _bots) BotCard(key: ValueKey(b.username), bot: b, onChanged: _load)]);
 }
 
 /// Token card with copy + "keep it secret" warning + docs link.
@@ -485,10 +541,20 @@ class MyBotsPage extends StatefulWidget {
 
 class _MyBotsPageState extends State<MyBotsPage> {
   List<BotAccount>? _bots;
+  CoreEventWatch? _synced;
+
   @override
   void initState() {
     super.initState();
     _load();
+    // a bot made / deleted on another of my devices
+    _synced = CoreEventWatch.settings(context.read<LumoraApi>(), const {'botfather.bots'}, _load);
+  }
+
+  @override
+  void dispose() {
+    _synced?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -517,7 +583,7 @@ class _MyBotsPageState extends State<MyBotsPage> {
       const SizedBox(height: 16),
       if (bots == null) const Center(child: CircularProgressIndicator()),
       if (bots != null && bots.isEmpty) EmptyState(icon: AppIcons.bot, title: s('bf_no_bots')),
-      if (bots != null) for (final b in bots) BotCard(bot: b, onChanged: _load),
+      if (bots != null) for (final b in bots) BotCard(key: ValueKey(b.username), bot: b, onChanged: _load),
     ]);
   }
 }

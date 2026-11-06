@@ -11,6 +11,8 @@ import '../../core/version.dart';
 import '../../core/mock_api.dart';
 import '../../l10n/strings.dart';
 import '../../platform/android_bridge.dart';
+import 'background_sheet.dart';
+import '../../platform/tones.dart';
 import '../../state/app_lock.dart';
 import '../../state/settings.dart';
 import '../../state/stores.dart';
@@ -33,6 +35,7 @@ import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import '../../platform/apple_services.dart';
 import 'video_codec_info.dart';
+import '../widgets/core_events.dart';
 
 enum SettingsPage { profile, devices, appearance, privacy, bots, remote, storage, security, language, advanced, about }
 
@@ -339,37 +342,96 @@ class _Privacy extends StatelessWidget {
         SwitchRow(icon: AppIcons.sun, title: s('lowlight'), subtitle: s('lowlight_hint'), value: st.videoLowlight, onChanged: (v) => st.update((x) => x.videoLowlight = v)),
         SwitchRow(icon: AppIcons.mirror, title: s('mirror_send'), subtitle: s('mirror_send_hint'), value: st.videoMirrorSend, onChanged: (v) => st.update((x) => x.videoMirrorSend = v)),
       ]),
-      _Group(title: s('notifications'), children: [
-        SwitchRow(icon: AppIcons.bell, title: s('notifications'), subtitle: s('notifications_hint'), value: st.notifications, onChanged: (v) => st.update((x) => x.notifications = v)),
+      const NotificationSettingsGroup(),
+    ]);
+  }
+}
+
+/// Settings › Notifications: system notifications, their content, and the
+/// call ringtone / message sound / vibration (state/sound_alerts.dart).
+class NotificationSettingsGroup extends StatelessWidget {
+  const NotificationSettingsGroup({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final st = context.watch<Settings>();
+    return _Group(title: s('notifications'), children: [
+      SwitchRow(icon: AppIcons.bell, title: s('notifications'), subtitle: s('notifications_hint'), value: st.notifications, onChanged: (v) => st.update((x) => x.notifications = v)),
+      SwitchRow(
+        icon: AppIcons.message,
+        title: s('notify_preview'),
+        subtitle: st.appLock ? s('notify_preview_locked') : s('notify_preview_hint'),
+        value: !st.hideNotificationContent,
+        onChanged: st.appLock || !st.notifications ? null : (v) => st.update((x) => x.notifyPreview = v),
+      ),
+      SwitchRow(icon: AppIcons.callIncoming, title: s('call_ringtone'), subtitle: s('call_ringtone_hint'), value: st.callRingtone, onChanged: (v) => st.update((x) => x.callRingtone = v)),
+      SwitchRow(
+        icon: AppIcons.speaker,
+        title: s('message_sound'),
+        subtitle: s('message_sound_hint'),
+        value: st.notifications && st.messageSound,
+        onChanged: !st.notifications ? null : (v) => st.update((x) => x.messageSound = v),
+      ),
+      SwitchRow(
+        icon: AppIcons.reminder,
+        title: s('reminder_sound'),
+        subtitle: s('reminder_sound_hint'),
+        value: st.notifications && st.reminderSound,
+        onChanged: !st.notifications ? null : (v) => st.update((x) => x.reminderSound = v),
+      ),
+      if (TonePlayer.canVibrate)
+        SwitchRow(icon: AppIcons.mobile, title: s('vibrate'), subtitle: s('vibrate_hint'), value: st.vibrate, onChanged: (v) => st.update((x) => x.vibrate = v)),
+      if (AndroidBridge.isAndroid || debugShowAndroidNotificationRows) ...[
         SwitchRow(
-          icon: AppIcons.message,
-          title: s('notify_preview'),
-          subtitle: st.appLock ? s('notify_preview_locked') : s('notify_preview_hint'),
-          value: !st.hideNotificationContent,
-          onChanged: st.appLock || !st.notifications ? null : (v) => st.update((x) => x.notifyPreview = v),
+          icon: AppIcons.chat,
+          title: s('chat_bubbles'),
+          subtitle: s('chat_bubbles_hint'),
+          value: st.notifications && st.chatBubbles,
+          onChanged: !st.notifications ? null : (v) => st.update((x) => x.chatBubbles = v),
         ),
-        if (AppleServices.isIOS) ...[
-          if (AppleServices.pushAvailable)
-            SwitchRow(
-              icon: AppIcons.bellRinging,
-              title: s('instant_push'),
-              subtitle: s('instant_push_hint'),
-              value: st.instantPush,
-              onChanged: !st.notifications
-                  ? null
-                  : (v) async {
-                      var on = false;
-                      if (v) {
-                        on = await AppleServices.instance.enablePush(); // false if the user declines
-                      } else {
-                        await AppleServices.instance.disablePush();
-                      }
-                      st.update((x) => x.instantPush = on);
-                    },
-            ),
-          _IosDeliveryNote(push: AppleServices.pushAvailable && st.instantPush),
-        ],
-      ]),
+        InkWell(
+          borderRadius: BorderRadius.circular(Radii.md),
+          onTap: () => showBackgroundSheet(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+            child: Row(children: [
+              RowIcon(AppIcons.power, size: 20, color: context.lc.muted),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(s('bg_row'), style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(s('bg_row_hint'), style: context.tt.bodySmall),
+                ]),
+              ),
+              Icon(AppIcons.chevronRight, size: 18, color: context.lc.muted),
+              const SizedBox(width: 8),
+            ]),
+          ),
+        ),
+      ],
+      if (AppleServices.isIOS) ...[
+        if (AppleServices.pushAvailable)
+          SwitchRow(
+            icon: AppIcons.bellRinging,
+            title: s('instant_push'),
+            subtitle: s('instant_push_hint'),
+            value: st.instantPush,
+            onChanged: !st.notifications
+                ? null
+                : (v) async {
+                    var on = false;
+                    if (v) {
+                      on = await AppleServices.instance.enablePush(); // false if the user declines
+                    } else {
+                      await AppleServices.instance.disablePush();
+                    }
+                    st.update((x) => x.instantPush = on);
+                  },
+          ),
+        _IosDeliveryNote(push: AppleServices.pushAvailable && st.instantPush),
+      ],
     ]);
   }
 }
@@ -462,10 +524,23 @@ class _FindByIdGroup extends StatefulWidget {
 
 class _FindByIdGroupState extends State<_FindByIdGroup> {
   bool? _on;
+  CoreEventWatch? _synced;
 
   @override
   void initState() {
     super.initState();
+    _load();
+    // switched on another of my devices (an account setting)
+    _synced = CoreEventWatch.settings(context.read<LumoraApi>(), const {'privacy.discoverable'}, _load);
+  }
+
+  @override
+  void dispose() {
+    _synced?.cancel();
+    super.dispose();
+  }
+
+  void _load() {
     context.read<LumoraApi>().settingsGet().then((v) {
       final on = v['discoverable_by_id'];
       if (mounted && on is bool) setState(() => _on = on);
@@ -520,6 +595,10 @@ class _IosDeliveryNote extends StatelessWidget {
     );
   }
 }
+
+/// Shows the Android-only notification rows (bubbles, background) elsewhere (tests).
+@visibleForTesting
+bool debugShowAndroidNotificationRows = false;
 
 /// Shows the Android-only screenshot switch on other platforms (screenshots/tests).
 @visibleForTesting
@@ -745,6 +824,13 @@ class _Security extends StatelessWidget {
           title: Text(s('this_device')),
           subtitle: Text(s('active_now')),
           trailing: Pill(s('current'), color: LC.success),
+        ),
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const RowIcon(AppIcons.signOut, color: LC.danger),
+          title: Text(s('sign_out'), style: const TextStyle(color: LC.danger)),
+          subtitle: Text(s('sign_out_hint')),
+          onTap: () => signOutHere(context),
         ),
       ]),
     ]);

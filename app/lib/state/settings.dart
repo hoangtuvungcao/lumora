@@ -29,6 +29,33 @@ class Settings extends ChangeNotifier {
   /// (core `help_friends`, capped at 1 MB/s).
   bool helpFriends = true;
   bool notifications = true;
+
+  /// Incoming calls ring (Lumora's own tone on computers, the phone's
+  /// ringtone on Android, CallKit / our tone on iPhone).
+  bool callRingtone = true;
+
+  /// A short sound for a new message in a chat that is not open or muted.
+  bool messageSound = true;
+
+  /// The reminder alarm sound when a reminder is due.
+  bool reminderSound = true;
+
+  /// Phones: vibrate for incoming calls, new messages and reminders.
+  bool vibrate = true;
+
+  /// Android 11+: message notifications can open the chat as a bubble.
+  bool chatBubbles = true;
+
+  /// Android: the "keep Lumora running in the background" prompt was shown
+  /// once (it is in Settings › Notifications afterwards).
+  bool backgroundAsked = false;
+
+  /// Muted chats that still alert for @mentions of me (mute sheet: "Mentions only").
+  List<String> mentionsOnlyChats = [];
+
+  /// Reminders snoozed on this device ("Hoãn 10 phút"): the `reminder_due`
+  /// data plus `snooze_until` (ms). Fired again then, also after a restart.
+  List<Map<String, dynamic>> snoozedReminders = [];
   bool linkPreviews = false;
 
   // No relay by default: pure P2P. Users (or their organisation) may add their own bridge.
@@ -178,6 +205,14 @@ class Settings extends ChangeNotifier {
     storeForward = j['store_forward'] as bool? ?? storeForward;
     helpFriends = j['help_friends'] as bool? ?? helpFriends;
     notifications = j['notifications'] as bool? ?? notifications;
+    callRingtone = j['call_ringtone'] as bool? ?? callRingtone;
+    messageSound = j['message_sound'] as bool? ?? messageSound;
+    vibrate = j['vibrate'] as bool? ?? vibrate;
+    reminderSound = j['reminder_sound'] as bool? ?? reminderSound;
+    chatBubbles = j['chat_bubbles'] as bool? ?? chatBubbles;
+    backgroundAsked = j['background_asked'] as bool? ?? backgroundAsked;
+    mentionsOnlyChats = (j['mentions_only_chats'] as List?)?.cast<String>() ?? mentionsOnlyChats;
+    snoozedReminders = (j['snoozed_reminders'] as List?)?.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList() ?? snoozedReminders;
     linkPreviews = j['link_previews'] as bool? ?? linkPreviews;
     relays = (j['relays'] as List?)?.cast<String>() ?? relays;
     relayDelayMs = j['relay_delay_ms'] as int? ?? relayDelayMs;
@@ -232,6 +267,14 @@ class Settings extends ChangeNotifier {
         'store_forward': storeForward,
         'help_friends': helpFriends,
         'notifications': notifications,
+        'call_ringtone': callRingtone,
+        'message_sound': messageSound,
+        'vibrate': vibrate,
+        'reminder_sound': reminderSound,
+        'chat_bubbles': chatBubbles,
+        'background_asked': backgroundAsked,
+        'mentions_only_chats': mentionsOnlyChats,
+        'snoozed_reminders': snoozedReminders,
         'link_previews': linkPreviews,
         'relays': relays,
         'relay_delay_ms': relayDelayMs,

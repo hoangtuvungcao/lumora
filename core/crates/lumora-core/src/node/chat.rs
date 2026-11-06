@@ -129,6 +129,8 @@ impl Node {
     // ------------------------------------------------------------ contacts
 
     pub async fn resolve_id(self: &Arc<Self>, id: &str) -> Result<PeerId> {
+        // an "add a friend" link (`lumora://add/<id>`, `https://…/add/<id>?id=<9 digits>`)
+        let id = add_link_target(id).unwrap_or(id);
         if id.trim().starts_with('@') {
             let c = self.resolve_username(id).await?;
             return match c.len() {
@@ -138,7 +140,8 @@ impl Node {
             };
         }
         let digits: String = id.chars().filter(|c| c.is_ascii_digit()).collect();
-        if digits.len() == 9 && id.chars().all(|c| c.is_ascii_digit() || c.is_whitespace()) {
+        // "123 456 789", "123-456-789", "123.456.789" (as people copy or type it)
+        if digits.len() == 9 && id.chars().all(|c| c.is_ascii_digit() || c.is_whitespace() || c == '-' || c == '.') {
             let sid: u32 = digits.parse()?;
             // local contacts first
             for c in self.store.contacts()? {
@@ -557,6 +560,8 @@ impl Node {
                     let ok = self.store.message(target).map(|m| m.conv == conv && m.kind == "text" && !m.deleted).unwrap_or(false);
                     anyhow::ensure!(ok, crate::i18n::user_err("err.cannot_edit"));
                 }
+                // one signed time for here and there (concurrent edits settle by it)
+                let hlc = self.hlc.tick();
                 match &action {
                     // Telegram-style: in 1-1 chats either side may delete any message for both
                     MsgAction::Delete { target } => {
@@ -566,13 +571,12 @@ impl Node {
                         }
                     }
                     MsgAction::ClearHistory { upto_hlc, delete_chat } => self.clear_local_ex(conv, *upto_hlc, *delete_chat, true)?,
-                    _ => self.apply_action(conv, &self.me.clone(), &action)?,
+                    _ => self.apply_action_at(conv, &self.me.clone(), &action, hlc)?,
                 }
                 // older apps saw a plain-text copy: checklist/reminder updates stay on this side
                 if super::tasks::action_is_v2(&action) && !self.peer_speaks_v2(&p) {
                     return Ok(());
                 }
-                let hlc = self.hlc.tick();
                 let sig = self.signer.sign(&action_bytes(&target, &self.me, hlc, &action));
                 let mid: [u8; 16] = crate::crypto::random_bytes();
                 self.deliver(p, mid, PeerMsg::Action { id: target, author: self.me, hlc, action, sig }, true).await;
@@ -599,7 +603,7 @@ impl Node {
     pub(super) fn apply_action_at(&self, conv: &str, actor: &PeerId, action: &MsgAction, hlc: u64) -> Result<()> {
         match action {
             MsgAction::Edit { target, text } => {
-                if self.store.edit_message(target, actor, &json!({"text": text}))? {
+                if self.store.edit_message(target, actor, &json!({"text": text}), hlc)? {
                     self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "body": {"text": text}, "edited": true}));
                 }
             }
@@ -612,6 +616,9 @@ impl Node {
             MsgAction::React { target, emoji, on } => {
                 let emoji: String = emoji.chars().take(8).collect();
                 let r = self.store.react(target, actor, &emoji, *on)?;
+                if !r.is_null() && *actor == self.me {
+                    self.store.touch_my_reactions(target); // (merged, not overwritten, by sync)
+                }
                 if !r.is_null() {
                     self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "reactions": r}));
                 }
@@ -894,6 +901,20 @@ impl Node {
     }
 }
 
+/// The ID inside an "add a friend" link — `lumora://add/<id>` or
+/// `https://getlumora.pages.dev/add/<id>?id=<9 digits>` (as QR codes and "Copy link"
+/// make them, app/lib/core/links.dart) — else `None` (the text is an ID itself).
+pub(crate) fn add_link_target(s: &str) -> Option<&str> {
+    let t = s.trim();
+    let lower = t.to_ascii_lowercase();
+    let rest = ["lumora://add/", "https://getlumora.pages.dev/add/", "http://getlumora.pages.dev/add/", "https://www.getlumora.pages.dev/add/"]
+        .iter()
+        .find(|p| lower.starts_with(*p))
+        .map(|p| &t[p.len()..])?;
+    let id = rest.split(['?', '#', '/']).next().unwrap_or("");
+    (!id.is_empty()).then_some(id)
+}
+
 #[cfg(test)]
 mod abuse_tests {
     //! A modified client may send any message, at any rate, from any number of fresh identities.
@@ -1017,5 +1038,24 @@ mod abuse_tests {
         n.on_profile_v2(f, "f".into(), String::new(), String::new(), pic.clone(), pic.clone(), None, String::new()).unwrap();
         assert!(n.store.contact(&f).unwrap().has_avatar && n.store.contact_cover(&f).is_some());
         n.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::add_link_target;
+
+    /// Finding a friend from a shared link (QR / "Copy link") on any device, not only by ID.
+    #[test]
+    fn add_links_name_the_id_inside() {
+        let p = "abcdefghijklmnopqrstuvwxyz234567abcdefghijklmnopqrst";
+        assert_eq!(add_link_target(&format!("lumora://add/{p}")), Some(p));
+        assert_eq!(add_link_target(&format!("  https://getlumora.pages.dev/add/{p}?id=123456789 ")), Some(p));
+        assert_eq!(add_link_target("HTTPS://GETLUMORA.PAGES.DEV/add/123456789"), Some("123456789"));
+        assert_eq!(add_link_target("https://www.getlumora.pages.dev/add/123456789#x"), Some("123456789"));
+        assert_eq!(add_link_target("lumora://add/"), None);
+        assert_eq!(add_link_target("https://evil.example/add/123456789"), None);
+        assert_eq!(add_link_target("123 456 789"), None);
+        assert_eq!(add_link_target("lumora://join/abc"), None);
     }
 }

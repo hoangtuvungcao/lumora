@@ -13,11 +13,13 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../core/api.dart';
 import '../core/file_preview.dart';
 import '../core/preview_builder.dart';
+import '../platform/android_bridge.dart';
 import '../platform/apple_audio.dart';
 import '../platform/apple_services.dart';
 import '../platform/mic_permission.dart';
 import '../core/file_safety.dart';
 import 'group_flood.dart';
+import '../core/text_fold.dart';
 
 // ---------------------------------------------------------------- session
 
@@ -182,6 +184,23 @@ class AvatarStore extends ChangeNotifier {
     }
     if (!_pending.add(key)) return;
     api.groupAvatar(gid).then((b64) {
+      _pending.remove(key);
+      final bytes = _decodeB64(b64);
+      if (!_sameBytes(_cache[key], bytes)) {
+        _cache[key] = bytes;
+        notifyListeners();
+      }
+    }).catchError((_) {
+      _pending.remove(key);
+    });
+  }
+
+  /// A contact's profile changed (`contact` event): a cover already shown is
+  /// fetched again — the old picture stays until the new one is here.
+  void refreshCover(String peer) {
+    final key = 'c:$peer';
+    if (peer.isEmpty || !_cache.containsKey(key) || !_pending.add(key)) return;
+    api.contactCover(peer).then((b64) {
       _pending.remove(key);
       final bytes = _decodeB64(b64);
       if (!_sameBytes(_cache[key], bytes)) {
@@ -645,6 +664,8 @@ class ChatStore extends ChangeNotifier {
   @override
   void dispose() {
     _expiryTimer?.cancel();
+    _reloadTimer?.cancel();
+    _refreshTimer?.cancel();
     for (final t in _typingExpiry.values) {
       t.cancel();
     }
@@ -696,7 +717,8 @@ class ChatStore extends ChangeNotifier {
   }
 
   List<Conversation> filtered(ChatFilter f, String q, {bool archived = false}) {
-    final ql = q.trim().toLowerCase();
+    // (case and diacritics ignored: "tieng viet" finds "Tiếng Việt")
+    final ql = foldText(q.trim());
     return sorted.where((c) {
       if (c.id.contains('#')) return false; // channel conversations live in spaces
       final community = c.isCommunity || communityConvs.contains(c.id);
@@ -705,7 +727,7 @@ class ChatStore extends ChangeNotifier {
       if (f == ChatFilter.groups && (!c.isGroup || community)) return false;
       if (f == ChatFilter.communities && !community) return false;
       if (f == ChatFilter.unread && c.unread == 0) return false;
-      if (ql.isNotEmpty && !c.title.toLowerCase().contains(ql) && !c.lastText.toLowerCase().contains(ql)) return false;
+      if (ql.isNotEmpty && !foldText(c.title).contains(ql) && !foldText(c.lastText).contains(ql)) return false;
       return true;
     }).toList();
   }
@@ -716,19 +738,73 @@ class ChatStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  void onConversation(Map<String, dynamic> j) {
-    var c = Conversation.fromJson(j);
+  /// A contact's shown name changed: the direct chat with them follows.
+  void onContactNamed(String peer, String name) {
+    final c = convs['d:$peer'];
+    if (c == null || name.isEmpty || c.title == name) return;
+    _conv(c.copyWith(title: name));
+  }
+
+  void onConversation(Map<String, dynamic> j) =>
+      _conv(_merged(Conversation.fromJson(j), hasLastMine: j.containsKey('last_mine'), hasMentions: j.containsKey('mentions')));
+
+  /// [c] (a row from the core) over what this app already knows of it.
+  Conversation _merged(Conversation c, {required bool hasLastMine, required bool hasMentions}) {
     final old = convs[c.id];
     // Core may omit previews; keep what we derived from message events.
     if (old != null && c.lastText.isEmpty && c.lastTs <= old.lastTs) {
       c = c.copyWith(lastText: old.lastText, lastMine: old.lastMine, lastTs: old.lastTs);
-    } else if (old != null && !j.containsKey('last_mine') && c.lastText == old.lastText) {
+    } else if (old != null && !hasLastMine && c.lastText == old.lastText) {
       c = c.copyWith(lastMine: old.lastMine); // same last message: who wrote it is known here
     }
     // The core's conversation rows carry no `mentions` (it sends `mention` events, then
     // the row): keep the count until the chat is read.
-    if (old != null && !j.containsKey('mentions') && c.unread > 0 && old.mentions > 0) c = c.copyWith(mentions: old.mentions);
-    _conv(c);
+    if (old != null && !hasMentions && c.unread > 0 && old.mentions > 0) c = c.copyWith(mentions: old.mentions);
+    return c;
+  }
+
+  /// An account setting changed on another of my devices (`settings` event):
+  /// what this store shows of it follows at once.
+  void onSettingChanged(String key) {
+    final dot = key.indexOf('.');
+    if (dot < 0) return;
+    final conv = key.substring(dot + 1);
+    switch (key.substring(0, dot)) {
+      case 'wallpaper':
+        // (only what was already read: other chats read theirs when opened)
+        if (wallpapers.containsKey(conv)) unawaited(_reloadWallpaper(conv));
+      case 'retention':
+        if (retention.containsKey(conv)) unawaited(loadRetention(conv));
+      case 'mute_until':
+        _refreshConvsSoon();
+    }
+  }
+
+  Future<void> _reloadWallpaper(String conv) async {
+    try {
+      final w = await api.getWallpaper(conv);
+      if (wallpapers.containsKey(conv) && wallpapers[conv] == w) return;
+      wallpapers[conv] = w;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Timer? _refreshTimer;
+
+  /// Re-reads the conversation rows (muted, pinned, archived…) without
+  /// dropping what this app derived itself (previews, mention counts).
+  void _refreshConvsSoon() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final list = await api.conversations();
+        for (final c in list) {
+          convs[c.id] = _merged(c, hasLastMine: false, hasMentions: false);
+        }
+        _sorted = null;
+        notifyListeners();
+      } catch (_) {}
+    });
   }
 
   /// Fills empty previews from the latest message (real core leaves
@@ -754,8 +830,20 @@ class ChatStore extends ChangeNotifier {
     final c = convs[m.conv];
     if (c != null && m.ts >= c.lastTs) {
       _conv(c.copyWith(lastTs: m.ts, lastText: _previewOf(m), lastMine: m.mine));
+    } else if (c == null) {
+      // A chat we don't list (new, or deleted earlier and now written to again): fetch the
+      // list so it comes back at the top instead of staying invisible.
+      _reloadSoon();
     }
     if (openConv == m.conv && !m.mine) api.markRead(m.conv);
+  }
+
+  Timer? _reloadTimer;
+  void _reloadSoon() {
+    _reloadTimer ??= Timer(const Duration(milliseconds: 150), () {
+      _reloadTimer = null;
+      load().catchError((_) {});
+    });
   }
 
   String _previewOf(Message m) {
@@ -1235,6 +1323,15 @@ class CallStore extends ChangeNotifier {
   /// peer → screen-share stream (video_stream kind "screen").
   final Map<String, int> screenStreams = {};
 
+  /// The screen shares to show: a share that stopped keeps its decoder (and
+  /// stream id) in the core, which says so only through `call_peer` (screen:
+  /// false) — hidden, or everyone keeps looking at its last frame; it comes
+  /// back when that participant shares again.
+  Map<String, int> get liveScreenStreams => {
+        for (final e in screenStreams.entries)
+          if (peerMedia[e.key]?.screen != false) e.key: e.value,
+      };
+
   /// Set by `camera_needed` / `camera_released` (cleared when the call ends):
   /// `CameraBridge` runs the native camera (Android, iOS, macOS, Windows),
   /// which pushes frames into the core via lumora_push_camera_yuv.
@@ -1502,12 +1599,31 @@ class CallStore extends ChangeNotifier {
   }
 
   Future<void> toggle({bool? mic, bool? cam, bool? screen}) async {
+    final asked = call;
+    if (screen == true && asked != null && AndroidBridge.isAndroid) {
+      // Android: the core only gets screen frames from MediaProjection —
+      // consent (and capture) first, else the others see nothing.
+      final bridge = AndroidBridge.instance;
+      bridge.onCallShareStopped = (id) {
+        if (call?.callId == id && this.screen) {
+          this.screen = false;
+          notifyListeners();
+        }
+      };
+      final ok = await bridge.startCallShare(asked.callId);
+      if (!ok || call?.callId != asked.callId) {
+        if (ok) await bridge.stopCallShare(asked.callId);
+        if (mic == null && cam == null) return;
+        screen = null;
+      }
+    }
     if (mic != null) this.mic = mic;
     if (cam != null) this.cam = cam;
     if (screen != null) this.screen = screen;
     notifyListeners();
     final c = call;
     if (c != null) await api.callSet(c.callId, mic: mic, cam: cam, screen: screen);
+    if (screen == false && c != null) await AndroidBridge.instance.stopCallShare(c.callId);
   }
 
   void setMinimized(bool v) {
@@ -1935,6 +2051,22 @@ class StoryStore extends ChangeNotifier {
     return images[id];
   }
 
+  /// Take my story down everywhere.
+  Future<void> delete(String id) async {
+    await api.storyDelete(id);
+    onRemoved(id);
+  }
+
+  /// `story_removed`: the author took it down (here or elsewhere).
+  void onRemoved(String id) {
+    images.remove(id);
+    if (!stories.any((s) => s.id == id)) return;
+    stories = stories.where((s) => s.id != id).toList();
+    notifyListeners();
+  }
+
+  Future<List<Story>> archive(String me) => api.storyArchive(me);
+
   void seen(String id) {
     final i = stories.indexWhere((s) => s.id == id);
     if (i < 0 || stories[i].seen) return;
@@ -1948,10 +2080,17 @@ class StoryStore extends ChangeNotifier {
     await load();
   }
 
+  /// The core's `story` event only names the story (id + author); the text, picture flag and
+  /// background come from `stories`, so reload instead of building a half-empty Story from it
+  /// (that showed photo stories as the default background).
   void onStory(Map<String, dynamic> j) {
-    final s = Story.fromJson(j);
-    stories = [...stories.where((x) => x.id != s.id), s];
-    notifyListeners();
+    if (j.containsKey('has_image') && j.containsKey('created')) {
+      final s = Story.fromJson(j);
+      stories = [...stories.where((x) => x.id != s.id), s];
+      notifyListeners();
+      return;
+    }
+    load();
   }
 }
 
@@ -2245,6 +2384,10 @@ class EventHub {
     _sub ??= api.events.listen(_on);
   }
 
+  /// Handles an event raised by the app itself as if the core sent it
+  /// (a snoozed reminder firing again, see reminder_snooze.dart).
+  void inject(String name, Map<String, dynamic> data) => _on({'event': name, 'data': data});
+
   Future<void> loadAll() async {
     await Future.wait<void>([
       contacts.load(),
@@ -2278,6 +2421,12 @@ class EventHub {
         contacts.onPresence(d);
       case 'contact':
         contacts.onContact(d);
+        // a nickname / name changed (here, or on another of my devices): the
+        // chat with them is titled the same at once
+        final cpeer = d['peer']?.toString() ?? '';
+        final named = contacts[cpeer];
+        if (named != null && (d.containsKey('alias') || d.containsKey('name'))) chat.onContactNamed(cpeer, named.displayName);
+        avatars.refreshCover(cpeer);
         if (d['has_avatar'] == true) {
           avatars.invalidate(d['peer']?.toString() ?? '');
         } else if (d['has_avatar'] == false) {
@@ -2310,6 +2459,8 @@ class EventHub {
         calls.cameraRequested.value = true;
       case 'camera_released':
         calls.cameraRequested.value = false;
+      case 'story_removed':
+        stories.onRemoved(d['id']?.toString() ?? '');
       case 'story':
         if (d.containsKey('created')) {
           stories.onStory(d);
@@ -2388,10 +2539,17 @@ class EventHub {
         final gconv = d['conv']?.toString() ?? (d['gid'] != null ? 'g:${d['gid']}' : '');
         if (gconv.isNotEmpty) chat.onGroupRemoved(gconv, left: d['left'] == true);
       case 'profile':
-        // (name / bio / avatar: reloaded by AppServices._onDeviceEvent) — the
-        // cached picture of my own avatar goes with it
+        // (name / bio / avatar / cover: reloaded by AppServices._onDeviceEvent) —
+        // the cached pictures of my own avatar and cover go with it
         final mine = session.me?.peer;
-        if (mine != null && (d['key']?.toString() ?? '').contains('avatar')) avatars.invalidate(mine);
+        final pkey = d['key']?.toString() ?? '';
+        if (mine != null && pkey.contains('avatar')) avatars.invalidate(mine);
+        if (mine != null && pkey.contains('cover')) avatars.refreshCover(mine);
+      case 'settings':
+        // an account setting changed on another of my devices
+        final skey = d['key']?.toString() ?? '';
+        chat.onSettingChanged(skey);
+        if (skey == 'storage.policy' && net.storage != null) unawaited(net.loadStorage().catchError((_) {}));
       case 'scheduled_failed':
         // (the chat gets its own line from the core; this is the bell)
         notices.add(Notice(kind: NoticeKind.scheduledFailed, title: d['text']?.toString() ?? '', body: d['error']?.toString() ?? '', conv: d['conv']?.toString()));

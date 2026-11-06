@@ -23,7 +23,10 @@ use serde_bytes::ByteBuf;
 const HAVE_BATCH: usize = 500;
 const ITEMS_BYTES: usize = 1024 * 1024;
 const BATCH_BYTES: usize = 256 * 1024;
-const ROUND_TIMEOUT: Duration = Duration::from_secs(30);
+/// A round whose answer got lost (its connection was replaced, a sibling restarted) is
+/// started again after this long — rounds are idempotent, and a long wait here was a
+/// device that "didn't sync until the app was reopened".
+const ROUND_TIMEOUT: Duration = Duration::from_secs(5);
 /// A history / bootstrap stream that broke off is asked for again after this long.
 const HISTORY_RETRY: Duration = Duration::from_secs(5);
 
@@ -110,6 +113,7 @@ impl Node {
             ext::GROUP_KEY_REQUEST => self.on_group_key_request(pc.account, &body).await?,
             ext::GROUP_REPORT => self.on_group_report(pc.account, &body)?,
             ext::GROUP_REPORT_DONE if pc.own => self.on_group_report_done(pc.account, &body)?,
+            ext::STORY_DELETE => self.on_story_delete(pc.account, &body)?,
             ext::LINK_HELLO..=ext::LINK_REJECT => self.on_link_ext(pc, kind, &body).await?,
             ext::SELF_SYNC if pc.own => self.on_self_sync(pc, &body)?,
             ext::HISTORY_REQUEST if pc.own => self.on_history_request(pc, &body)?,
@@ -142,6 +146,8 @@ impl Node {
             self.on_group_report(from, &body)?;
         } else if kind == ext::GROUP_REPORT_DONE && from == self.me {
             self.on_group_report_done(from, &body)?;
+        } else if kind == ext::STORY_DELETE {
+            self.on_story_delete(from, &body)?;
         } else if kind == ext::LINK_PRE {
             // multi-device link pre-authentication (before any address is revealed)
             self.on_link_pre_mail(dev, &body).await?;
@@ -282,9 +288,15 @@ impl Node {
             Imported::Nothing | Imported::Stored => {}
             Imported::MsgNew { conv, id } => {
                 if !live {
+                    // (history: a reminder still ahead rings here too)
+                    if let Some(m) = self.store.message(&id).filter(|m| m.kind == "reminder") {
+                        self.track_reminder_row(&m);
+                    }
                     return;
                 }
                 if let Some(m) = self.store.message(&id) {
+                    // a reminder set on (or received by) another of my devices rings here too
+                    self.track_reminder_row(&m);
                     // our copy of a friend's file: offered like any received file
                     if (m.kind == "file" || m.kind == "voice") && m.author != self.me.to_base32() {
                         if let (Ok(author), Some(fid)) = (PeerId::from_str_any(&m.author), m.body["file_id"].as_str().and_then(|h| hex::decode(h).ok())) {
@@ -311,6 +323,11 @@ impl Node {
             }
             Imported::MsgUpdated { conv, id } => {
                 if let Some(m) = self.store.message(&id) {
+                    if m.kind == "reminder" && (m.deleted || m.reactions.get("__cancelled").is_some()) {
+                        if let Ok(i) = <[u8; 16]>::try_from(id.as_slice()) {
+                            self.untrack_reminder(&i);
+                        }
+                    }
                     self.emit(
                         "message_update",
                         json!({"conv": conv, "id": m.id, "status": m.status, "edited": m.edited, "deleted": m.deleted,
@@ -319,6 +336,9 @@ impl Node {
                 }
             }
             Imported::MsgPurged { conv, id } => {
+                if let Ok(i) = <[u8; 16]>::try_from(id.as_slice()) {
+                    self.untrack_reminder(&i);
+                }
                 self.emit("message_update", json!({"conv": conv, "id": hex::encode(id), "removed": true}));
                 self.emit_conv(&conv);
             }
@@ -328,8 +348,11 @@ impl Node {
                 }
                 self.emit_conv(&conv);
             }
-            Imported::ConvDeleted { conv } => {
-                let _ = self.clear_local(&conv, i64::MAX as u64, true);
+            Imported::ConvDeleted { conv, upto } => {
+                // up to where the other device deleted it (1.0.x siblings don't say: now) —
+                // never "everything forever", or the chat could never come back
+                let upto = if upto > 0 { upto as u64 } else { self.hlc.tick() };
+                let _ = self.clear_local(&conv, upto, true);
             }
             Imported::Contact { peer } => self.emit_contact(&peer),
             Imported::Kv { key } => {
@@ -345,17 +368,39 @@ impl Node {
                 }
                 if key.starts_with("profile.") {
                     self.emit("profile", json!({"key": key, "name": self.name()}));
+                    // two devices changed the profile at once: friends got both pushes in any
+                    // order — the main device sends them the one the account kept
+                    if live && self.is_primary() && key != "profile.status" {
+                        let _ = self.set_profile(None, None, None, None);
+                    }
                 }
-                // account settings changed on another device (chat locks, BotFather chat…):
-                // let the app refresh at once instead of on the next resume
-                if key.starts_with("privacy.") {
+                // account settings changed on another device (chat locks, BotFather chat and
+                // bots, wallpapers, mute timers, history policy…): let the app refresh at once
+                // instead of on the next resume
+                if !key.starts_with("profile.") {
                     self.emit("settings", json!({"key": key}));
+                }
+                // what the directory says about the account is signed by the account key:
+                // the main device republishes a username / visibility set on another device
+                // now (else strangers found the old one until the daily refresh)
+                if self.is_primary() && live {
+                    match key.as_str() {
+                        "profile.username" => self.publish_username_now(),
+                        "privacy.discoverable" => {
+                            self.publish_directory_now();
+                            self.refresh_nostr_inboxes(false);
+                        }
+                        "profile.name" => self.publish_directory_now(),
+                        _ => {}
+                    }
                 }
                 // a group reported / blocked on another device: hidden and left here too
                 if key == super::groups::reports::BLOCKED_GROUPS_KEY {
                     self.on_blocked_groups_synced();
                 }
             }
+            // my sticker packs changed on another device: the picker reloads
+            Imported::Stickers => self.emit("stickers", json!({})),
             Imported::GroupKey { gid, .. } => {
                 if let Ok(g) = <[u8; 16]>::try_from(gid.as_slice()) {
                     self.retry_pending(g);

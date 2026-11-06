@@ -20,6 +20,7 @@ import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import '../widgets/typing_dots.dart';
+import '../../core/text_fold.dart';
 
 class ChatListPane extends StatefulWidget {
   const ChatListPane({super.key, required this.onOpen, this.mobile = false});
@@ -113,7 +114,7 @@ class _ChatListPaneState extends State<ChatListPane> {
         const SizedBox(height: 6),
         if (!_archived && _q.isEmpty) const StoriesRow(),
         if (_q.isEmpty && lockedList.isNotEmpty) LockedChatsFolder(count: lockedList.length, unread: lockedList.any((c) => c.unread > 0)),
-        if (!_archived && (_filter == ChatFilter.all || _filter == ChatFilter.direct) && (_q.isEmpty || 'botfather'.contains(_q.toLowerCase())))
+        if (!_archived && (_filter == ChatFilter.all || _filter == ChatFilter.direct) && (_q.isEmpty || foldContains('BotFather', _q)))
           _BotFatherTile(onTap: () => widget.onOpen(kBotFatherConv), mobile: widget.mobile),
         if (!_archived && archivedCount > 0 && _q.isEmpty)
           Padding(

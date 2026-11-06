@@ -18,23 +18,42 @@ import '../chats/chat_view.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../../state/app_lock.dart';
+import '../../app.dart' show AppServices;
 
 /// Root navigator, so overlays above it (this banner) can open a chat.
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Desktop system notification (Linux: notify-send, macOS: osascript).
-Future<void> desktopNotify(String title, String body) async {
-  if (kIsWeb) return;
+/// [actions] (id → label; Linux with libnotify ≥ 0.7.9): returns the action
+/// the user clicked, or null. The sound comes from Lumora itself
+/// (state/sound_alerts.dart), not from the notification.
+Future<String?> desktopNotify(String title, String body, {Map<String, String> actions = const {}}) async {
+  if (kIsWeb) return null;
   try {
     if (Platform.isLinux) {
-      await Process.run('notify-send', ['-a', 'Lumora', '-u', 'critical', '-i', 'alarm-symbolic', title, body]);
+      final base = ['-a', 'Lumora', '-u', 'critical', '-i', 'alarm-symbolic'];
+      if (actions.isNotEmpty) {
+        final r = await Process.run('notify-send', [
+          ...base,
+          for (final a in actions.entries) '--action=${a.key}=${a.value}',
+          title,
+          body,
+        ]);
+        if (r.exitCode == 0) {
+          final picked = r.stdout.toString().trim();
+          return actions.containsKey(picked) ? picked : null;
+        }
+        // an older notify-send without --action: a plain notification
+      }
+      await Process.run('notify-send', [...base, title, body]);
     } else if (Platform.isMacOS) {
       String q(String x) => x.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
-      await Process.run('osascript', ['-e', 'display notification "${q(body)}" with title "${q(title)}" sound name "Glass"']);
+      await Process.run('osascript', ['-e', 'display notification "${q(body)}" with title "${q(title)}"']);
     }
   } catch (_) {
     // No notification service: the in-app banner still shows.
   }
+  return null;
 }
 
 class ReminderBannerLayer extends StatefulWidget {
@@ -52,6 +71,22 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
   void initState() {
     super.initState();
     _chat.dueReminders.addListener(_onDue);
+    // "Mở" on an Android reminder notification, a message notification / bubble
+    final sv = _services;
+    sv?.openConvFromOutside = _openConv;
+    final pending = sv?.pendingOpenConv;
+    if (pending != null) {
+      sv!.pendingOpenConv = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openConv(pending));
+    }
+  }
+
+  AppServices? get _services {
+    try {
+      return context.read<AppServices>();
+    } catch (_) {
+      return null; // (widget tests without the app's services)
+    }
   }
 
   @override
@@ -76,7 +111,15 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
         final title = d['title'] == null ? s('reminder') : '${s('reminder')}: ${d['title']}';
         final note = d['note']?.toString() ?? '';
         final hide = settings.hideNotificationContent || settings.lockedChats.contains(d['conv']?.toString());
-        unawaited(desktopNotify(hide ? 'Lumora' : title, hide ? s('reminder_notice_private') : (note.isNotEmpty ? note : s('reminder_its_time'))));
+        unawaited(desktopNotify(
+          hide ? 'Lumora' : title,
+          hide ? s('reminder_notice_private') : (note.isNotEmpty ? note : s('reminder_its_time')),
+          actions: {'snooze': s('reminder_snooze'), 'open': s('reminder_open')},
+        ).then((a) {
+          if (!mounted || !_chat.dueReminders.value.any((x) => x['msg_id']?.toString() == id)) return;
+          if (a == 'snooze') _snooze(d);
+          if (a == 'open') _open(d);
+        }));
       }
     }
   }
@@ -86,13 +129,34 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
     _chat.dismissReminder(id);
   }
 
+  /// "Hoãn 10 phút": away now, back (with its sound) in 10 minutes.
+  void _snooze(Map<String, dynamic> d) {
+    final sv = _services;
+    _dismiss(d['msg_id']?.toString() ?? '');
+    if (sv == null) return;
+    sv.snoozer.snooze(d);
+    toast(context, S.read(context)('reminder_snoozed'));
+  }
+
   void _open(Map<String, dynamic> d) {
     final conv = d['conv']?.toString();
     _dismiss(d['msg_id']?.toString() ?? '');
     if (conv == null) return;
-    context.read<NavStore>().openConv(conv);
+    _openConv(conv);
+  }
+
+  void _openConv(String conv) {
+    if (!mounted) return;
+    final nav = context.read<NavStore>();
     if (!isDesktop(context)) {
+      // already on screen (the same notification tapped twice): nothing to do
+      if (nav.readingConv == conv) return;
+      // one chat page on top of the home screen, never a growing stack
+      appNavigatorKey.currentState?.popUntil((r) => r.isFirst);
+      nav.openConv(conv);
       appNavigatorKey.currentState?.push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: conv)));
+    } else {
+      nav.openConv(conv);
     }
   }
 
@@ -100,6 +164,7 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
     final conv = d['conv']?.toString();
     final id = d['msg_id']?.toString() ?? '';
     _dismiss(id);
+    _services?.snoozer.cancel(id);
     if (conv == null) return;
     try {
       await context.read<LumoraApi>().reminderSeen(conv, id);
@@ -135,6 +200,7 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
                         more: list.length - 1,
                         onOpen: () => _open(d),
                         onSeen: () => _seen(d),
+                        onSnooze: () => _snooze(d),
                         onClose: () => _dismiss(d['msg_id']?.toString() ?? ''),
                       ),
               ),
@@ -147,11 +213,12 @@ class _ReminderBannerLayerState extends State<ReminderBannerLayer> {
 }
 
 class _Banner extends StatefulWidget {
-  const _Banner({super.key, required this.data, required this.more, required this.onOpen, required this.onSeen, required this.onClose});
+  const _Banner({super.key, required this.data, required this.more, required this.onOpen, required this.onSeen, required this.onSnooze, required this.onClose});
   final Map<String, dynamic> data;
   final int more;
   final VoidCallback onOpen;
   final VoidCallback onSeen;
+  final VoidCallback onSnooze;
   final VoidCallback onClose;
   @override
   State<_Banner> createState() => _BannerState();
@@ -256,6 +323,12 @@ class _BannerState extends State<_Banner> with SingleTickerProviderStateMixin {
                         onPressed: widget.onSeen,
                         icon: const Icon(AppIcons.check, size: 16),
                         label: Text(s('rem_seen')),
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: widget.onSnooze,
+                        icon: const Icon(AppIcons.reminder, size: 16),
+                        label: Text(s('reminder_snooze')),
                       ),
                       TextButton(
                         style: TextButton.styleFrom(visualDensity: VisualDensity.compact),

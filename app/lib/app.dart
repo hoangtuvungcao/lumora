@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -9,13 +10,17 @@ import 'core/api.dart';
 import 'platform/android_bridge.dart';
 import 'platform/apple_services.dart';
 import 'platform/camera_bridge.dart';
+import 'platform/tones.dart';
 import 'state/app_lock.dart';
 import 'state/data_rescue.dart';
 import 'state/devices_store.dart';
 import 'state/moderation.dart';
 import 'state/settings.dart';
+import 'state/reminder_snooze.dart';
+import 'state/sound_alerts.dart';
 import 'state/stores.dart';
 import 'ui/calls/call_layer.dart';
+import 'ui/chats/stickers.dart' show stickersChanged;
 import 'ui/devices/history_sync.dart';
 import 'ui/devices/signed_out.dart';
 import 'ui/lock/app_lock_screen.dart';
@@ -67,10 +72,33 @@ class AppServices {
       nav: nav,
     );
     hub.listeners.add(devices.onEvent);
+    // ringtone / ringback / message ping (the in-memory demo stays quiet)
+    sounds = SoundAlerts(calls: calls, chat: chat, nav: nav, settings: settings, player: api.isMock ? const SilentTonePlayer() : null);
+    hub.listeners.add(sounds.onEvent);
     // reports / blocked groups / hidden members (synced between my devices)
     hub.listeners.add(moderation.onEvent);
     hub.loaders.add(moderation.load);
     hub.isHiddenMember = moderation.isHidden;
+    sounds.isHiddenMember = moderation.isHidden;
+    sounds.attach();
+    // "Hoãn 10 phút": fired again as a reminder_due of our own
+    snoozer = ReminderSnoozer(
+      settings: settings,
+      fire: (d) {
+        hub.inject('reminder_due', d);
+        AndroidBridge.instance.onLocalEvent({...d, 'event': 'reminder_due'});
+      },
+    )..restore();
+    AndroidBridge.onReminderAction = (action, d) {
+      if (action == 'snooze') {
+        chat.dismissReminder(d['msg_id']?.toString() ?? '');
+        snoozer.snooze(d);
+      } else if (action == 'open') {
+        final conv = d['conv']?.toString();
+        chat.dismissReminder(d['msg_id']?.toString() ?? '');
+        if (conv != null && conv.isNotEmpty) openConvFromOutside?.call(conv);
+      }
+    };
     moderation.onReport = (r) => notices.add(Notice(kind: NoticeKind.report, title: r.groupName, body: r.excerpt.isNotEmpty ? r.excerpt : r.memberName, conv: r.conv, peer: r.member, ref: r.id));
     moderation.onHandled = notices.removeRefs;
     moderation.onGroupBlocked = (gid) {
@@ -100,6 +128,39 @@ class AppServices {
   late final AppLock appLock;
   AppLifecycleListener? _life;
 
+  /// Call ringtone / ringback and the new-message ping (state/sound_alerts.dart).
+  late final SoundAlerts sounds;
+
+  /// Snoozed reminders (state/reminder_snooze.dart).
+  late final ReminderSnoozer snoozer;
+
+  /// Opens a chat from outside the widget tree (a notification action); set
+  /// by the shell (reminder_banner.dart).
+  void Function(String conv)? openConvFromOutside;
+
+  /// A chat to open once the shell is up (a notification tapped while
+  /// Lumora was starting or locked); taken by the shell.
+  String? pendingOpenConv;
+
+  /// Answer / Decline on the Android incoming-call notification: only for
+  /// the call it was posted for, while that call still rings.
+  void onCallNotificationAction(String action, String callId) {
+    final c = calls.call;
+    if (c == null || c.phase != CallPhase.incoming) return;
+    if (callId.isNotEmpty && callId != c.callId) return;
+    unawaited(calls.answer(action == 'answer'));
+  }
+
+  /// A message notification, its bubble or a launcher shortcut was tapped.
+  void openConvFromNotification(String conv) {
+    final open = openConvFromOutside;
+    if (open != null && session.phase == SessionPhase.ready) {
+      open(conv);
+    } else {
+      pendingOpenConv = conv;
+    }
+  }
+
   void _readVisible() {
     final c = nav.readingConv;
     if (c != null && (chat.convs[c]?.unread ?? 0) > 0) chat.markRead(c);
@@ -116,8 +177,20 @@ class AppServices {
   void _syncPrivacy() {
     AndroidBridge.notificationsOn = settings.notifications;
     AndroidBridge.hideContent = settings.hideNotificationContent;
+    AndroidBridge.callSound = settings.callRingtone;
+    AndroidBridge.messageSound = settings.messageSound;
+    AndroidBridge.vibrate = settings.vibrate;
+    AndroidBridge.reminderSound = settings.reminderSound;
+    AndroidBridge.mentionsOnly = settings.mentionsOnlyChats.toSet();
+    AppleServices.reminderAlerts = settings.notifications && settings.reminderSound;
+    AppleServices.language = settings.locale;
+    AppleServices.snoozedReminders = () => settings.snoozedReminders;
     AndroidBridge.lockedConvs = settings.lockedChats.toSet();
     AppleServices.lockedConvs = settings.lockedChats.toSet(); // CallKit / iOS notifications: no name
+    AndroidBridge.bubbles = settings.chatBubbles;
+    AndroidBridge.readingConv = () => nav.readingConv;
+    AndroidBridge.onOpenConv = openConvFromNotification;
+    AndroidBridge.onCallAction = onCallNotificationAction;
     AndroidBridge.isMuted = (c) => chat.convs[c]?.muted ?? false;
     AndroidBridge.convTitle = (c) => chat.convs[c]?.title;
     // Notifications in the app's language, not the phone's (no-op if unchanged).
@@ -160,12 +233,16 @@ class AppServices {
   void dispose() {
     _loadRetry?.cancel();
     _historyReload?.cancel();
+    _meReload?.cancel();
+    _adoptSoon?.cancel();
     settings.removeListener(_syncPrivacy);
     _life?.dispose();
     appLock.removeListener(_readVisible);
     remote.stopClipboardSync();
     appLock.detach();
     camera.dispose();
+    sounds.dispose();
+    snoozer.dispose();
     hub.dispose();
     chat.dispose();
     devices.dispose();
@@ -185,7 +262,7 @@ class AppServices {
     // Before anything is created: a half-made identity left by a crash or
     // a forced close is wiped at the next launch (see [boot]).
     _markOnboarding();
-    await unlock(null, extra: const {'link_pending': true}, enter: false);
+    await unlock(null, extra: const {'link_pending': true}, enter: false, create: true);
     linkCoreRunning = true;
   }
 
@@ -224,11 +301,50 @@ class AppServices {
     }
   }
 
+  /// A signed-out account the core kept aside when this new one was made
+  /// (`<data>.signed-out-<time>`): listed with the other kept folders, so it
+  /// can be opened again (Settings › data kept aside).
+  void _rememberSignedOutData() {
+    if (api.isMock || dataDir.isEmpty) return;
+    try {
+      final dir = Directory(dataDir);
+      final base = dir.uri.pathSegments.where((x) => x.isNotEmpty).last;
+      final found = [
+        for (final e in dir.parent.listSync())
+          if (e is Directory && e.uri.pathSegments.where((x) => x.isNotEmpty).last.startsWith('$base.signed-out-')) e.path,
+      ];
+      final add = found.where((p) => !settings.asideData.contains(p)).toList();
+      if (add.isNotEmpty) settings.update((s) => s.asideData = [...add, ...s.asideData]);
+    } catch (_) {}
+  }
+
+  /// Like [_wipeHalfMade], but keeps the files in `<data>.unfinished-<time>`.
+  void _setAsideHalfMade() {
+    if (api.isMock || dataDir.isEmpty) return;
+    final sep = Platform.pathSeparator;
+    final present = [
+      for (final f in ['keystore.json', 'lumora.db', 'lumora.db-wal', 'lumora.db-shm'])
+        if (File('$dataDir$sep$f').existsSync()) f,
+    ];
+    if (present.isEmpty) return;
+    try {
+      final aside = Directory('$dataDir.unfinished-${DataRescue.stamp(DateTime.now())}')..createSync(recursive: true);
+      for (final f in present) {
+        File('$dataDir$sep$f').renameSync('${aside.path}$sep$f');
+      }
+      settings.asideData = [aside.path, ...settings.asideData];
+    } catch (_) {
+      // could not keep it: leave everything in place rather than delete
+    }
+  }
+
   /// At launch: an onboarding that never finished left a half-made identity.
   void _cleanUnfinishedOnboarding() {
     final f = _onboardingMarker;
     if (f == null || !f.existsSync()) return;
-    _wipeHalfMade();
+    // Moved aside, not deleted: if the marker was ever left behind by a
+    // finished account, nothing is lost (it can be opened again).
+    _setAsideHalfMade();
     _clearOnboardingMarker();
     settings.onboarded = false;
     settings.hasPassphrase = false;
@@ -263,9 +379,26 @@ class AppServices {
       // device (it starts before the copy arrives) or edited on another device
       _reloadProfile();
     } else if (name == 'link_state' && d['state'] == 'state_synced') {
-      // the account state arrived on this new device: name, avatar, devices
+      // the account state arrived on this new device: name, avatar, devices,
+      // chats and contacts, privacy switches, sticker packs
       _reloadProfile();
       unawaited(devices.load().catchError((_) {}));
+      unawaited(hub.loadAll().catchError((_) {}));
+      unawaited(_adoptCorePrivacy());
+      stickersChanged();
+    } else if (name == 'devices') {
+      // a device joined / left / became the main one: "this device is the
+      // main one" and the like follow (the list itself: DevicesStore)
+      _meReload?.cancel();
+      _meReload = Timer(const Duration(milliseconds: 300), () => unawaited(session.reloadMe().catchError((_) {})));
+    } else if (name == 'stickers') {
+      // my sticker packs changed on another device (or a sticker image arrived)
+      stickersChanged();
+    } else if (name == 'settings' && _coreSyncedKeys.containsKey(d['key'])) {
+      // a privacy switch flipped on another device: Settings shows the
+      // account's value (and never pushes the old one back)
+      _adoptSoon?.cancel();
+      _adoptSoon = Timer(const Duration(milliseconds: 200), () => unawaited(_adoptCorePrivacy()));
     } else if (name == 'history_sync') {
       // older messages were imported without `message` events: chats that are
       // open read them (at most every 2 s while copying, and once when done)
@@ -277,6 +410,42 @@ class AppServices {
   }
 
   Timer? _historyReload;
+  Timer? _meReload;
+  Timer? _adoptSoon;
+
+  /// Account settings (`settings` event key) the app keeps a copy of, and
+  /// their `settings_get` name.
+  static const _coreSyncedKeys = {
+    'privacy.read_receipts': 'read_receipts',
+    'privacy.typing': 'typing',
+    'privacy.store_forward': 'store_forward',
+  };
+
+  Future<void> _adoptCorePrivacy() async {
+    final Map<String, dynamic> core;
+    try {
+      core = await api.settingsGet();
+    } catch (_) {
+      return;
+    }
+    bool? b(String k) => core[k] is bool ? core[k] as bool : null;
+    final rr = b('read_receipts'), ty = b('typing'), sf = b('store_forward');
+    if ((rr ?? settings.readReceipts) == settings.readReceipts && (ty ?? settings.typingIndicators) == settings.typingIndicators && (sf ?? settings.storeForward) == settings.storeForward) {
+      return;
+    }
+    // the core has these already: nothing to push back (no echo to the other device)
+    _coreSettings = {
+      ..._coreSettings,
+      'read_receipts': ?rr,
+      'typing': ?ty,
+      'store_forward': ?sf,
+    };
+    settings.update((s) {
+      s.readReceipts = rr ?? s.readReceipts;
+      s.typingIndicators = ty ?? s.typingIndicators;
+      s.storeForward = sf ?? s.storeForward;
+    });
+  }
 
   void _reloadProfile() {
     unawaited(session.reloadMe().catchError((_) {}));
@@ -348,6 +517,21 @@ class AppServices {
     }
     // "I already use Lumora on another device" was not finished: go on with it.
     if (settings.linkPending) settings.onboarded = false;
+    // Signed out of the account while Lumora was closed or in the background
+    // (the core leaves a marker; it is applied only when a new account is
+    // made). Say so instead of asking for the password: unlocking would
+    // otherwise look like the account had vanished.
+    final out = pendingSignOut(dataDir);
+    if (out != null) {
+      settings.update((s) {
+        s.onboarded = false;
+        s.hasPassphrase = false;
+        s.linkPending = false;
+      });
+      session.setPhase(SessionPhase.onboarding);
+      devices.markSignedOut(out);
+      return;
+    }
     if (!settings.onboarded) {
       session.setPhase(SessionPhase.onboarding);
     } else if (settings.hasPassphrase) {
@@ -363,13 +547,35 @@ class AppServices {
     }
   }
 
+  /// The core's sign-out marker in [dataDir] (`device_reset.json`, see
+  /// core node/revoke.rs), or null.
+  static DeviceSignOut? pendingSignOut(String dataDir) {
+    if (dataDir.isEmpty) return null;
+    try {
+      final f = File('$dataDir${Platform.pathSeparator}device_reset.json');
+      if (!f.existsSync()) return null;
+      // (an older or damaged marker: the core keeps the data aside, see node/revoke.rs)
+      Map<String, dynamic> m = const {};
+      try {
+        final j = jsonDecode(f.readAsStringSync());
+        if (j is Map) m = j.cast<String, dynamic>();
+      } catch (_) {}
+      final wipe = m['wipe_media'] == true;
+      return DeviceSignOut(bySelf: m['by_self'] == true, wipe: wipe, kept: m['keep'] != false && !wipe);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Starts the core (throws [ApiException] on wrong passphrase etc.).
-  Future<void> unlock(String? passphrase, {Map<String, dynamic> extra = const {}, bool enter = true}) async {
+  /// Without [create] it only opens the account that already exists here
+  /// (`open_existing`): the core never makes a new identity on this path.
+  Future<void> unlock(String? passphrase, {Map<String, dynamic> extra = const {}, bool enter = true, bool create = false}) async {
     hub.attach();
     // Don't show the home screen yet: the lock state (PIN, lock switch,
     // locked chats) is read from the core first, so a tampered settings file
     // can't flash chats before the lock engages.
-    await session.start({...settings.coreConfig(dataDir: dataDir, passphrase: passphrase), ...extra}, enter: false);
+    await session.start({...settings.coreConfig(dataDir: dataDir, passphrase: passphrase), if (!create) 'open_existing': true, ...extra}, enter: false);
     // the PIN hash lives in the core's encrypted database: read it now
     await appLock.loadSecrets();
     // The passphrase was just typed: don't ask for the PIN right after it.
@@ -524,6 +730,7 @@ class AppServices {
           if (restoreBackup != null) 'restore_backup': [restoreBackup.$1, restoreBackup.$2],
         },
         enter: enter,
+        create: true,
       );
     } catch (_) {
       // A wrong password / phrase / file: nothing half-made stays behind.
@@ -546,6 +753,7 @@ class AppServices {
       }
     }
     _clearOnboardingMarker();
+    _rememberSignedOutData();
     settings.update((s) {
       s.onboarded = true;
       // They already hold their phrase — only when it was the phrase that

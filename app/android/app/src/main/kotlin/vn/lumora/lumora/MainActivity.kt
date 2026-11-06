@@ -12,8 +12,6 @@ import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.FlutterEngineCache
-import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONObject
 
@@ -44,15 +42,24 @@ import org.json.JSONObject
  *    getlumora.pages.dev, `lumora://`; see AndroidManifest). `ready` returns
  *    the links that came before Dart listened; later ones arrive as `open`.
  */
-class MainActivity : FlutterActivity() {
+open class MainActivity : FlutterActivity() {
     companion object {
         private const val REQ_PROJECTION = 4711
         private const val REQ_NOTIF = 4712
         private const val REQ_CAMERA = 4713
         private const val REQ_MIC = 4714
         private const val PREFS = "lumora_camera"
-        private const val ENGINE_ID = "lumora_main"
+        const val ENGINE_ID = LumoraEngine.ENGINE_ID
         const val EXTRA_ASK_PROJECTION = "vn.lumora.ASK_PROJECTION"
+        /** Opened from the incoming-call notification (full-screen intent). */
+        const val EXTRA_INCOMING_CALL = "vn.lumora.INCOMING_CALL"
+        /** "Mở" on a reminder notification: the reminder (JSON) whose chat to open. */
+        const val EXTRA_REMINDER_OPEN = "vn.lumora.REMINDER_OPEN"
+        /** "answer": Answer on the incoming-call notification (Dart answers once Lumora is in front). */
+        const val EXTRA_CALL_ACTION = "vn.lumora.CALL_ACTION"
+
+        /** The Activity shown over the lock screen for a ringing call. */
+        private var overLock: MainActivity? = null
         /** Matches the Dart-side consent timeout (AndroidBridge.consentTimeout). */
         private const val CONSENT_TIMEOUT_MS = 60_000L
 
@@ -82,6 +89,29 @@ class MainActivity : FlutterActivity() {
         /** Last `setRecentsHidden` value (app lock on: blank recent-apps preview). */
         @Volatile private var recentsHidden = false
 
+        /** The Activity attached to the engine (MainActivity or a bubble), if any. Main thread. */
+        private var attached: MainActivity? = null
+
+        /** Dart listens on `lumora/links` now: the links that came before it. Main thread. */
+        fun takeQueuedLinks(): ArrayList<String> {
+            linksReady = true
+            val queued = ArrayList(pendingLinks)
+            pendingLinks.clear()
+            return queued
+        }
+
+        fun current(): MainActivity? = attached?.takeIf { !it.isFinishing && !it.isDestroyed }
+
+        fun setSecure(on: Boolean) {
+            secure = on
+            current()?.let { a -> a.runOnUiThread { a.applySecure() } }
+        }
+
+        fun setRecentsHidden(on: Boolean) {
+            recentsHidden = on
+            current()?.let { a -> a.runOnUiThread { a.applyRecents() } }
+        }
+
         /** Links opened before Dart called `lumora/links.ready` (main thread only). */
         private val pendingLinks = mutableListOf<String>()
         /** Dart listens on `lumora/links` (the engine, and so Dart, outlives Activities). */
@@ -89,13 +119,13 @@ class MainActivity : FlutterActivity() {
         private const val LINK_HOST = "getlumora.pages.dev"
     }
 
-    private fun applySecure() {
+    internal fun applySecure() {
         if (secure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     /** Android 13+: no screenshot of the app in the recent-apps switcher. */
-    private fun applyRecents() {
+    internal fun applyRecents() {
         if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(!recentsHidden)
     }
 
@@ -106,16 +136,45 @@ class MainActivity : FlutterActivity() {
      * pump, AndroidBridge that reacts to remote sessions) alive too, so the UI
      * re-opens instantly instead of re-booting against a running core.
      */
-    override fun provideFlutterEngine(context: Context): FlutterEngine {
-        val cache = FlutterEngineCache.getInstance()
-        cache.get(ENGINE_ID)?.let { return it }
-        val engine = FlutterEngine(context.applicationContext)
-        engine.dartExecutor.executeDartEntrypoint(DartExecutor.DartEntrypoint.createDefault())
-        cache.put(ENGINE_ID, engine)
-        return engine
-    }
+    override fun provideFlutterEngine(context: Context): FlutterEngine = LumoraEngine.obtain(context)
 
     override fun shouldDestroyEngineWithHost(): Boolean = false
+
+    /**
+     * Another Activity (a chat bubble, or Lumora itself after a bubble) took
+     * the engine: this one shows nothing until it attaches again, which
+     * [recreate] does the next time it is in front.
+     */
+    private var evicted = false
+
+    override fun detachFromFlutterEngine() {
+        evicted = true
+        if (attached === this) attached = null
+        super.detachFromFlutterEngine()
+    }
+
+    override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
+        super.onTopResumedActivityChanged(isTopResumedActivity)
+        if (isTopResumedActivity && evicted && !isFinishing) {
+            evicted = false
+            recreate()
+        }
+    }
+
+    /** Answer pressed on the incoming-call notification (once). */
+    private fun takeCallAction(intent: Intent?) {
+        val action = intent?.getStringExtra(EXTRA_CALL_ACTION) ?: return
+        intent.removeExtra(EXTRA_CALL_ACTION)
+        Notifier.cancel(applicationContext, "call")
+        LumoraEngine.callAction(action, intent.getStringExtra(CallActions.EXTRA_CALL_ID) ?: "")
+    }
+
+    /** A chat to open from a notification, bubble or launcher shortcut (once). */
+    private fun takeOpenConv(intent: Intent?) {
+        val conv = LumoraEngine.convOf(intent) ?: return
+        intent?.removeExtra(Notifier.EXTRA_CONV)
+        LumoraEngine.openConv(conv)
+    }
 
     private var pendingCamera: MethodChannel.Result? = null
     private val pendingMic = mutableListOf<MethodChannel.Result>()
@@ -140,7 +199,13 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Not on re-creation: the same launch intent would open its link twice.
-        if (savedInstanceState == null) takeLink(intent)
+        if (savedInstanceState == null) {
+            takeLink(intent)
+            takeOpenConv(intent)
+            takeCallAction(intent)
+        }
+        showOverLockIfRinging(intent)
+        takeReminderOpen(intent)
         applySecure()
         applyRecents()
         Lang.get(this) // warm the cache off the notification path
@@ -154,55 +219,12 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         LumoraNative.init(applicationContext)
+        evicted = false
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         registerLinks(messenger)
 
-        MethodChannel(messenger, "lumora/service").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "start" -> { LumoraService.start(applicationContext); result.success(true) }
-                "stop" -> { LumoraService.stop(applicationContext); result.success(true) }
-                "setLanguage" -> {
-                    if (Lang.set(applicationContext, call.argument<String>("lang"))) {
-                        Notifier.ensureChannels(applicationContext)
-                        LumoraService.refresh()
-                    }
-                    result.success(true)
-                }
-                "setCall" -> {
-                    LumoraService.setCall(call.argument<Boolean>("active") ?: false)
-                    result.success(true)
-                }
-                "notify" -> {
-                    Notifier.show(
-                        applicationContext,
-                        call.argument<String>("kind") ?: "message",
-                        call.argument<String>("key") ?: "lumora",
-                        call.argument<String>("title") ?: "Lumora",
-                        call.argument<String>("body") ?: "",
-                    )
-                    result.success(true)
-                }
-                "setSecure" -> {
-                    secure = call.argument<Boolean>("on") ?: false
-                    runOnUiThread { applySecure() }
-                    result.success(true)
-                }
-                "setRecentsHidden" -> {
-                    recentsHidden = call.argument<Boolean>("on") ?: false
-                    runOnUiThread { applyRecents() }
-                    result.success(true)
-                }
-                "clearNotifications" -> { Notifier.cancelAll(applicationContext); result.success(true) }
-                "cancelNotification" -> { Notifier.cancel(applicationContext, call.argument<String>("key") ?: ""); result.success(true) }
-                "info" -> result.success(mapOf(
-                    "sdk" to Build.VERSION.SDK_INT,
-                    "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
-                    "media" to LumoraNative.available,
-                    "service" to LumoraService.running,
-                ))
-                else -> result.notImplemented()
-            }
-        }
+        // `lumora/service` lives with the engine (LumoraEngine): it works without an Activity.
+        attached = this
 
         val screen = MethodChannel(messenger, "lumora/screen")
         ScreenCapture.onStoppedExternally = { screen.invokeMethod("stopped", null) }
@@ -374,10 +396,7 @@ class MainActivity : FlutterActivity() {
         linksChannel = MethodChannel(messenger, "lumora/links").also { ch ->
             ch.setMethodCallHandler { call, result ->
                 if (call.method == "ready") {
-                    linksReady = true
-                    val queued = ArrayList(pendingLinks)
-                    pendingLinks.clear()
-                    result.success(queued)
+                    result.success(takeQueuedLinks())
                 } else {
                     result.notImplemented()
                 }
@@ -389,6 +408,47 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         takeLink(intent)
+        showOverLockIfRinging(intent)
+        takeReminderOpen(intent)
+        takeOpenConv(intent)
+        takeCallAction(intent)
+    }
+
+    /** "Mở" on a reminder notification: Dart opens its chat (once). */
+    private fun takeReminderOpen(intent: Intent?) {
+        val data = intent?.getStringExtra(EXTRA_REMINDER_OPEN) ?: return
+        intent.removeExtra(EXTRA_REMINDER_OPEN)
+        intent.getStringExtra(ReminderActions.EXTRA_KEY)?.let { Notifier.cancel(applicationContext, it) }
+        ReminderActions.toDart("open", data) {}
+    }
+
+    /**
+     * Opened by the incoming-call notification's full-screen intent while the
+     * phone is locked: show the call screen over the lock screen and turn the
+     * screen on — only while the call rings ([CallTones.onRingingChanged]
+     * hides it again; answering then asks to unlock as usual).
+     */
+    private fun showOverLockIfRinging(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_INCOMING_CALL, false) != true || !CallTones.ringing) return
+        setOverLock(true)
+        overLock = this
+        CallTones.onRingingChanged = { on ->
+            if (!on) {
+                overLock?.setOverLock(false)
+                overLock = null
+            }
+        }
+    }
+
+    private fun setOverLock(on: Boolean) {
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(on)
+            setTurnScreenOn(on)
+        } else {
+            @Suppress("DEPRECATION")
+            val flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            if (on) window.addFlags(flags) else window.clearFlags(flags)
+        }
     }
 
     /** A Lumora link from a VIEW intent → Dart (Dart validates it again). */
@@ -424,8 +484,15 @@ class MainActivity : FlutterActivity() {
         super.onPause()
     }
 
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        if (attached === this) attached = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
     override fun onDestroy() {
         if (resumed === this) resumed = null
+        if (attached === this) attached = null
+        if (overLock === this) overLock = null
         super.onDestroy()
     }
 

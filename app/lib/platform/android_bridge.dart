@@ -30,6 +30,7 @@
 //    the foreground service while a call is dialing or connected.
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -58,6 +59,18 @@ class AndroidBridge with WidgetsBindingObserver {
   /// Calls dialing or connected (they use the microphone).
   final Set<String> _liveCalls = {};
 
+  /// The call whose screen share runs the MediaProjection capture (null: none).
+  String? _callShare;
+
+  /// Capture of a call's screen share ended natively (status-bar "stop
+  /// sharing", screen lock, Android revoked it): the call screen turns its
+  /// button off. The core was already told.
+  void Function(String callId)? onCallShareStopped;
+
+  /// Tests: the call whose screen is being shared.
+  @visibleForTesting
+  String? get debugCallShare => _callShare;
+
   /// Tests: pretend to run on Android.
   @visibleForTesting
   static bool? debugIsAndroid;
@@ -81,11 +94,65 @@ class AndroidBridge with WidgetsBindingObserver {
   /// Mirrors Settings: system notifications on/off and whether they may show
   /// who wrote and what (hidden while the app lock is on).
   static bool notificationsOn = true;
-  static bool hideContent = false;
+  static bool get hideContent => _hideContent;
+  static set hideContent(bool v) {
+    if (v && !_hideContent) _forget(null); // names and pictures leave the launcher too
+    _hideContent = v;
+  }
+
+  static bool _hideContent = false;
+
+  /// Settings › Notifications › Chat bubbles (Android 11+): message
+  /// notifications carry a bubble that opens the chat over other apps.
+  static bool bubbles = true;
+
+  /// A notification, bubble or launcher shortcut asks to open this chat
+  /// (wired by AppServices).
+  static void Function(String conv)? onOpenConv;
+
+  /// Answer / Decline on the incoming-call notification: action `answer` |
+  /// `decline` and the call it was posted for (wired by AppServices).
+  static void Function(String action, String callId)? onCallAction;
+
+  /// The chat on screen right now (NavStore.readingConv): its messages are
+  /// not notified; any other chat's are, also while Lumora is in front.
+  static String? Function() readingConv = _none;
+  static String? _none() => null;
+
+  /// Settings › Notifications sounds: the call notification rings with the
+  /// phone's ringtone, message notifications use the default notification
+  /// sound, both vibrate (Notifier.kt picks the matching channel).
+  static bool callSound = true;
+  static bool messageSound = true;
+  static bool reminderSound = true;
+  static bool vibrate = true;
+
+  /// Muted chats that still notify @mentions of me (Settings.mentionsOnlyChats).
+  static Set<String> mentionsOnly = const {};
+
+  /// How long a message notification waits for a read receipt from another of
+  /// my devices (the chat open there) before it is posted.
+  static Duration readGrace = const Duration(milliseconds: 1200);
+
+  /// "Hoãn 10 phút" / "Mở" on a reminder notification (wired by AppServices).
+  static void Function(String action, Map<String, dynamic> reminder)? onReminderAction;
 
   /// Locked chats: their notifications (messages, reminders, calls) never
-  /// show a name or text.
-  static Set<String> lockedConvs = const {};
+  /// show a name or text (and a newly locked chat loses its shortcut/bubble).
+  static Set<String> get lockedConvs => _lockedConvs;
+  static set lockedConvs(Set<String> v) {
+    final added = v.difference(_lockedConvs);
+    _lockedConvs = v;
+    if (added.isNotEmpty) _forget(added.toList());
+  }
+
+  static Set<String> _lockedConvs = const {};
+
+  /// Removes chats' conversation shortcuts, bubbles and notifications (null: all).
+  static void _forget(List<String>? convs) {
+    if (!isAndroid) return;
+    unawaited(_service.invokeMethod('forgetConversations', {'convs': convs}).catchError((_) => null));
+  }
 
   /// Muted chats get no message notifications (calls still ring). Wired by
   /// AppServices to the ChatStore.
@@ -250,6 +317,7 @@ class AndroidBridge with WidgetsBindingObserver {
     await _sub?.cancel();
     _sub = api.events.listen(_onEvent);
     _screen.setMethodCallHandler(_onScreenCall);
+    _service.setMethodCallHandler(_onServiceCall);
     if (!_observing) {
       _observing = true;
       WidgetsBinding.instance.addObserver(this);
@@ -258,6 +326,49 @@ class AndroidBridge with WidgetsBindingObserver {
       await _service.invokeMethod('start');
     } catch (e) {
       debugPrint('Lumora: foreground service: $e');
+    }
+    // A notification / bubble tapped while Lumora was not running yet.
+    try {
+      final conv = await _service.invokeMethod<String>('takeOpenConv');
+      if (conv != null && conv.isNotEmpty) onOpenConv?.call(conv);
+      final call = await _service.invokeMapMethod<String, Object?>('takeCallAction');
+      if (call != null) onCallAction?.call(call['action']?.toString() ?? '', call['callId']?.toString() ?? '');
+    } catch (_) {}
+  }
+
+  // ------------------------------------------------------------ background
+
+  /// Is Lumora exempt from battery optimisation, and which phone maker
+  /// (`xiaomi`, `oppo`, `vivo`, `huawei`, `samsung`, '') — `autostart`: the
+  /// maker has its own autostart screen worth opening. null off Android.
+  static Future<BackgroundStatus?> backgroundStatus() async {
+    if (!isAndroid) return null;
+    try {
+      final m = await _service.invokeMapMethod<String, Object?>('background');
+      if (m == null) return null;
+      return BackgroundStatus(ignoringBattery: m['ignoring'] == true, oem: m['oem']?.toString() ?? '', autostart: m['autostart'] == true);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Android's "let Lumora run in the background" dialog (battery optimisation).
+  static Future<bool> requestIgnoreBattery() async {
+    if (!isAndroid) return false;
+    try {
+      return await _service.invokeMethod<bool>('requestIgnoreBattery') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The phone maker's autostart screen (Xiaomi & co.), else the app's details.
+  static Future<bool> openAutostart() async {
+    if (!isAndroid) return false;
+    try {
+      return await _service.invokeMethod<bool>('openAutostart') ?? false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -271,8 +382,10 @@ class AndroidBridge with WidgetsBindingObserver {
     _api = null;
     _hostSessions.clear();
     _liveCalls.clear();
+    _callShare = null;
     if (!isAndroid) return;
     _screen.setMethodCallHandler(null);
+    _service.setMethodCallHandler(null);
     try {
       await _screen.invokeMethod('stop');
       await _service.invokeMethod('setCall', {'active': false});
@@ -296,6 +409,36 @@ class AndroidBridge with WidgetsBindingObserver {
     try {
       await _input.invokeMethod('openGuide');
     } catch (_) {}
+  }
+
+  /// Screen sharing in a call: on Android the core's capturer only gets
+  /// frames from MediaProjection, so ask for the consent (and start the
+  /// capture) before the core is told. false: refused / no answer / no media
+  /// support — the call must not claim to share a black screen. Elsewhere the
+  /// core captures by itself: always true.
+  Future<bool> startCallShare(String callId) async {
+    if (!isAndroid) return true;
+    if (_callShare == callId) return true;
+    bool ok;
+    try {
+      ok = await _screen.invokeMethod<bool>('start').timeout(consentTimeout) ?? false;
+    } on TimeoutException {
+      await _screen.invokeMethod('cancel').catchError((_) => null);
+      ok = false;
+    } catch (e) {
+      debugPrint('Lumora: call screen share: $e');
+      ok = false;
+    }
+    if (ok) _callShare = callId;
+    return ok;
+  }
+
+  /// The call stopped sharing its screen (or ended): stop the capture unless
+  /// a remote-desktop host session still uses it.
+  Future<void> stopCallShare(String callId) async {
+    if (_callShare != callId) return;
+    _callShare = null;
+    if (_hostSessions.isEmpty && !_asking) await _screen.invokeMethod('stop').catchError((_) => null);
   }
 
   /// Can this build share the screen (core built with media support)?
@@ -341,27 +484,40 @@ class AndroidBridge with WidgetsBindingObserver {
   Future<void> _notifyBackground(Map<String, dynamic> ev) async {
     if (!notificationsOn) return;
     final vi = _vi;
-    String? kind, key, title, body;
+    String? kind, key, title, body, sender, callId;
     switch (ev['event']) {
       case 'message':
         if (ev['mine'] == true || ev['kind'] == 'system') return;
         // "Gửi không âm báo": the sender asked for no sound / notification.
         if (ev['silent'] == true || (ev['meta'] is Map && (ev['meta'] as Map)['silent'] == true)) return;
         final conv = ev['conv']?.toString() ?? '';
+        // An @mention of me: its own channel and sound, and it gets through a
+        // chat muted as "Mentions only".
+        final mention = _mentions.remove(ev['id']?.toString() ?? '') != null;
         // Muted chat (or its community/group, for channel convs "group#channel").
-        if (_muted(conv)) return;
+        if (_muted(conv) && !(mention && _mentionsOnly(conv))) return;
+        // Read on another of my devices right away (its chat was open there):
+        // the read receipt comes within [readGrace] — then no alert here.
+        if (readGrace > Duration.zero) {
+          final arrived = DateTime.now();
+          await Future<void>.delayed(readGrace);
+          final read = _readAt[conv];
+          if (read != null && !read.isBefore(arrived)) return;
+        }
         final b = ev['body'];
         final text = b is Map ? (b['text'] ?? (b['name'] != null ? '${vi ? 'Tệp' : 'File'}: ${b['name']}' : null)) : null;
-        kind = 'message';
+        kind = mention ? 'mention' : 'message';
         key = conv;
         var author = await _nameOf(ev['author']?.toString() ?? '');
         if (author == 'Lumora' && ev['author_name'] is String) author = ev['author_name'] as String; // a group member, not a contact
         title = messageTitle(conv, author);
         body = text?.toString() ?? (vi ? 'Tin nhắn mới' : 'New message');
+        sender = author;
       case 'call':
         if (ev['state'] != 'incoming') return;
         kind = 'call';
         key = 'call';
+        callId = ev['call_id']?.toString();
         title = await _nameOf(ev['from']?.toString() ?? ev['peer']?.toString() ?? '');
         body = ev['video'] == true
             ? (vi ? 'Cuộc gọi video đến' : 'Incoming video call')
@@ -391,24 +547,96 @@ class AndroidBridge with WidgetsBindingObserver {
     // Locked chats: neither messages, their reminders nor calls show a name or text.
     // (`locked` comes from the core: locked on another device of the account)
     final lockedChat = ev['locked'] == true ||
-        (kind == 'message' && lockedConvs.contains(key)) ||
+        ((kind == 'message' || kind == 'mention') && lockedConvs.contains(key)) ||
         ((kind == 'reminder' || kind == 'call') && lockedConvs.contains(ev['conv']?.toString()));
     if (hideContent || lockedChat) {
       // Privacy: never reveal names or message text (app lock / user choice).
       title = 'Lumora';
       body = switch (kind) {
-        'message' => vi ? 'Bạn có tin nhắn mới' : 'You have a new message',
+        'message' || 'mention' => vi ? 'Bạn có tin nhắn mới' : 'You have a new message',
         'call' => vi ? 'Cuộc gọi đến' : 'Incoming call',
         'remote' => vi ? 'Có yêu cầu truy cập từ xa. Mở Lumora để trả lời.' : 'Someone asked for remote access. Open Lumora to answer.',
         'friend' => vi ? 'Bạn có lời mời kết bạn mới' : 'You have a new friend request',
         'reminder' => vi ? 'Bạn có một nhắc hẹn' : 'You have a reminder',
         _ => vi ? 'Bạn có thông báo mới' : 'You have a new notification',
       };
-      if (kind == 'message') key = 'message';
+      if (kind == 'message' || kind == 'mention') key = 'message';
     }
+    // A chat whose content may show: an Android conversation (person, picture,
+    // launcher shortcut) with its bubble; tapping it opens the chat.
+    final chat = (kind == 'message' || kind == 'mention') && !hideContent && !lockedChat && key.isNotEmpty && key != 'message'
+        ? await conversationArgs(key, sender ?? '', author: ev['author']?.toString() ?? '', ts: ev['ts'])
+        : const <String, Object?>{};
     try {
-      await _service.invokeMethod('notify', {'kind': kind, 'key': key, 'title': title, 'body': body});
+      await _service.invokeMethod('notify', {
+        'kind': kind,
+        'key': key,
+        'title': title,
+        'body': body,
+        ...soundArgs(kind),
+        ...chat,
+        // Answer / Decline buttons hand it back (callAction)
+        'callId': ?callId,
+        // the "Hoãn 10 phút" / "Mở" actions hand this back (reminderAction)
+        if (kind == 'reminder') 'reminder': jsonEncode({for (final e in ev.entries) if (e.key != 'event') e.key: e.value}),
+      });
     } catch (_) {}
+  }
+
+  /// The `notify` arguments that make a message notification an Android
+  /// conversation: the chat id (to open it), who wrote, the chat's name (a
+  /// group's title), its picture and whether it may bubble.
+  @visibleForTesting
+  Future<Map<String, Object?>> conversationArgs(String conv, String sender, {String author = '', Object? ts}) async {
+    final group = conv.startsWith('g:');
+    final avatar = await _avatar(group ? conv : author);
+    return {
+      'conv': conv,
+      'sender': sender,
+      'convTitle': group ? (convTitle(conv) ?? '') : sender,
+      'group': group,
+      'avatar': ?avatar,
+      'bubble': bubbles,
+      if (ts is num && ts > 0) 'ts': ts.toInt(),
+    };
+  }
+
+  /// Pictures for notifications: peer or `g:<gid>` → bytes (null: none), for a while.
+  final Map<String, (DateTime, Uint8List?)> _avatars = {};
+
+  Future<Uint8List?> _avatar(String id) async {
+    final api = _api;
+    if (id.isEmpty || api == null) return null;
+    final hit = _avatars[id];
+    if (hit != null && DateTime.now().difference(hit.$1) < const Duration(minutes: 10)) return hit.$2;
+    Uint8List? bytes;
+    try {
+      final b64 = await (id.startsWith('g:') ? api.groupAvatar(id.substring(2)) : api.contactAvatar(id)).timeout(const Duration(seconds: 2));
+      if (b64 != null && b64.isNotEmpty) bytes = base64Decode(b64.contains(',') ? b64.substring(b64.indexOf(',') + 1) : b64);
+    } catch (_) {}
+    if (_avatars.length > 64) _avatars.remove(_avatars.keys.first);
+    _avatars[id] = (DateTime.now(), bytes);
+    return bytes;
+  }
+
+  /// Sound / vibration of a system notification of [kind] (Notifier.kt).
+  static Map<String, bool> soundArgs(String? kind) => switch (kind) {
+        'call' => {'sound': callSound, 'vibrate': vibrate},
+        'message' || 'mention' => {'sound': messageSound, 'vibrate': vibrate},
+        'reminder' => {'sound': reminderSound, 'vibrate': vibrate},
+        _ => const {},
+      };
+
+  /// Message id → when its `mention` event came (it precedes the message).
+  final Map<String, DateTime> _mentions = {};
+
+  /// conv → when it was last read (unread 0), here or on another device.
+  final Map<String, DateTime> _readAt = {};
+
+  bool _mentionsOnly(String conv) {
+    if (mentionsOnly.contains(conv)) return true;
+    final i = conv.indexOf('#');
+    return i > 0 && mentionsOnly.contains(conv.substring(0, i));
   }
 
   bool _muted(String conv) {
@@ -433,6 +661,7 @@ class AndroidBridge with WidgetsBindingObserver {
         break; // not answered yet: no microphone
       default:
         _liveCalls.remove(id);
+        if (id == _callShare) unawaited(stopCallShare(id));
     }
     final now = _liveCalls.isNotEmpty;
     if (now != before) {
@@ -440,12 +669,50 @@ class AndroidBridge with WidgetsBindingObserver {
     }
   }
 
+  /// Is [ev] posted as a system notification? In the background: everything
+  /// notifiable. In front: reminders (alarms) and messages of a chat that is
+  /// not the one on screen — like a heads-up from any other app (the system
+  /// notification makes the sound; SoundAlerts stays quiet on Android).
+  static bool shouldNotify(Map<String, dynamic> ev, {required bool foreground, String? reading}) {
+    if (!foreground) return true;
+    switch (ev['event']) {
+      case 'reminder_due':
+        return true;
+      case 'message':
+        final conv = ev['conv']?.toString() ?? '';
+        return conv.isNotEmpty && conv != reading;
+    }
+    return false;
+  }
+
+  /// Native → Dart: open a chat (notification / bubble / shortcut tap).
+  @visibleForTesting
+  static void debugOpenConv(String conv) => onOpenConv?.call(conv);
+
+  /// An event raised by the app itself (a snoozed reminder firing again):
+  /// notified like the core's own.
+  void onLocalEvent(Map<String, dynamic> ev) {
+    if (isAndroid && _api != null) _onEvent(ev);
+  }
+
   void _onEvent(Map<String, dynamic> ev) {
+    switch (ev['event']) {
+      case 'mention':
+        final id = ev['id']?.toString() ?? '';
+        if (id.isNotEmpty) _mentions[id] = DateTime.now();
+        if (_mentions.length > 64) _mentions.remove(_mentions.keys.first);
+      case 'conversation':
+        final id = ev['id']?.toString() ?? '';
+        if (id.isNotEmpty && ev['unread'] == 0) _readAt[id] = DateTime.now();
+    }
     for (final key in cancelKeysFor(ev)) {
       unawaited(_service.invokeMethod('cancelNotification', {'key': key}).catchError((_) => null));
     }
-    // Reminders always ring (they are alarms); everything else only in the background.
-    if (!_foreground || ev['event'] == 'reminder_due') unawaited(_notifyBackground(ev));
+    if (ev['event'] == 'conversation_removed') {
+      final conv = ev['conv']?.toString() ?? '';
+      if (conv.isNotEmpty) _forget([conv]);
+    }
+    if (shouldNotify(ev, foreground: _foreground, reading: readingConv())) unawaited(_notifyBackground(ev));
     if (ev['event'] == 'call') _onCallEvent(ev);
     if (ev['event'] != 'remote_state' || ev['role'] != 'host') return;
     final session = ev['session']?.toString() ?? '';
@@ -454,16 +721,54 @@ class AndroidBridge with WidgetsBindingObserver {
       if (_hostSessions.add(session)) unawaited(_hostStarted(session, ev['control'] == true));
     } else if (state == 'ended' || state == 'failed' || state == 'denied') {
       _hostSessions.remove(session);
-      if (_hostSessions.isEmpty) unawaited(_screen.invokeMethod('stop').catchError((_) => null));
+      if (_hostSessions.isEmpty && _callShare == null) unawaited(_screen.invokeMethod('stop').catchError((_) => null));
     }
   }
+
+  /// Native → Dart on `lumora/service`: a reminder notification's action.
+  Future<Object?> _onServiceCall(MethodCall call) async {
+    if (call.method == 'openConv') {
+      final conv = (call.arguments as Map?)?['conv']?.toString() ?? '';
+      if (conv.isEmpty || onOpenConv == null) return false;
+      onOpenConv!(conv);
+      return true;
+    }
+    if (call.method == 'callAction') {
+      final a = (call.arguments as Map?) ?? const {};
+      final action = a['action']?.toString() ?? '';
+      if (onCallAction == null || (action != 'answer' && action != 'decline')) return false;
+      onCallAction!(action, a['callId']?.toString() ?? '');
+      return true;
+    }
+    if (call.method != 'reminderAction') return null;
+    final a = (call.arguments as Map?)?.cast<String, dynamic>() ?? const {};
+    Map<String, dynamic> data = const {};
+    try {
+      final j = jsonDecode(a['reminder']?.toString() ?? '');
+      if (j is Map) data = j.cast<String, dynamic>();
+    } catch (_) {}
+    if (data.isEmpty) return false;
+    onReminderAction?.call(a['action']?.toString() ?? '', data);
+    return true;
+  }
+
+  @visibleForTesting
+  Future<Object?> debugServiceCall(MethodCall call) => _onServiceCall(call);
 
   /// Native → Dart on `lumora/screen`.
   Future<Object?> _onScreenCall(MethodCall call) async {
     if (call.method == 'stopped') {
       // Capture ended without us asking (status-bar "stop sharing", screen
       // lock, Android revoked it): end the host sessions rather than leave
-      // the viewer on a frozen picture.
+      // the viewer on a frozen picture. A call sharing its screen stops sharing.
+      final share = _callShare;
+      _callShare = null;
+      if (share != null) {
+        try {
+          await _api?.callSet(share, screen: false);
+        } catch (_) {}
+        onCallShareStopped?.call(share);
+      }
       await _endHostSessions();
     }
     return null;
@@ -506,4 +811,13 @@ class AndroidBridge with WidgetsBindingObserver {
       _asking = false;
     }
   }
+}
+
+/// Whether Lumora may keep running in the background (see
+/// [AndroidBridge.backgroundStatus]).
+class BackgroundStatus {
+  const BackgroundStatus({required this.ignoringBattery, this.oem = '', this.autostart = false});
+  final bool ignoringBattery;
+  final String oem;
+  final bool autostart;
 }

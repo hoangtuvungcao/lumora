@@ -22,16 +22,36 @@ import '../widgets/common.dart';
 /// In-memory cache of decoded sticker blobs (bounded).
 final Map<String, Future<Uint8List?>> _stickerCache = {};
 
+/// Stickers being fetched, or whose image wasn't here (yet).
+final Set<String> _stickerMisses = {};
+
 Future<Uint8List?> _loadSticker(LumoraApi api, String hash) {
   if (_stickerCache.length > 200) _stickerCache.remove(_stickerCache.keys.first);
   return _stickerCache.putIfAbsent(hash, () async {
+    _stickerMisses.add(hash);
+    Uint8List? bytes;
     try {
       final (_, data) = await api.stickerGet(hash);
-      return data.isEmpty ? null : base64Decode(data);
-    } catch (_) {
-      return null;
-    }
+      bytes = data.isEmpty ? null : base64Decode(data);
+    } catch (_) {}
+    if (bytes != null) _stickerMisses.remove(hash);
+    return bytes;
   });
+}
+
+/// Bumped when my sticker packs change on another device (`stickers` event):
+/// open pickers reload, and stickers whose image was missing try again.
+final ValueNotifier<int> stickersVersion = ValueNotifier(0);
+
+/// Core event `stickers`: a pack was made / renamed / deleted, a sticker added
+/// or removed, or a sticker image arrived from another of my devices.
+void stickersChanged() {
+  // (images already here never change: a hash names its bytes)
+  for (final h in _stickerMisses) {
+    _stickerCache.remove(h);
+  }
+  _stickerMisses.clear();
+  stickersVersion.value++;
 }
 
 /// Renders a sticker by hash; GIF/WebP animate automatically.
@@ -47,7 +67,9 @@ class StickerImage extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: FutureBuilder<Uint8List?>(
+      child: ValueListenableBuilder<int>(
+        valueListenable: stickersVersion,
+        builder: (context, _, _) => FutureBuilder<Uint8List?>(
         future: _loadSticker(context.read<LumoraApi>(), hash),
         builder: (context, snap) {
           final b = snap.data;
@@ -65,6 +87,7 @@ class StickerImage extends StatelessWidget {
             child: Image.memory(b, fit: BoxFit.contain, cacheWidth: (size * dpr).round(), gaplessPlayback: true),
           );
         },
+        ),
       ),
     );
   }
@@ -158,12 +181,26 @@ class _StickerPanelState extends State<StickerPanel> {
   void initState() {
     super.initState();
     _reload();
+    stickersVersion.addListener(_reload); // changed on another of my devices
+  }
+
+  @override
+  void dispose() {
+    stickersVersion.removeListener(_reload);
+    super.dispose();
   }
 
   Future<void> _reload() async {
+    final selId = _packs != null && _packs!.isNotEmpty ? _packs![_sel.clamp(0, _packs!.length - 1)].id : null;
     try {
       final p = await context.read<LumoraApi>().stickerPacks();
-      if (mounted) setState(() => _packs = p);
+      if (!mounted) return;
+      setState(() {
+        _packs = p;
+        // the pack on screen stays selected when others come or go
+        final i = selId == null ? -1 : p.indexWhere((x) => x.id == selId);
+        if (i >= 0) _sel = i;
+      });
     } catch (_) {
       if (mounted) setState(() => _packs = const []);
     }
@@ -226,14 +263,24 @@ class _StickerPanelState extends State<StickerPanel> {
     final packs = _packs;
     if (packs == null) return const Center(child: CircularProgressIndicator());
     if (packs.isEmpty) {
-      return EmptyState(
-        icon: AppIcons.sticker,
-        title: s('no_packs'),
-        subtitle: s('no_packs_hint'),
-        action: Wrap(spacing: 8, children: [
-          FilledButton.icon(onPressed: _create, icon: const Icon(AppIcons.add, size: 16), label: Text(s('new_pack'))),
-          OutlinedButton.icon(onPressed: _import, icon: const Icon(AppIcons.download, size: 16), label: Text(s('import_pack'))),
-        ]),
+      // the picker is short on phones: scroll instead of overflowing under the row below
+      return LayoutBuilder(
+        builder: (context, box) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: Center(
+              child: EmptyState(
+                icon: AppIcons.sticker,
+                title: s('no_packs'),
+                subtitle: s('no_packs_hint'),
+                action: Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+                  FilledButton.icon(onPressed: _create, icon: const Icon(AppIcons.add, size: 16), label: Text(s('new_pack'))),
+                  OutlinedButton.icon(onPressed: _import, icon: const Icon(AppIcons.download, size: 16), label: Text(s('import_pack'))),
+                ]),
+              ),
+            ),
+          ),
+        ),
       );
     }
     final p = packs[_sel.clamp(0, packs.length - 1)];

@@ -51,6 +51,9 @@ final class LumoraPush: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
     c.maximumCallsPerCallGroup = 1
     c.supportedHandleTypes = [.generic]
     c.includesCallsInRecents = false  // privacy: no call history outside Lumora
+    // ringtoneSound stays nil on purpose: CallKit then rings with the user's own
+    // system ringtone (and vibrates per the iPhone's settings). Calls CallKit does
+    // not show ring in-app instead (lib/state/sound_alerts.dart).
     let p = CXProvider(configuration: c)
     p.setDelegate(self, queue: nil)
     return p
@@ -113,8 +116,45 @@ final class LumoraPush: NSObject, PKPushRegistryDelegate, CXProviderDelegate {
         result(nil)
       case "coreIncoming":  // the core rings for call_id: is CallKit already showing it?
         result(shared.bind(callId: a["call_id"] as? String ?? ""))
+      case "requestLocalAlerts":  // reminders: may Lumora post local notifications? (asks once)
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+          DispatchQueue.main.async { result(granted) }
+        }
+      case "scheduleReminders":  // going to the background: due reminders alert by themselves
+        LumoraPush.scheduleReminders(a["items"] as? [[String: Any]] ?? [])
+        result(nil)
+      case "clearReminders":  // back in front: the core raises them itself
+        LumoraPush.scheduleReminders([])
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private static let reminderPrefix = "lumora.reminder."
+
+  /// Replaces Lumora's pending reminder notifications with [items]
+  /// ({id, at_ms, title, body, conv}; texts already localised and privacy-filtered
+  /// by Dart). The system plays the default notification sound when one is due
+  /// (the core is suspended in the background and cannot raise it itself).
+  static func scheduleReminders(_ items: [[String: Any]]) {
+    let center = UNUserNotificationCenter.current()
+    center.getPendingNotificationRequests { pending in
+      let old = pending.map { $0.identifier }.filter { $0.hasPrefix(LumoraPush.reminderPrefix) }
+      center.removePendingNotificationRequests(withIdentifiers: old)
+      let now = Date().timeIntervalSince1970
+      for item in items.prefix(60) {
+        guard let id = item["id"] as? String, let at = item["at_ms"] as? NSNumber else { continue }
+        let wait = at.doubleValue / 1000 - now
+        if wait < 1 { continue }
+        let content = UNMutableNotificationContent()
+        content.title = item["title"] as? String ?? "Lumora"
+        content.body = item["body"] as? String ?? ""
+        content.sound = .default
+        if let conv = item["conv"] as? String, !conv.isEmpty { content.threadIdentifier = conv }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false)
+        center.add(UNNotificationRequest(identifier: LumoraPush.reminderPrefix + id, content: content, trigger: trigger))
       }
     }
   }

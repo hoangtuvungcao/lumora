@@ -186,27 +186,43 @@ impl Node {
     /// Remember a newly stored reminder message so the scheduler raises it on time.
     pub(super) fn track_reminder(&self, conv: &str, m: &ChatMsg) {
         let Body::Reminder { at_ms, .. } = &m.body else { return };
+        self.track_reminder_at(conv, &m.id, *at_ms, &m.author);
+    }
+
+    /// The same for a reminder copied from another of my devices (self-sync, history): it
+    /// rings on every device of the account, like one that came from the network.
+    pub(super) fn track_reminder_row(&self, m: &crate::store::StoredMessage) {
+        if m.kind != "reminder" || m.deleted || m.reactions.get("__cancelled").is_some() {
+            return;
+        }
+        let (Some(at), Ok(id), Ok(author)) = (m.body["at_ms"].as_u64(), hex::decode(&m.id), PeerId::from_str_any(&m.author)) else { return };
+        let Ok(id) = <[u8; 16]>::try_from(id.as_slice()) else { return };
+        self.track_reminder_at(&m.conv, &id, at, &author);
+    }
+
+    fn track_reminder_at(&self, conv: &str, id: &[u8; 16], at_ms: u64, author: &PeerId) {
         let now = now_ms();
         // long past, or absurdly far ahead (a sender could otherwise park thousands)
-        if at_ms.saturating_add(STALE_MS) < now || *at_ms > now + MAX_AHEAD_MS {
+        if at_ms.saturating_add(STALE_MS) < now || at_ms > now + MAX_AHEAD_MS {
             return;
         }
         let _g = PENDING_LOCK.lock();
         let mut list: Vec<PendingReminder> = self.store.kv_get_json(PENDING_KEY).unwrap_or_default();
-        let id = hex::encode(m.id);
+        let id = hex::encode(id);
         if list.iter().any(|r| r.id == id) {
             return;
         }
-        let author = m.author.to_base32();
+        let mine = *author == self.me;
+        let author = author.to_base32();
         if list.len() >= MAX_PENDING {
             // make room from reminders whose message is gone (deleted, cleared, expired)
             list.retain(|r| hex::decode(&r.id).ok().and_then(|i| self.store.message(&i)).map(|m| !m.deleted).unwrap_or(false));
         }
         let from_sender = list.iter().filter(|r| r.author == author).count();
-        if list.len() >= MAX_PENDING || (m.author != self.me && from_sender >= MAX_PER_SENDER) {
+        if list.len() >= MAX_PENDING || (!mine && from_sender >= MAX_PER_SENDER) {
             return;
         }
-        list.push(PendingReminder { id, conv: conv.to_string(), at: *at_ms, author });
+        list.push(PendingReminder { id, conv: conv.to_string(), at: at_ms, author });
         let _ = self.store.kv_set_json(PENDING_KEY, &list);
     }
 

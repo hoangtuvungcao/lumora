@@ -446,6 +446,20 @@ impl Node {
 
     /// Sign, encrypt with the current epoch key, store and fan out.
     async fn publish(self: &Arc<Self>, gid: Gid, payload: Payload) -> Result<Signed> {
+        // the key of a rotation made a moment ago (by another of my devices, or an admin)
+        // may still be on its way — sibling sync, the Rekey's sealed copy: wait a little
+        // before telling the user the group isn't ready
+        // (up to 10 s, asking again every 2 s: a joiner's first key can be slow on a busy link)
+        for i in 0..(if cfg!(test) { 2 } else { 100 }) {
+            let Some(epoch) = self.groups.read().get(&gid).map(|g| g.epoch) else { break };
+            if self.store.group_key_get(&gid, epoch).is_some() {
+                break;
+            }
+            if i % 20 == 0 {
+                self.request_group_key(gid, epoch);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         let lock = self.group_lock(&gid);
         let guard = lock.lock().await;
         let st = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
@@ -483,7 +497,11 @@ impl Node {
         let (k, mid) = log_kind(&s.payload);
         self.store.group_log_put_ex(&s.id, &gid, &self.device, s.hlc, &env, k, mid.as_ref().map(|m| &m[..]))?;
         drop(guard);
-        let members: Vec<PeerId> = self.groups.read().get(&gid).map(|g| g.key_holders()).unwrap_or_else(|| st.key_holders());
+        let mut members: Vec<PeerId> = self.groups.read().get(&gid).map(|g| g.key_holders()).unwrap_or_else(|| st.key_holders());
+        // I left: my other devices must learn it too (I'm no key holder any more)
+        if matches!(s.payload, Payload::Op(GroupOp::Leave)) && !members.contains(&self.me) {
+            members.push(self.me);
+        }
         // privacy-mode bots get only what is addressed to them
         if let Payload::Msg { channel, msg } = &s.payload {
             let cur = self.groups.read().get(&gid).cloned().unwrap_or(st.clone());

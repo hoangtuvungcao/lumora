@@ -37,14 +37,16 @@ Brightness _brightness(WidgetTester tester) => Theme.of(tester.element(find.byTy
 /// Lets the settings file write (real IO) finish: waits until [file]
 /// holds [want] (bounded, so a missing write still fails the test).
 Future<void> _waitForFile(WidgetTester tester, File file, List<String> want) async {
-  for (var i = 0; i < 100; i++) {
-    final text = await tester.runAsync(() async {
+  var text = '';
+  for (var i = 0; i < 500; i++) {
+    text = (await tester.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       return file.existsSync() ? file.readAsStringSync() : '';
-    });
+    }))!;
     await tester.pump();
-    if (want.every((w) => text!.contains(w))) return;
+    if (want.every((w) => text.contains(w))) return;
   }
+  fail('settings file never got $want (has: $text)');
 }
 
 void main() {
@@ -151,6 +153,8 @@ void main() {
     await settle(tester);
     await tester.tap(find.text('Dark'));
     await settle(tester);
+    await _waitForFile(tester, file, ['"locale":"en"', '"theme":"dark"']);
+    // (a write still on its way would land after this: let it finish too)
     await _waitForFile(tester, file, ['"locale":"en"', '"theme":"dark"']);
     // Still on the first step: no identity, the core never started.
     expect(sv.session.phase, SessionPhase.onboarding);

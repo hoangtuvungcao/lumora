@@ -12,5 +12,6 @@ pub mod net;
 pub mod node;
 pub mod proto;
 pub mod store;
+pub mod textsearch;
 pub mod tls;
 pub mod util;

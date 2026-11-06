@@ -22,6 +22,8 @@ pub mod sync;
 /// (Small in unit tests so the caps can be exercised quickly.)
 pub const MAILBOX_MAX_PER_PEER: usize = if cfg!(test) { 512 * 1024 } else { 32 * 1024 * 1024 };
 pub const MAILBOX_MAX_TOTAL: usize = if cfg!(test) { 1024 * 1024 } else { 256 * 1024 * 1024 };
+/// How long my own stories stay in my archive.
+pub const STORY_ARCHIVE_MS: i64 = 365 * 86_400_000;
 /// Active stories kept per author (a friend posting more is ignored until some expire).
 pub const MAX_STORIES_PER_AUTHOR: i64 = 50;
 /// Stranger contact rows (status 0) with nothing attached are forgotten after this long.
@@ -38,6 +40,10 @@ pub struct Store {
     /// active devices, so single-device users pay nothing).
     sync_on: std::sync::atomic::AtomicBool,
     last_rev: std::sync::atomic::AtomicU64,
+    /// This device's residue (mod 1000) of every change stamp it makes: two devices
+    /// changing the same thing in the same millisecond never make equal stamps (a tie
+    /// left each device keeping its own value for good).
+    rev_salt: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -187,6 +193,8 @@ fn migrate(c: &Connection) {
         "ALTER TABLE messages ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE messages ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'",
         "ALTER TABLE convs ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+        // my own stories stay in my archive after their 24 h (others' go)
+        "ALTER TABLE stories ADD COLUMN mine INTEGER NOT NULL DEFAULT 0",
         "CREATE INDEX IF NOT EXISTS messages_pinned ON messages(conv) WHERE pinned=1",
         // per-sender file-id namespace: a row whose local id differs from the sender's
         // file_id keeps the wire id here (NULL = same as `id`, i.e. every existing row)
@@ -233,6 +241,10 @@ fn migrate(c: &Connection) {
         "CREATE INDEX IF NOT EXISTS messages_author ON messages(conv, author, hlc)",
         "CREATE INDEX IF NOT EXISTS files_path ON files(path)",
         "CREATE INDEX IF NOT EXISTS files_hash ON files(hash)",
+        // multi-device tombstones: a message deleted "for me" and a deleted chat stay gone
+        // when a sibling that hasn't heard yet (or a friend's late copy) brings them back
+        "CREATE TABLE IF NOT EXISTS purged(id BLOB PRIMARY KEY, at INTEGER NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS conv_gone(id TEXT PRIMARY KEY, upto INTEGER NOT NULL, at INTEGER NOT NULL)",
     ] {
         let _ = c.execute(sql, []);
     }
@@ -280,7 +292,19 @@ impl Store {
     }
 
     fn wrap(conn: Connection) -> Store {
-        Store { conn: Mutex::new(conn), sync_on: Default::default(), last_rev: Default::default() }
+        // `lm_search(kind, body, folded query)`: case- and diacritic-insensitive message search
+        let _ = conn.create_scalar_function(
+            "lm_search",
+            3,
+            rusqlite::functions::FunctionFlags::SQLITE_UTF8 | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| {
+                let kind = ctx.get_raw(0).as_str().unwrap_or("");
+                let body = ctx.get_raw(1).as_str().unwrap_or("");
+                let q = ctx.get_raw(2).as_str().unwrap_or("");
+                Ok(crate::textsearch::matches(kind, body, q))
+            },
+        );
+        Store { conn: Mutex::new(conn), sync_on: Default::default(), last_rev: Default::default(), rev_salt: Default::default() }
     }
 
     /// Housekeeping, call every few minutes.
@@ -296,6 +320,8 @@ impl Store {
         )?;
         c.execute("DELETE FROM messages WHERE expires IS NOT NULL AND expires < ?1", params![now])?;
         c.execute("DELETE FROM mailbox WHERE created < ?1", params![now - 14 * 86_400_000])?;
+        // "deleted for me" tombstones outlive any late copy (siblings sync within days)
+        c.execute("DELETE FROM purged WHERE at < ?1", params![now - 180 * 86_400_000])?;
         // per-conversation retention (ms > 0): drop messages older than the window
         let old = "SELECT m.id FROM messages m JOIN retention r ON m.conv=r.conv WHERE r.ms>0 AND (m.hlc>>8) < ?1 - r.ms";
         c.execute(
@@ -310,7 +336,8 @@ impl Store {
         c.execute("DELETE FROM group_key_pending WHERE at < ?1", params![now - 30 * 86_400_000])?;
         c.execute("DELETE FROM group_env_pending WHERE at < ?1", params![now - 30 * 86_400_000])?;
         c.execute("DELETE FROM outbox WHERE created < ?1", params![now - 30 * 86_400_000])?;
-        c.execute("DELETE FROM stories WHERE created < ?1", params![now - 86_400_000])?;
+        c.execute("DELETE FROM stories WHERE created < ?1 AND mine=0", params![now - 86_400_000])?;
+        c.execute("DELETE FROM stories WHERE created < ?1", params![now - STORY_ARCHIVE_MS])?;
         c.execute(
             "DELETE FROM sticker_blobs WHERE used < ?1 AND hash NOT IN (SELECT hash FROM stickers)",
             params![now - 60 * 86_400_000],
@@ -559,7 +586,8 @@ impl Store {
         let c = self.conn.lock();
         let exists = c.query_row("SELECT 1 FROM convs WHERE id=?1", params![id], |_| Ok(())).optional()?.is_some();
         c.execute(
-            "INSERT INTO convs(id,kind,title) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET title=CASE WHEN ?3<>'' THEN ?3 ELSE title END",
+            "INSERT INTO convs(id,kind,title,cleared_upto) VALUES(?1,?2,?3,COALESCE((SELECT upto FROM conv_gone WHERE id=?1),0))
+             ON CONFLICT(id) DO UPDATE SET title=CASE WHEN ?3<>'' THEN ?3 ELSE title END",
             params![id, kind, title],
         )?;
         if !exists {
@@ -609,7 +637,22 @@ impl Store {
         Ok(())
     }
     pub fn conv_cleared_upto(&self, id: &str) -> Option<i64> {
-        self.conn.lock().query_row("SELECT cleared_upto FROM convs WHERE id=?1", params![id], |r| r.get(0)).optional().ok().flatten()
+        Self::cleared_upto_on(&self.conn.lock(), id).ok().filter(|x| *x > 0)
+    }
+    /// How far a conversation was cleared — also after the chat itself was deleted.
+    pub(crate) fn cleared_upto_on(c: &Connection, conv: &str) -> rusqlite::Result<i64> {
+        c.query_row(
+            "SELECT MAX(COALESCE((SELECT cleared_upto FROM convs WHERE id=?1),0), COALESCE((SELECT upto FROM conv_gone WHERE id=?1),0))",
+            params![conv],
+            |r| r.get(0),
+        )
+    }
+    /// A message deleted "for me" on one of my devices (it must not come back).
+    pub(crate) fn is_purged_on(c: &Connection, id: &[u8]) -> bool {
+        c.query_row("SELECT 1 FROM purged WHERE id=?1", params![id], |_| Ok(())).optional().ok().flatten().is_some()
+    }
+    pub(crate) fn note_purged_on(c: &Connection, id: &[u8]) -> rusqlite::Result<usize> {
+        c.execute("INSERT OR IGNORE INTO purged(id,at) VALUES(?1,?2)", params![id, crate::util::now_ms() as i64])
     }
     pub fn conv_mark_read(&self, id: &str) -> Result<()> {
         let c = self.conn.lock();
@@ -630,13 +673,27 @@ impl Store {
         anyhow::ensure!(flag == "muted" || flag == "pinned" || flag == "archived");
         let c = self.conn.lock();
         if c.execute(&format!("UPDATE convs SET {flag}=?2 WHERE id=?1 AND {flag}<>?2"), params![id, v as i64])? > 0 {
-            c.execute("UPDATE convs SET rev=?2 WHERE id=?1", params![id, self.next_rev() as i64])?;
+            let rev = self.next_rev() as i64;
+            c.execute("UPDATE convs SET rev=?2 WHERE id=?1", params![id, rev])?;
+            // (each flag also has its own stamp: see store_sync.rs `CONV_FLAGS`)
+            c.execute(
+                "INSERT INTO lww(key,rev) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET rev=excluded.rev",
+                params![format!("cf:{id}:{flag}"), rev],
+            )?;
             self.track(&c, sync::K_CONV, id.as_bytes());
         }
         Ok(())
     }
     pub fn delete_conv(&self, id: &str) -> Result<()> {
         let c = self.conn.lock();
+        // what was there stays gone if a late copy (sibling, friend's outbox) comes back
+        c.execute(
+            "INSERT INTO conv_gone(id,upto,at) SELECT ?1, MAX(COALESCE((SELECT MAX(hlc) FROM messages WHERE conv=?1),0),
+               COALESCE((SELECT cleared_upto FROM convs WHERE id=?1),0)), ?2
+             WHERE EXISTS (SELECT 1 FROM convs WHERE id=?1)
+             ON CONFLICT(id) DO UPDATE SET upto=MAX(upto,excluded.upto), at=excluded.at",
+            params![id, crate::util::now_ms() as i64],
+        )?;
         c.execute("DELETE FROM messages WHERE conv=?1", params![id])?;
         Self::group_log_purge_gone_on(&c)?;
         if c.execute("DELETE FROM convs WHERE id=?1", params![id])? > 0 {
@@ -688,13 +745,15 @@ impl Store {
     ) -> Result<bool> {
         let c = self.conn.lock();
         // a conversation cleared up to here stays cleared (late or re-sent history)
-        let cleared: i64 = c.query_row("SELECT cleared_upto FROM convs WHERE id=?1", params![conv], |r| r.get(0)).optional()?.unwrap_or(0);
-        if (hlc.min(i64::MAX as u64) as i64) <= cleared {
+        let cleared = Self::cleared_upto_on(&c, conv)?;
+        if (hlc.min(i64::MAX as u64) as i64) <= cleared || Self::is_purged_on(&c, id) {
             return Ok(false);
         }
         let n = c.execute(
             "INSERT OR IGNORE INTO messages(id,conv,author,hlc,kind,body,status,reply_to,expires,rev) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            params![id, conv, &author.0[..], hlc.min(i64::MAX as u64) as i64, kind, body.to_string(), status, reply_to, expires, self.next_rev() as i64],
+            // rev 0: arriving here is no change — a copy a sibling edited / reacted to while
+            // this device was away must win over this fresh insert (sync)
+            params![id, conv, &author.0[..], hlc.min(i64::MAX as u64) as i64, kind, body.to_string(), status, reply_to, expires, 0i64],
         )?;
         if n > 0 {
             self.track(&c, sync::K_MSG, id);
@@ -726,14 +785,21 @@ impl Store {
         rows.reverse();
         Ok(rows)
     }
+    /// Messages whose words contain `q` — any case, with or without diacritics
+    /// ("tieng viet" finds "Tiếng Việt"), newest first. Searches what people wrote (text,
+    /// file names, poll / checklist / reminder titles), never the stored JSON's keys.
     pub fn search(&self, q: &str, limit: i64) -> Result<Vec<StoredMessage>> {
+        let q = crate::textsearch::fold(q);
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
         let c = self.conn.lock();
         let mut st = c.prepare_cached(
             "SELECT id,conv,author,hlc,kind,body,status,edited,deleted,reply_to,reactions,expires,pinned,meta FROM messages
-             WHERE deleted=0 AND kind='text' AND body LIKE ?1 ESCAPE '\\' ORDER BY hlc DESC LIMIT ?2",
+             WHERE deleted=0 AND kind IN ('text','file','location','contact','poll','checklist','reminder')
+             AND lm_search(kind, body, ?1) ORDER BY hlc DESC LIMIT ?2",
         )?;
-        let pat = format!("%{}%", q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"));
-        let rows = st.query_map(params![pat, limit], Self::row_msg)?.filter_map(|r| r.ok()).collect();
+        let rows = st.query_map(params![q, limit], Self::row_msg)?.filter_map(|r| r.ok()).collect();
         Ok(rows)
     }
     /// Author-only body replacement without the "edited" flag (live location updates).
@@ -794,6 +860,39 @@ impl Store {
             .filter_map(|r| r.ok())
             .collect();
         Ok(rows)
+    }
+    /// My own story: kept in the archive after it stops being shown.
+    pub fn story_mark_mine(&self, id: &[u8]) -> Result<()> {
+        self.conn.lock().execute("UPDATE stories SET mine=1 WHERE id=?1", params![id])?;
+        Ok(())
+    }
+    /// My stories, newest first, including the ones no longer shown (archive).
+    pub fn story_archive(&self) -> Result<Vec<Value>> {
+        let c = self.conn.lock();
+        let mut st = c.prepare_cached(
+            "SELECT s.id, s.created, s.text, s.image IS NOT NULL, s.bg, (SELECT count(*) FROM story_views v WHERE v.id=s.id)
+             FROM stories s WHERE s.mine=1 ORDER BY s.created DESC LIMIT 500",
+        )?;
+        let since = crate::util::now_ms() as i64 - 86_400_000;
+        let rows = st
+            .query_map([], |r| {
+                let id: Vec<u8> = r.get(0)?;
+                let created: i64 = r.get(1)?;
+                Ok(serde_json::json!({
+                    "id": hex::encode(id), "created": created, "text": r.get::<_, String>(2)?,
+                    "has_image": r.get::<_, i64>(3)? != 0, "bg": r.get::<_, String>(4)?, "views": r.get::<_, i64>(5)?,
+                    "active": created > since,
+                }))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(rows)
+    }
+    /// Removes a story (and who saw it). True when there was one.
+    pub fn story_delete(&self, id: &[u8]) -> Result<bool> {
+        let c = self.conn.lock();
+        c.execute("DELETE FROM story_views WHERE id=?1", params![id])?;
+        Ok(c.execute("DELETE FROM stories WHERE id=?1", params![id])? > 0)
     }
     pub fn story_image(&self, id: &[u8]) -> Option<Vec<u8>> {
         self.conn.lock().query_row("SELECT image FROM stories WHERE id=?1", params![id], |r| r.get(0)).optional().ok().flatten().flatten()
@@ -915,30 +1014,38 @@ impl Store {
         )?)
     }
     pub fn sticker_pack_create(&self, id: &str, name: &str) -> Result<()> {
-        self.conn.lock().execute(
-            "INSERT OR REPLACE INTO sticker_packs(id,name,created) VALUES(?1,?2,?3)",
-            params![id, name, crate::util::now_ms() as i64],
-        )?;
+        let c = self.conn.lock();
+        c.execute("INSERT OR REPLACE INTO sticker_packs(id,name,created) VALUES(?1,?2,?3)", params![id, name, crate::util::now_ms() as i64])?;
+        self.touch_sticker_pack(&c, id);
         Ok(())
     }
     pub fn sticker_pack_delete(&self, id: &str) -> Result<()> {
         let c = self.conn.lock();
         c.execute("DELETE FROM stickers WHERE pack=?1", params![id])?;
-        c.execute("DELETE FROM sticker_packs WHERE id=?1", params![id])?;
+        if c.execute("DELETE FROM sticker_packs WHERE id=?1", params![id])? > 0 {
+            self.touch_sticker_pack(&c, id);
+        }
         Ok(())
     }
     pub fn sticker_add(&self, hash: &[u8; 32], pack: &str, mime: &str, emoji: &str, animated: bool) -> Result<()> {
         let c = self.conn.lock();
         let n: i64 = c.query_row("SELECT count(*) FROM stickers WHERE pack=?1", params![pack], |r| r.get(0))?;
         anyhow::ensure!(n < 120, crate::i18n::user_err("err.pack_full").with("max", 120));
-        c.execute(
+        if c.execute(
             "INSERT OR IGNORE INTO stickers(hash,pack,mime,emoji,animated,created) VALUES(?1,?2,?3,?4,?5,?6)",
             params![&hash[..], pack, mime, emoji, animated as i64, crate::util::now_ms() as i64],
-        )?;
+        )? > 0
+        {
+            self.touch_sticker_pack(&c, pack);
+            self.track(&c, sync::K_SBLOB, &hash[..]);
+        }
         Ok(())
     }
     pub fn sticker_remove(&self, hash: &[u8], pack: &str) -> Result<()> {
-        self.conn.lock().execute("DELETE FROM stickers WHERE hash=?1 AND pack=?2", params![hash, pack])?;
+        let c = self.conn.lock();
+        if c.execute("DELETE FROM stickers WHERE hash=?1 AND pack=?2", params![hash, pack])? > 0 {
+            self.touch_sticker_pack(&c, pack);
+        }
         Ok(())
     }
     pub fn sticker_packs(&self) -> Result<Vec<Value>> {
@@ -964,6 +1071,7 @@ impl Store {
     pub fn purge_message(&self, id: &[u8]) -> Result<bool> {
         let c = self.conn.lock();
         let n = c.execute("DELETE FROM messages WHERE id=?1", params![id])?;
+        Self::note_purged_on(&c, id)?;
         if n > 0 {
             self.track(&c, sync::K_PURGE, id);
             Self::group_log_forget_on(&c, id)?;
@@ -1068,12 +1176,29 @@ impl Store {
         }
         Ok(ids)
     }
-    pub fn edit_message(&self, id: &[u8], author: &PeerId, body: &Value) -> Result<bool> {
+    /// The author's edit signed at `hlc`. Edits that cross (two of the author's devices, a
+    /// late copy) settle on the latest one everywhere — by signed time, then text — not on
+    /// whichever arrived last.
+    pub fn edit_message(&self, id: &[u8], author: &PeerId, body: &Value, hlc: u64) -> Result<bool> {
         let c = self.conn.lock();
+        let ed_key = format!("ed:{}", hex::encode(id));
+        let hlc = hlc.min(i64::MAX as u64) as i64;
+        let new = body.to_string();
+        let last = Self::lww_get(&c, &ed_key).unwrap_or(0);
+        if last != 0 {
+            let cur: Option<String> = c.query_row("SELECT body FROM messages WHERE id=?1", params![id], |r| r.get(0)).optional()?;
+            let rank = |h: i64, b: &str| crate::store::Store::edit_rank(h, b);
+            if cur.is_some_and(|cur| (rank(hlc, &new), &new) <= (rank(last, &cur), &cur)) {
+                return Ok(false); // an older (or the same) edit
+            }
+        }
         let n = c.execute(
             "UPDATE messages SET body=?3, edited=1 WHERE id=?1 AND author=?2 AND deleted=0 AND kind='text'",
-            params![id, &author.0[..], body.to_string()],
+            params![id, &author.0[..], new],
         )?;
+        if n > 0 {
+            Self::lww_set(&c, &ed_key, hlc)?;
+        }
         self.bump_if(&c, n, id);
         Ok(n > 0)
     }
@@ -1865,6 +1990,20 @@ mod tests {
     }
 
     #[test]
+    fn search_ignores_case_and_diacritics_and_json_keys() {
+        let s = Store::open_memory().unwrap();
+        let me = PeerId([1; 32]);
+        s.insert_message(&[1; 16], "d:x", &me, 10 << 8, "text", &serde_json::json!({"text": "Tiếng Việt có dấu: Chúc mừng năm mới"}), 2, None, None).unwrap();
+        s.insert_message(&[2; 16], "d:x", &me, 11 << 8, "file", &serde_json::json!({"name": "Báo cáo.pdf", "file_id": "00"}), 2, None, None).unwrap();
+        for q in ["tiếng việt", "TIẾNG VIỆT", "tieng viet", "chuc mung nam moi", "Năm mới"] {
+            assert_eq!(s.search(q, 10).unwrap().len(), 1, "{q}");
+        }
+        assert_eq!(s.search("bao cao", 10).unwrap().len(), 1);
+        assert!(s.search("text", 10).unwrap().is_empty(), "JSON keys are not text");
+        assert!(s.search("  ", 10).unwrap().is_empty());
+    }
+
+    #[test]
     fn insert_respects_cleared_upto_and_vote_bounds() {
         let s = Store::open_memory().unwrap();
         let a = PeerId([3; 32]);
@@ -1876,8 +2015,8 @@ mod tests {
         s.insert_message(b"p", "d:x", &a, 160, "poll", &serde_json::json!({"question": "?", "options": ["a", "b"]}), 2, None, None).unwrap();
         assert!(!s.vote(b"p", &a, 1).unwrap().is_null());
         assert!(s.vote(b"p", &a, 7).unwrap().is_null(), "vote for a non-existent option");
-        assert!(!s.edit_message(b"p", &a, &serde_json::json!({"text": "x"})).unwrap(), "a poll was edited into text");
-        assert!(s.edit_message(b"3", &a, &serde_json::json!({"text": "x"})).unwrap());
+        assert!(!s.edit_message(b"p", &a, &serde_json::json!({"text": "x"}), 1).unwrap(), "a poll was edited into text");
+        assert!(s.edit_message(b"3", &a, &serde_json::json!({"text": "x"}), 1).unwrap());
     }
 
     #[test]

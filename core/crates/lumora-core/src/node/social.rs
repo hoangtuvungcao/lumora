@@ -235,20 +235,32 @@ impl Node {
             anyhow::ensure!(crate::net::nostr::valid_username(&name), crate::i18n::user_err("err.username_invalid"));
             self.store.kv_set("profile.username", name.as_bytes())?;
         }
-        // the username claim is signed by the account key: published by the primary
-        let pool = if self.is_primary() { self.net.nostr.read().clone() } else { None };
+        // the username claim is signed by the account key: published by the primary (a
+        // linked device's choice reaches it through the sibling sync, see node/sync.rs)
+        self.publish_username(&name, old.as_deref());
+        self.set_profile(None, None, None, None)?;
+        Ok(json!({"username": if name.is_empty() { Value::Null } else { json!(name) }, "handle": self.handle()}))
+    }
+
+    fn publish_username(&self, name: &str, old: Option<&str>) {
+        let pool = if self.is_primary() && !self.cfg.link_pending { self.net.nostr.read().clone() } else { None };
         if let Some(pool) = pool {
             if !name.is_empty() {
                 let id = self.id.clone();
-                let n2 = name.clone();
-                let old2 = old.clone();
+                let n2 = name.to_string();
+                let old2 = old.map(str::to_string);
                 // PoW takes a few ms–100 ms: keep it off the async runtime
                 let proof = self.bot_owner_proof();
                 tokio::task::spawn_blocking(move || pool.publish_username_owned(&id, &n2, old2.as_deref(), proof.as_ref()));
             }
         }
-        self.set_profile(None, None, None, None)?;
-        Ok(json!({"username": if name.is_empty() { Value::Null } else { json!(name) }, "handle": self.handle()}))
+    }
+
+    /// The main device publishes the username now set (on another device of the account).
+    pub(crate) fn publish_username_now(&self) {
+        if let Some(u) = self.username() {
+            self.publish_username(&u, None);
+        }
     }
 
     /// `@name·tag` → exact owner; `@name` → all verified candidates (with tags).

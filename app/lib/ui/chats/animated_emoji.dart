@@ -350,7 +350,9 @@ class JumboEmoji extends StatelessWidget {
     final size = sizeFor(emojis.length);
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [for (final e in emojis) AnimatedEmoji(e, size: size, autoplay: true, replayOnTap: true)],
+      // keep moving while on screen (like Telegram's animated emoji); the slot limit and the
+      // off-screen pause keep it cheap
+      children: [for (final e in emojis) AnimatedEmoji(e, size: size, autoplay: true, loop: true, replayOnTap: true)],
     );
   }
 }

@@ -308,6 +308,34 @@ void main() {
     await _done(t, sv);
   });
 
+  testWidgets('main device signs out from Settings (no recovery phrase needed); back to welcome', (t) async {
+    setSize(t, const Size(1440, 900));
+    final sv = await makeServices(t);
+    await t.runAsync(() => sv.devices.load());
+    expect(sv.devices.isPrimary, isTrue);
+    await t.runAsync(() async {
+      try {
+        await sv.api.deviceLogout();
+        fail('main device signed out without confirmation');
+      } on ApiException catch (e) {
+        expect(e.code, 'err.primary_logout');
+      }
+    });
+    await t.pumpWidget(LumoraApp(services: sv, home: const Scaffold(body: SettingsSubPage(page: SettingsPage.security)), overlays: false));
+    await settle(t);
+    await t.scrollUntilVisible(find.text('Đăng xuất'), 200, scrollable: find.byType(Scrollable).first);
+    await t.tap(find.text('Đăng xuất'));
+    await settle(t);
+    expect(find.text('Đăng xuất khỏi máy này?'), findsOneWidget);
+    expect(find.textContaining('24 từ khôi phục'), findsWidgets);
+    expect(find.byType(Checkbox), findsNothing, reason: 'no phrase quiz to sign out');
+    await t.tap(find.widgetWithText(FilledButton, 'Đăng xuất'));
+    await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
+    await _flush(t);
+    expect(sv.devices.signedOut, isNotNull);
+    await _done(t, sv);
+  });
+
   testWidgets('incoming call answered on another device: note, no missed call', (t) async {
     setSize(t, const Size(390, 844), dpr: 2);
     final sv = await makeServices(t);

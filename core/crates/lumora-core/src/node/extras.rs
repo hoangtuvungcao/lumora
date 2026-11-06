@@ -15,8 +15,14 @@ fn story_bytes(id: &[u8; 16], author: &PeerId, created: u64, text: &str, image: 
     v
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+pub(super) struct StoryDeleteMsg {
+    #[serde(with = "serde_bytes", default)]
+    pub id: Vec<u8>,
+}
+
 fn shrink_image(path: &std::path::Path, max: u32, quality: u8) -> Result<Vec<u8>> {
-    let img = image::ImageReader::open(path)?.with_guessed_format()?.decode()?;
+    let img = super::files::decode_upright(path)?;
     let img = if img.width() > max || img.height() > max { img.thumbnail(max, max) } else { img };
     let mut out = std::io::Cursor::new(Vec::new());
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, quality).encode_image(&img.to_rgb8())?;
@@ -100,8 +106,11 @@ impl Node {
         let bg: String = bg.chars().take(40).collect();
         let sig = self.signer.sign(&story_bytes(&id, &self.me, created, &text, &image, &bg));
         self.store.story_put(&id, &self.me, created as i64, &text, &image, &bg)?;
+        self.store.story_mark_mine(&id)?;
         let msg = PeerMsg::Story { id, author: self.me, created, text, image, bg, sig };
-        for f in self.store.friend_ids() {
+        // my other devices show (and can take down) my story too
+        let own = (!self.siblings().is_empty()).then_some(self.me);
+        for f in self.store.friend_ids().into_iter().chain(own) {
             let mid: [u8; 16] = blake3::derive_key("lumora story slot", &[&id[..], &f.0[..]].concat())[..16].try_into().unwrap();
             self.deliver(f, mid, msg.clone(), false).await;
         }
@@ -111,7 +120,9 @@ impl Node {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn on_story(&self, from: PeerId, id: [u8; 16], author: PeerId, created: u64, text: String, image: Vec<u8>, bg: String, sig: Vec<u8>) -> Result<()> {
-        anyhow::ensure!(author == from && self.store.is_friend(&from), "story from non-friend");
+        // a friend's story, or mine posted on another of my devices
+        let own = from == self.me;
+        anyhow::ensure!(author == from && (own || self.store.is_friend(&from)), "story from non-friend");
         anyhow::ensure!(self.verify_content(&author, &story_bytes(&id, &author, created, &text, &image, &bg), &sig), "bad story signature");
         if now_ms().saturating_sub(created) > 86_400_000 || image.len() > 600 * 1024 {
             return Ok(());
@@ -119,7 +130,35 @@ impl Node {
         // a story dated in the future would stay up (and sort first) past its 24 h
         let created = created.min(now_ms());
         if self.store.story_put(&id, &author, created as i64, &text, &image, &bg)? {
+            if own {
+                self.store.story_mark_mine(&id)?;
+            }
             self.emit("story", json!({"id": hex::encode(id), "author": author.to_base32()}));
+        }
+        Ok(())
+    }
+
+    /// Take my story down: gone here, on my other devices and at every friend's.
+    pub async fn story_delete(self: &Arc<Self>, id: [u8; 16]) -> Result<()> {
+        anyhow::ensure!(self.store.story_author(&id) == Some(self.me), crate::i18n::user_err("err.story_not_yours"));
+        self.store.story_delete(&id)?;
+        self.emit("story_removed", json!({"id": hex::encode(id)}));
+        let msg = proto::ext(proto::ext::STORY_DELETE, &StoryDeleteMsg { id: id.to_vec() });
+        // my other devices only when I have some (else the copy would wait in the outbox forever)
+        let own = (!self.siblings().is_empty()).then_some(self.me);
+        for to in self.store.friend_ids().into_iter().chain(own) {
+            let mid: [u8; 16] = blake3::derive_key("lumora story delete", &[&id[..], &to.0[..]].concat())[..16].try_into().unwrap();
+            self.deliver(to, mid, msg.clone(), true).await;
+        }
+        Ok(())
+    }
+
+    /// `Ext STORY_DELETE` from account `from`: only the author's own story goes.
+    pub(super) fn on_story_delete(&self, from: PeerId, body: &[u8]) -> Result<()> {
+        let m: StoryDeleteMsg = proto::ext_body(body)?;
+        let Ok(id) = <[u8; 16]>::try_from(m.id.as_slice()) else { return Ok(()) };
+        if self.store.story_author(&id) == Some(from) && self.store.story_delete(&id)? {
+            self.emit("story_removed", json!({"id": hex::encode(id)}));
         }
         Ok(())
     }

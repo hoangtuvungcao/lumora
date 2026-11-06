@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <!-- no READ_MEDIA_IMAGES: photos come from the system picker (Play photo/video policy) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Foreground service types (see LumoraService.kt for when each is used
@@ -26,6 +26,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
     <uses-permission android:name="android.permission.MANAGE_OWN_CALLS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Incoming calls: ring vibration, and the call screen over the lock screen
+         (full-screen intent of the "incoming calls" notification, Notifier.kt). -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- No push server: the user is asked (Settings / first run) to let Lumora run
+         in the background (Play allows it for messaging/calling apps without FCM). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
@@ -92,6 +99,22 @@
             <!-- Links are routed by Dart (DesktopLinks), not as Navigator routes. -->
             <meta-data android:name="flutter_deeplinking_enabled" android:value="false"/>
         </activity>
+        <!-- A chat opened as a conversation bubble (Notifier.kt, Android 11+). -->
+        <activity
+            android:name=".BubbleActivity"
+            android:exported="false"
+            android:theme="@style/LaunchTheme"
+            android:allowEmbedded="true"
+            android:resizeableActivity="true"
+            android:documentLaunchMode="always"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+        </activity>
         <service
             android:name=".LumoraService"
             android:exported="false"
@@ -101,6 +124,11 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Peer-to-peer messenger without a push server: keeps the user's end-to-end encrypted connection to friends and own devices open so messages and incoming calls reach this phone while the app is in the background (no third-party push service exists to wake it)." />
         </service>
+        <!-- "Hoãn 10 phút" on a reminder notification (and the snoozed reminder
+             firing again when Lumora is not running). -->
+        <receiver android:name=".ReminderActions" android:exported="false" />
+        <!-- "Decline" on the incoming-call notification. -->
+        <receiver android:name=".CallActions" android:exported="false" />
         <service
             android:name=".LumoraAccessibilityService"
             android:label="@string/a11y_service_label"
@@ -138,6 +166,15 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+: apps we hand links to (maps app for a shared location, the browser) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="geo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
         </intent>
     </queries>
 </manifest>

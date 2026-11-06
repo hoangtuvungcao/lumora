@@ -89,6 +89,8 @@ class LumoraService : Service() {
         const val NOTIFICATION_ID = 1107
         const val ACTION_START = "vn.lumora.START"
         const val ACTION_STOP = "vn.lumora.STOP"
+        /** Restart alarm after the task was swiped away ([onTaskRemoved]). */
+        const val ACTION_RESTART = "vn.lumora.RESTART"
         const val ACTION_PROJECTION = "vn.lumora.PROJECTION"
         const val ACTION_STOP_PROJECTION = "vn.lumora.STOP_PROJECTION"
         const val EXTRA_RESULT_CODE = "resultCode"
@@ -195,6 +197,9 @@ class LumoraService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // null intent: Android restarted us (START_STICKY) after killing the process —
+        // e.g. Lumora swiped away on MIUI/HyperOS. The app still wants the connection.
+        if (intent == null || intent.action == ACTION_RESTART) wanted = true
         when (intent?.action) {
             ACTION_STOP -> {
                 shutdown()
@@ -239,7 +244,34 @@ class LumoraService : Service() {
             shutdown()
             return START_NOT_STICKY
         }
+        // No Activity in this process (restarted by Android): run Lumora headless so
+        // the core reconnects and messages / calls are notified again.
+        LumoraEngine.ensureRunning(this)
         return START_STICKY
+    }
+
+    /**
+     * Lumora swiped away from the recent apps. Stock Android keeps the process
+     * (foreground service) and the engine; some OEMs kill it right after. A
+     * restart a moment later brings the service — and with it the headless
+     * engine and the core — back in that case (a no-op when still running).
+     * Starting a foreground service from an alarm is only allowed while Lumora
+     * is exempt from battery optimisation (Settings › "Run in background").
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (!wanted) return
+        try {
+            val pi = PendingIntent.getForegroundService(
+                this, 1109,
+                Intent(this, LumoraService::class.java).setAction(ACTION_RESTART),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val am = getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            am.setAndAllowWhileIdle(android.app.AlarmManager.ELAPSED_REALTIME_WAKEUP, android.os.SystemClock.elapsedRealtime() + 2_000, pi)
+        } catch (t: Throwable) {
+            Log.w(TAG, "restart alarm: $t")
+        }
     }
 
     override fun onDestroy() {
@@ -366,7 +398,7 @@ class LumoraService : Service() {
         }
         val open = PendingIntent.getActivity(
             this, 0,
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            Notifier.openAppIntent(this),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val (title, text) = when (kind) {

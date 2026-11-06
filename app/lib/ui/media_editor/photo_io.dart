@@ -17,7 +17,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../l10n/strings.dart';
 import '../chats/attachments.dart' show openFile;
-import '../widgets/common.dart' show UserMessageException, showTechnicalDetails;
+import '../widgets/common.dart' show UserMessageException, showTechnicalDetails, showTopToast;
 import 'edit_render.dart';
 import 'edit_state.dart';
 import 'heic.dart';
@@ -358,20 +358,18 @@ String? _picturesDir() {
 /// Shows a confirmation toast; returns the saved location or null.
 Future<String?> savePhotoToDevice(BuildContext context, Uint8List bytes, {required String ext}) async {
   final s = S.read(context);
-  final messenger = ScaffoldMessenger.maybeOf(context);
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
   final name = photoFileName(ext);
   final mime = switch (ext) {
     'png' => 'image/png',
     'gif' => 'image/gif',
     _ => 'image/jpeg',
   };
-  void show(String text, {String? openPath}) => messenger
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(text),
+  void show(String text, {String? openPath}) => showTopToast(null, text,
+      overlay: overlay,
       duration: const Duration(seconds: 3),
-      action: openPath == null ? null : SnackBarAction(label: s('open'), onPressed: () => openFile(context, openPath)),
-    ));
+      actionLabel: openPath == null ? null : s('open'),
+      onAction: openPath == null ? null : () => openFile(context, openPath));
   try {
     if (debugSavePhotoOverride != null) {
       final r = await debugSavePhotoOverride!(bytes, name, mime);
@@ -400,15 +398,13 @@ Future<String?> savePhotoToDevice(BuildContext context, Uint8List bytes, {requir
     return path;
   } catch (e) {
     debugPrint('Lumora: save photo: $e');
-    messenger
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(s('pe_save_failed')),
+    showTopToast(null, s('pe_save_failed'),
+        overlay: overlay,
         duration: const Duration(seconds: 5),
-        action: SnackBarAction(label: s('technical_details'), onPressed: () {
+        actionLabel: s('technical_details'),
+        onAction: () {
           if (context.mounted) showTechnicalDetails(context, '$e');
-        }),
-      ));
+        });
     return null;
   }
 }

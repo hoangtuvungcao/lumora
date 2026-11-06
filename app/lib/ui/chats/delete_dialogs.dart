@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
+import '../../state/settings.dart';
 import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -99,13 +100,18 @@ Future<void> askClearChat(BuildContext context, String conv, {required bool dele
   }
 }
 
-/// Mute for 1 h / 8 h / 1 day / always, or unmute.
+/// Mute for 1 h / 8 h / 1 day / always, "only when I'm mentioned" (groups),
+/// or unmute.
 Future<void> pickMute(BuildContext context, String conv) async {
   final s = S.read(context);
   final chat = context.read<ChatStore>();
+  final settings = context.read<Settings>();
   final muted = chat.convs[conv]?.muted ?? false;
+  final mentionsOnly = settings.mentionsOnlyChats.contains(conv);
+  final group = conv.startsWith('g:') || conv.contains('#');
   final now = DateTime.now().millisecondsSinceEpoch;
   const forever = 9007199254740991; // max safe JSON integer ≈ "always"
+  const onlyMentions = -1;
   final r = await showModalBottomSheet<int>(
     context: context,
     constraints: const BoxConstraints(maxWidth: 480),
@@ -119,9 +125,23 @@ Future<void> pickMute(BuildContext context, String conv) async {
           (s('mute_always'), forever),
         ])
           ListTile(leading: const Icon(AppIcons.mute), title: Text(label), onTap: () => Navigator.pop(c, until)),
+        if (group)
+          ListTile(
+            leading: const Icon(AppIcons.mention),
+            title: Text(s('mute_mentions_only')),
+            subtitle: Text(s('mute_mentions_only_hint')),
+            trailing: mentionsOnly ? const Icon(AppIcons.check, color: LC.primary) : null,
+            onTap: () => Navigator.pop(c, onlyMentions),
+          ),
         if (muted) ListTile(leading: const Icon(AppIcons.bellRinging, color: LC.primary), title: Text(s('unmute')), onTap: () => Navigator.pop(c, 0)),
       ]),
     ),
   );
-  if (r != null) await chat.muteUntil(conv, r);
+  if (r == null) return;
+  // "Mentions only" = muted for good, plus a local exception for @mentions of me
+  final only = r == onlyMentions;
+  if (only != mentionsOnly) {
+    settings.update((x) => x.mentionsOnlyChats = only ? [...x.mentionsOnlyChats, conv] : x.mentionsOnlyChats.where((c) => c != conv).toList());
+  }
+  await chat.muteUntil(conv, only ? forever : r);
 }

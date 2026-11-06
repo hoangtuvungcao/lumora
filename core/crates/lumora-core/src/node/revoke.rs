@@ -38,18 +38,58 @@ pub(super) struct RekeyRequestMsg {
     pub list: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize)]
 struct ResetMarker {
     #[serde(default)]
     wipe_media: bool,
+    /// The user signed this device out here (not the main device / another main device).
+    #[serde(default)]
+    by_self: bool,
+    /// Signed out without anyone asking for a wipe (e.g. another device became the main
+    /// device): the account's files are moved aside to `<data_dir>.signed-out-<unix time>`
+    /// instead of being deleted, so nothing is lost if it happened by mistake. Missing (a
+    /// marker from an older version) or a damaged marker: kept too, unless a wipe was asked.
+    #[serde(default = "keep_by_default")]
+    keep: bool,
 }
 
-/// Called before the keystore is opened: finish a sign-out (fresh install afterwards).
+fn keep_by_default() -> bool {
+    true
+}
+
+/// Called before the keystore is opened when a new account is being made here: finish a
+/// sign-out (fresh install afterwards). Files are deleted only when the sign-out asked for
+/// it; otherwise they are kept aside (see [`ResetMarker::keep`]).
 pub(crate) fn apply_reset_marker(dir: &std::path::Path) {
     let m = dir.join(RESET_MARKER);
     let Ok(raw) = std::fs::read(&m) else { return };
-    let marker: ResetMarker = serde_json::from_slice(&raw).unwrap_or_default();
-    for f in ["keystore.json", ".device_key", "lumora.db", "lumora.db-wal", "lumora.db-shm"] {
+    let marker: ResetMarker = serde_json::from_slice(&raw).unwrap_or(ResetMarker { wipe_media: false, by_self: false, keep: true });
+    let files = ["keystore.json", ".device_key", "lumora.db", "lumora.db-wal", "lumora.db-shm"];
+    if marker.keep && !marker.wipe_media {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let mut aside = dir.as_os_str().to_owned();
+        aside.push(format!(".signed-out-{secs}"));
+        let aside = std::path::PathBuf::from(aside);
+        if let Err(e) = std::fs::create_dir_all(&aside) {
+            // never delete what could not be kept: leave everything as it is
+            tracing::warn!("signed-out device: cannot keep the old data aside ({e}); leaving it in place");
+            return;
+        }
+        restrict_to_owner(&aside, true);
+        for f in files {
+            let from = dir.join(f);
+            if from.exists() {
+                if let Err(e) = std::fs::rename(&from, aside.join(f)) {
+                    tracing::warn!("signed-out device: cannot move {f} aside ({e}); leaving the data in place");
+                    return;
+                }
+            }
+        }
+        let _ = std::fs::remove_file(&m);
+        tracing::info!("signed-out device: account data kept aside in {}, starting fresh", aside.display());
+        return;
+    }
+    for f in files {
         let _ = std::fs::remove_file(dir.join(f));
     }
     if marker.wipe_media {
@@ -172,9 +212,24 @@ impl Node {
         self.rotate_key(gid).await
     }
 
-    /// Linked device: sign this device out (the main device is asked to revoke it).
-    pub async fn device_logout(self: &Arc<Self>) -> Result<Value> {
-        anyhow::ensure!(!self.is_primary(), crate::i18n::user_err("err.primary_logout"));
+    /// Sign this device out. A linked device asks the main device to revoke it; the main device
+    /// (only with `primary_ok`, after the user confirmed they kept the 24-word recovery phrase)
+    /// simply forgets the account here, so someone else can sign in on this machine. Linked
+    /// devices keep working and one of them can become the main device with the phrase.
+    /// With a password-protected install, [passphrase] must be that password (someone who just
+    /// picks up an unlocked phone can't wipe the account from it).
+    pub async fn device_logout(self: &Arc<Self>, primary_ok: bool, passphrase: Option<String>) -> Result<Value> {
+        let dir = self.cfg.data_dir.clone();
+        if crate::keystore::needs_passphrase(&dir) {
+            let pass = passphrase.filter(|p| !p.is_empty()).ok_or_else(|| crate::i18n::user_err("err.wrong_passphrase"))?;
+            tokio::task::spawn_blocking(move || crate::keystore::unlock(&dir, Some(&pass)).map(|_| ())).await??;
+        }
+        if self.is_primary() {
+            anyhow::ensure!(primary_ok, crate::i18n::user_err("err.primary_logout"));
+            tracing::info!("main device signed out by its user");
+            self.self_revoke(false, true);
+            return Ok(json!({"notified": true}));
+        }
         let msg = proto::ext(ext::DEVICE_REVOKE_REQUEST, &RevokeRequestMsg { wipe: false });
         let primary = self.me;
         let notified = match tokio::time::timeout(Duration::from_secs(6), self.connect(primary)).await {
@@ -218,7 +273,9 @@ impl Node {
                 }
             }
         }
-        let marker = serde_json::to_vec(&ResetMarker { wipe_media: wipe }).unwrap_or_default();
+        // a sign-out nobody on this device asked for and that wipes nothing (another device
+        // became the main device, the main device dropped this one): keep the data aside
+        let marker = serde_json::to_vec(&ResetMarker { wipe_media: wipe, by_self, keep: !wipe && !by_self }).unwrap_or_default();
         let _ = crate::keystore::write_private(&self.cfg.data_dir.join(RESET_MARKER), &marker);
         tracing::warn!("this device was signed out of the account (wipe: {wipe})");
         self.emit("device_revoked", json!({"device": self.device.to_base32(), "wipe": wipe, "by_self": by_self, "restart": true}));
@@ -282,4 +339,110 @@ struct GroupStateLite {
     admin: bool,
     owner: PeerId,
     admins: Vec<PeerId>,
+}
+
+/// Regression (Android, password-protected install): a device signed out in the background
+/// came back on the lock screen; the password typed there finished the sign-out and created
+/// a brand-new account, so friends, chats and settings looked gone.
+#[cfg(test)]
+mod reset_tests {
+    use super::*;
+
+    fn cfg(tmp: &std::path::Path, open_existing: bool) -> NodeConfig {
+        NodeConfig {
+            data_dir: tmp.join("data"),
+            downloads_dir: Some(tmp.join("dl")),
+            passphrase: Some("mật khẩu".into()),
+            enable_lan: false,
+            enable_upnp: false,
+            enable_dht: false,
+            enable_nostr: false,
+            relays: Some(vec![]),
+            nostr: Some(vec![]),
+            stun: Some(vec![]),
+            open_existing,
+            ..Default::default()
+        }
+    }
+
+    fn err_key(e: &anyhow::Error) -> &'static str {
+        crate::i18n::find_user_err(e).map(|u| u.key).unwrap_or("")
+    }
+
+    async fn stop(n: Arc<Node>) {
+        n.shutdown();
+        drop(n);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    fn aside_dirs(tmp: &std::path::Path) -> Vec<std::path::PathBuf> {
+        std::fs::read_dir(tmp)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("data.signed-out-")))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn unlock_never_turns_a_signed_out_account_into_a_new_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = Node::start(cfg(tmp.path(), false)).await.unwrap();
+        let me = n.me;
+        // signed out without anyone asking for a wipe (another device became the main one)
+        n.self_revoke(false, false);
+        stop(n).await;
+        let data = tmp.path().join("data");
+
+        // the lock screen: refused, and nothing touched
+        let e = Node::start(cfg(tmp.path(), true)).await.err().expect("unlock must not start");
+        assert_eq!(err_key(&e), "err.device_signed_out");
+        assert!(data.join("keystore.json").exists() && data.join("lumora.db").exists() && data.join(RESET_MARKER).exists());
+        assert!(aside_dirs(tmp.path()).is_empty());
+
+        // "Start over" → a new account; the old one is kept aside, never deleted
+        let n2 = Node::start(cfg(tmp.path(), false)).await.unwrap();
+        assert_ne!(n2.me, me);
+        stop(n2).await;
+        let aside = aside_dirs(tmp.path());
+        assert_eq!(aside.len(), 1, "{aside:?}");
+        assert!(aside[0].join("lumora.db").exists());
+        let old = crate::keystore::unlock(&aside[0], Some("mật khẩu")).unwrap();
+        assert_eq!(old.identity.peer_id(), me, "the kept data is the old account");
+    }
+
+    #[test]
+    fn old_or_damaged_markers_keep_the_data() {
+        for raw in [&b"{\"wipe_media\":false}"[..], b"garbage"] {
+            let tmp = tempfile::tempdir().unwrap();
+            let data = tmp.path().join("data");
+            std::fs::create_dir_all(&data).unwrap();
+            std::fs::write(data.join("lumora.db"), b"db").unwrap();
+            std::fs::write(data.join(RESET_MARKER), raw).unwrap();
+            apply_reset_marker(&data);
+            assert!(!data.join("lumora.db").exists() && !data.join(RESET_MARKER).exists());
+            let aside = aside_dirs(tmp.path());
+            assert_eq!(std::fs::read(aside[0].join("lumora.db")).unwrap(), b"db");
+        }
+    }
+
+    #[tokio::test]
+    async fn unlock_never_creates_an_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let e = Node::start(cfg(tmp.path(), true)).await.err().expect("nothing to unlock");
+        assert_eq!(err_key(&e), "err.no_account");
+        assert!(!crate::keystore::exists(&tmp.path().join("data")));
+    }
+
+    #[tokio::test]
+    async fn signing_out_here_still_removes_the_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = Node::start(cfg(tmp.path(), false)).await.unwrap();
+        let me = n.me;
+        n.self_revoke(false, true); // the user signed this device out
+        stop(n).await;
+        let n2 = Node::start(cfg(tmp.path(), false)).await.unwrap();
+        assert_ne!(n2.me, me);
+        stop(n2).await;
+        assert!(aside_dirs(tmp.path()).is_empty());
+    }
 }

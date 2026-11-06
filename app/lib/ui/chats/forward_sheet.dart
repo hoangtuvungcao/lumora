@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/peer_avatar.dart';
 import '../../state/app_lock.dart';
+import '../../core/text_fold.dart';
 
 /// Chat picker used by "Forward" (returns the chosen conversation id).
 Future<String?> pickConversation(BuildContext context, {required String title, String? exclude}) {
@@ -40,7 +41,7 @@ class _ConvPickerState extends State<_ConvPicker> {
     final lock = context.watch<AppLock>();
     final list = chat.sorted
         .where((c) => c.id != widget.exclude && !c.archived && !lock.isChatHidden(c.id))
-        .where((c) => _q.isEmpty || c.title.toLowerCase().contains(_q) || (c.isSaved && s('saved_messages').toLowerCase().contains(_q)))
+        .where((c) => _q.isEmpty || foldText(c.title).contains(_q) || (c.isSaved && foldText(s('saved_messages')).contains(_q)))
         .toList();
     return Column(children: [
       Padding(
@@ -54,7 +55,7 @@ class _ConvPickerState extends State<_ConvPicker> {
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
         child: TextField(
           autofocus: isDesktop(context),
-          onChanged: (v) => setState(() => _q = v.trim().toLowerCase()),
+          onChanged: (v) => setState(() => _q = foldText(v.trim())),
           decoration: InputDecoration(hintText: s('search_chats'), prefixIcon: const Icon(AppIcons.search, size: 20)),
         ),
       ),

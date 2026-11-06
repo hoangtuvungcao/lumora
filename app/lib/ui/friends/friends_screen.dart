@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import '../profile/profile_screen.dart';
 import 'add_friend.dart';
 import 'safety_number.dart';
+import '../../core/text_fold.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -30,7 +31,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
     final store = context.watch<ContactsStore>();
     final desktop = isDesktop(context);
     final pending = store.incoming.length + store.outgoing.length;
-    bool match(Contact c) => _q.isEmpty || c.displayName.toLowerCase().contains(_q) || c.shortId.replaceAll(' ', '').contains(_q.replaceAll(' ', ''));
+    bool match(Contact c) => _q.isEmpty || foldText(c.displayName).contains(_q) || c.shortId.replaceAll(' ', '').contains(_q.replaceAll(' ', ''));
 
     final List<Widget> slivers;
     switch (_tab) {
@@ -118,7 +119,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
         child: TextField(
-          onChanged: (v) => setState(() => _q = v.toLowerCase().trim()),
+          onChanged: (v) => setState(() => _q = foldText(v.trim())),
           decoration: InputDecoration(hintText: s('search_friends'), prefixIcon: const Icon(AppIcons.search, size: 20)),
         ),
       ),

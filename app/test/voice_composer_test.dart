@@ -126,6 +126,17 @@ void main() {
     }
   }
 
+  /// Real time until [cond] holds (bounded): the recorder starts asynchronously, slower on a
+  /// busy machine than any fixed wait.
+  Future<void> until(WidgetTester t, bool Function() cond) async {
+    for (var i = 0; i < 300 && !cond(); i++) {
+      await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await t.pump();
+    }
+  }
+
+  bool started() => _FakeRecorder.all.isNotEmpty && _FakeRecorder.all.last.recording;
+
   Finder mic() => find.byWidgetPredicate((w) => w is Tooltip && (w.message == 'Nhấn giữ để ghi âm' || w.message == 'Đang ghi âm…'));
 
   testWidgets('hold → bar shows → release sends; mic stays mounted', (t) async {
@@ -134,6 +145,7 @@ void main() {
     final g = await t.startGesture(t.getCenter(mic()));
     await t.pump(const Duration(milliseconds: 600)); // long press
     await real(t);
+    await until(t, started);
     await t.pump();
     final rec = _FakeRecorder.all.single;
     expect(rec.recording, isTrue);
@@ -161,6 +173,7 @@ void main() {
     final g = await t.startGesture(t.getCenter(mic()));
     await t.pump(const Duration(milliseconds: 600));
     await real(t);
+    await until(t, started);
     final rec = _FakeRecorder.all.single;
     await g.moveBy(const Offset(-140, 0));
     await t.pump();
@@ -177,6 +190,7 @@ void main() {
     final g = await t.startGesture(t.getCenter(mic()));
     await t.pump(const Duration(milliseconds: 600));
     await real(t);
+    await until(t, started);
     await g.moveBy(const Offset(0, -120));
     await t.pump();
     await g.up();
@@ -197,6 +211,7 @@ void main() {
     final g = await t.startGesture(t.getCenter(mic()));
     await t.pump(const Duration(milliseconds: 600));
     await real(t);
+    await until(t, started);
     await g.moveBy(const Offset(0, -120));
     await g.up();
     await real(t);
@@ -214,6 +229,7 @@ void main() {
     final g2 = await t.startGesture(t.getCenter(mic()));
     await t.pump(const Duration(milliseconds: 600));
     await real(t);
+    await until(t, started);
     await g2.moveBy(const Offset(0, -120));
     await g2.up();
     await real(t);

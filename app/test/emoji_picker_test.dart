@@ -263,7 +263,7 @@ void main() {
       expect(AnimatedEmojiLibrary.has('👍🏽'), isFalse); // toned: static glyph
     });
 
-    testWidgets('loads, plays once, caps concurrency; frame cost', (t) async {
+    testWidgets('loads, loops while visible, caps concurrency; frame cost', (t) async {
       AnimatedEmojiLibrary.reset();
       final st = Settings();
       final emojis = ['😂', '❤️', '👍', '🎉', '🔥', '😭', '🥳', '🙏'];
@@ -302,8 +302,12 @@ void main() {
       // ignore: avoid_print
       print('frame with 6 animations: median ${frames[30] / 1000} ms, p90 ${frames[54] / 1000} ms (debug, test renderer)');
 
-      // They play once, then stop and release their slots.
+      // Big emoji in messages keep moving while on screen...
       await t.pump(const Duration(seconds: 10));
+      await t.pump(const Duration(milliseconds: 16));
+      expect(AnimatedEmojiLibrary.playing, AnimatedEmojiLibrary.maxConcurrent);
+      // ...and release their slots once they leave it.
+      await t.pumpWidget(_host(st, const SizedBox(), size: const Size(390, 700)));
       await t.pump(const Duration(milliseconds: 16));
       expect(AnimatedEmojiLibrary.playing, 0);
       expect(find.byType(Lottie), findsNothing, reason: 'idle = static glyph, nothing to repaint');

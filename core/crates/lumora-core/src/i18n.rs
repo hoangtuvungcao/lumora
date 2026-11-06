@@ -138,6 +138,8 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("err.bad_bot_token", "This bot code isn't valid. Copy it again from BotFather.", "Mã bot không hợp lệ. Hãy sao chép lại từ BotFather."),
     ("err.bot_token_mismatch", "This bot code belongs to a different bot. Use a new data folder for it.", "Mã bot này thuộc về một bot khác. Hãy dùng thư mục dữ liệu mới cho bot."),
     // ---- my devices (multi-device)
+    ("err.no_account", "No Lumora account was found on this device. Nothing was changed.", "Không tìm thấy tài khoản Lumora trên máy này. Chưa có gì bị thay đổi."),
+    ("err.device_signed_out", "This device was signed out of its account. Its data was not deleted.", "Thiết bị này đã được đăng xuất khỏi tài khoản. Dữ liệu chưa bị xoá."),
     ("err.restore_data_exists", "This device already has Lumora data. Restore into a fresh install, or open the existing data.", "Máy này đã có dữ liệu Lumora. Hãy khôi phục trên bản cài mới, hoặc mở dữ liệu đang có."),
     ("err.phrase_on_primary", "The recovery phrase is only shown on your main device.", "Cụm từ khôi phục chỉ hiển thị trên thiết bị chính của bạn."),
     ("err.primary_only", "Only your main device can do this.", "Chỉ thiết bị chính của bạn mới làm được việc này."),
@@ -156,6 +158,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("err.peer_needs_update", "This friend uses an older Lumora that can't read messages from this device yet. Send it from your main device, or ask them to update.", "Người này dùng Lumora phiên bản cũ nên chưa đọc được tin gửi từ thiết bị này. Hãy gửi từ thiết bị chính, hoặc nhờ họ cập nhật."),
     ("err.device_not_found", "This device isn't part of your account any more.", "Thiết bị này không còn thuộc tài khoản của bạn."),
     ("err.cannot_revoke_self", "This is your main device. To stop using it, make another device the main one first.", "Đây là thiết bị chính. Muốn thôi dùng máy này, hãy đặt một thiết bị khác làm thiết bị chính trước."),
+    ("err.story_not_yours", "Only the person who posted this story can delete it.", "Chỉ người đăng tin này mới xoá được."),
     ("err.primary_logout", "This is your main device and can't be signed out. Make another device the main one first.", "Đây là thiết bị chính nên không đăng xuất được. Hãy đặt một thiết bị khác làm thiết bị chính trước."),
     ("err.already_primary", "This is already your main device.", "Đây đã là thiết bị chính của bạn."),
     ("err.bad_phrase", "That recovery phrase isn't right. Please check each word.", "Cụm từ khôi phục chưa đúng. Hãy kiểm tra lại từng từ."),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +11,7 @@ import '../../core/links.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/chat_list.dart';
+import '../settings/background_sheet.dart';
 import '../chats/chat_view.dart';
 import '../files/files_screen.dart';
 import '../friends/friends_screen.dart';
@@ -70,7 +73,10 @@ class _HomeShellState extends State<HomeShell> {
     if (st.showTour && mounted) {
       st.update((x) => x.showTour = false);
       showWelcomeTour(context);
+      return; // the background prompt waits for the next launch
     }
+    // Android, once: let Lumora run in the background (no push server)
+    if (mounted) unawaited(maybeAskBackground(context));
   }
 
   @override
@@ -293,8 +299,10 @@ class _RailButtonState extends State<_RailButton> {
                   curve: Motion.curve,
                   width: 4,
                   height: sel ? 36 : (_hover ? 18 : (widget.badge != 0 ? 8 : 0)),
+                  // brand-coloured marker (was the text colour: a black notch on light themes)
                   decoration: BoxDecoration(
-                    color: context.lc.text,
+                    gradient: sel ? LC.gradient : null,
+                    color: sel ? null : LC.primary.withValues(alpha: 0.45),
                     borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
                   ),
                 ),

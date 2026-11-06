@@ -14,12 +14,15 @@ import 'ui/codec_licenses.dart';
 import 'ui/emoji_font.dart';
 import 'ui/flows.dart';
 import 'ui/startup_error.dart';
+import 'ui/widgets/common.dart' show LayerBack;
 import 'state/settings.dart';
 
 const _onboardEnv = String.fromEnvironment('LUMORA_ONBOARD');
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Android Back reaches the call / remote / lock layers before the app's Navigator.
+  LayerBack.install();
   // Keep decoded-image memory bounded.
   PaintingBinding.instance.imageCache
     ..maximumSizeBytes = 64 << 20

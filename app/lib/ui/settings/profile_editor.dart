@@ -150,12 +150,36 @@ class ProfileEditor extends StatefulWidget {
 
 class _ProfileEditorState extends State<ProfileEditor> {
   late final SessionStore _session = context.read<SessionStore>();
-  late final _name = TextEditingController(text: _session.me?.name ?? '');
-  late final _bio = TextEditingController(text: _session.profile.bio);
+  late String _shownName = _session.me?.name ?? '';
+  late String _shownBio = _session.profile.bio;
+  late final _name = TextEditingController(text: _shownName);
+  late final _bio = TextEditingController(text: _shownBio);
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    _session.addListener(_follow);
+  }
+
+  /// Name / bio changed on another of my devices: the fields show it, unless
+  /// they are being edited here.
+  void _follow() {
+    final name = _session.me?.name ?? '';
+    final bio = _session.profile.bio;
+    if (name != _shownName) {
+      if (_name.text == _shownName) _name.text = name;
+      _shownName = name;
+    }
+    if (bio != _shownBio) {
+      if (_bio.text == _shownBio) _bio.text = bio;
+      _shownBio = bio;
+    }
+  }
+
+  @override
   void dispose() {
+    _session.removeListener(_follow);
     _name.dispose();
     _bio.dispose();
     super.dispose();
@@ -284,12 +308,28 @@ class _UsernameField extends StatefulWidget {
 }
 
 class _UsernameFieldState extends State<_UsernameField> {
-  late final _c = TextEditingController(text: widget.session.me?.username ?? '');
+  late String _shown = widget.session.me?.username ?? '';
+  late final _c = TextEditingController(text: _shown);
   String? _error;
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_follow);
+  }
+
+  /// Set on another of my devices: shown here unless being edited.
+  void _follow() {
+    final u = widget.session.me?.username ?? '';
+    if (u == _shown) return;
+    if (_c.text == _shown) _c.text = u;
+    _shown = u;
+  }
+
+  @override
   void dispose() {
+    widget.session.removeListener(_follow);
     _c.dispose();
     super.dispose();
   }

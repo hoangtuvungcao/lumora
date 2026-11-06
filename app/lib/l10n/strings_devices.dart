@@ -45,6 +45,15 @@ const Map<String, List<String>> kDeviceStrings = {
   ],
   'dv_signout_wipe': ['Xoá cả ảnh và tệp đã tải trên thiết bị đó', 'Also delete downloaded photos and files on it'],
   'dv_signout_action': ['Đăng xuất', 'Sign out'],
+  'dv_logout_main_title': ['Đăng xuất khỏi máy này?', 'Sign out on this device?'],
+  'dv_logout_main_body': [
+    'Tài khoản, tin nhắn và cài đặt sẽ bị xoá khỏi máy này để người khác có thể đăng nhập tài khoản của họ. Các thiết bị đã liên kết vẫn dùng tiếp được. Lumora không có máy chủ giữ tài khoản, nên muốn đăng nhập lại trên máy này bạn cần 24 từ khôi phục, tệp sao lưu, hoặc liên kết từ một máy khác đang đăng nhập.',
+    'Your account, messages and settings are removed from this device so someone else can sign in with theirs. Linked devices keep working. Lumora has no server holding your account, so signing back in here needs your 24-word recovery phrase, a backup file, or a link from another signed-in device.',
+  ],
+  'dv_logout_main_show': ['Xem 24 từ khôi phục', 'Show recovery phrase'],
+  'dv_logout_password': ['Mật khẩu tài khoản', 'Account password'],
+  'sign_out': ['Đăng xuất', 'Sign out'],
+  'sign_out_hint': ['Xoá tài khoản khỏi máy này để đăng nhập tài khoản khác', 'Remove your account from this device to sign in with another'],
   'dv_signed_out_done': ['Đã đăng xuất {name}', '{name} was signed out'],
   'dv_logout_self_title': ['Đăng xuất Lumora trên thiết bị này?', 'Sign out of Lumora on this device?'],
   'dv_logout_self_body': [
@@ -204,6 +213,14 @@ const Map<String, List<String>> kDeviceStrings = {
     'You signed out of Lumora on this device. Your account is still on your other devices.'
   ],
   'dv_out_hint': ['Bạn có thể liên kết lại thiết bị này hoặc tạo tài khoản mới bất cứ lúc nào.', 'You can link this device again or create a new account any time.'],
+  'dv_out_auto': [
+    'Thiết bị chính của bạn đã đăng xuất máy này, hoặc một thiết bị khác vừa trở thành thiết bị chính của tài khoản.',
+    'Your main device signed this one out, or another device just became your account’s main device.'
+  ],
+  'dv_out_kept': [
+    'Tin nhắn và dữ liệu cũ trên máy này không bị xoá: Lumora cất riêng chúng khi bạn bắt đầu lại, để có thể mở lại sau.',
+    'Your old messages and data on this device are not deleted: Lumora keeps them aside when you start over, so they can be opened again later.'
+  ],
   'dv_out_continue': ['Bắt đầu lại', 'Start over'],
 
   // -------------------------------------------------- friends' devices

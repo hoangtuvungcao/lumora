@@ -18,6 +18,8 @@ import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
 import '../chats/chat_view.dart';
 import '../flows.dart';
+import '../shell/reminder_banner.dart' show appNavigatorKey;
+import '../../platform/android_bridge.dart';
 import 'call_effects.dart';
 import '../devices/answered_elsewhere.dart';
 import 'video_view.dart';
@@ -35,9 +37,23 @@ class CallLayer extends StatelessWidget {
     final ready = context.select<SessionStore, bool>((s) => s.phase == SessionPhase.ready);
     if (phase == null || !ready) return const SizedBox.shrink();
     if (phase == CallPhase.incoming) return const Positioned.fill(child: LayerHost(key: ValueKey('incoming'), child: IncomingCallOverlay()));
-    if (minimized) return const Positioned(top: 12, left: 0, right: 0, child: Center(child: _CallPill()));
-    return const Positioned.fill(child: LayerHost(key: ValueKey('call'), child: CallScreen()));
+    // Below the status bar: Android hands touches there to the system (pull-down
+    // shade), so the pill and its hang-up button could not be tapped on phones.
+    if (minimized) return Positioned(top: math.max(12, MediaQuery.paddingOf(context).top + 6), left: 0, right: 0, child: const Center(child: _CallPill()));
+    // Back on the call screen (nothing open on it): back to the app, the call
+    // goes on in the pill — not Lumora sent to the background.
+    return const Positioned.fill(child: LayerHost(key: ValueKey('call'), onBack: _minimizeCall, child: CallScreen()));
   }
+}
+
+bool _minimizeCall(BuildContext context) {
+  final store = context.read<CallStore>();
+  if (store.chatOpen) {
+    store.toggleChat(); // the in-call chat panel closes first
+  } else {
+    store.setMinimized(true);
+  }
+  return true;
 }
 
 class _Pulse extends StatefulWidget {
@@ -134,8 +150,17 @@ class IncomingCallOverlay extends StatelessWidget {
         _RoundAction(icon: AppIcons.hangUp, color: LC.danger, label: s('decline'), onTap: () => store.answer(false)),
         if (desktop) const SizedBox(width: 28),
         _RoundAction(icon: AppIcons.chat, color: Colors.white24, label: s('reply_message'), onTap: () {
+          // decline, then open the chat with the caller — on phones as its own page (the
+          // call screen sits above the app's navigator, so push through the app's key)
+          final conv = call.conv;
+          final phone = !isDesktop(context);
           store.answer(false);
-          context.read<NavStore>().openConv(call.conv);
+          context.read<NavStore>().openConv(conv);
+          if (phone) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              appNavigatorKey.currentState?.push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: conv)));
+            });
+          }
         }),
         if (call.video) ...[
           if (desktop) const SizedBox(width: 28),
@@ -294,7 +319,7 @@ class CallScreen extends StatelessWidget {
     final flipSelf = cam != null && cam.flipSelfView;
 
     Widget stage;
-    final screens = store.screenStreams;
+    final screens = store.liveScreenStreams;
     if (screens.isNotEmpty) {
       // Someone shares a screen: big screen view + camera strip.
       final sp = screens.entries.first;
@@ -507,7 +532,7 @@ class CallScreen extends StatelessWidget {
                           CallControl(
                             icon: AppIcons.more,
                             on: true,
-                            active: store.chatOpen || store.handRaised,
+                            active: store.chatOpen || store.handRaised || store.screen,
                             label: s('more'),
                             tip: s('more'),
                             onTap: () => _moreSheet(context, call, group: group),
@@ -867,6 +892,11 @@ Future<void> _moreSheet(BuildContext context, CallState call, {required bool gro
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (call.video && cam != null && cam.canSwitch) item(c, AppIcons.switchCamera, s('cam_switch'), cam.switchCamera),
         if (call.video) item(c, AppIcons.effects, s('call_effects'), () => showCallEffects(context), active: context.read<Settings>().videoBeauty > 0),
+        // Phones: the dock has no share button (desktop only) — sharing (Android:
+        // MediaProjection) is started and stopped from here.
+        if (!desktop && AndroidBridge.isAndroid)
+          item(c, store.screen ? AppIcons.screenShareOff : AppIcons.screenShare, store.screen ? s('stop_share') : s('share_screen'),
+              () => store.toggle(screen: !store.screen), active: store.screen),
         item(c, AppIcons.chat, s('call_chat'), store.toggleChat, active: store.chatOpen),
         item(c, AppIcons.react, s('react'), () => _pickReaction(context, call.conv)),
         item(c, AppIcons.sliders, s('call_audio'), () => showCallAudioSettings(context)),

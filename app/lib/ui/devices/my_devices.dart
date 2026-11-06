@@ -10,7 +10,9 @@ import 'package:provider/provider.dart';
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../../state/devices_store.dart';
+import '../../state/settings.dart';
 import '../../state/stores.dart' show SessionStore;
+import '../settings/security_checkup.dart' show showRecoveryPhraseDialog;
 import '../theme.dart';
 import '../widgets/app_icons.dart';
 import '../widgets/common.dart';
@@ -90,6 +92,18 @@ class _MyDevicesPageState extends State<MyDevicesPage> {
               onTap: () => signOutThisDevice(context),
             ),
           ]),
+        ),
+      ],
+      if (list.primary) ...[
+        const SizedBox(height: 16),
+        LCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: ListTile(
+            leading: const IconTile(AppIcons.signOut, color: LC.danger, size: IconTileSize.sm),
+            title: Text(s('sign_out'), style: const TextStyle(color: LC.danger)),
+            subtitle: Text(s('sign_out_hint')),
+            onTap: () => signOutHere(context),
+          ),
         ),
       ],
       if (list.primary && devices.length > 1) ...[
@@ -445,18 +459,99 @@ Future<bool> confirmRevoke(BuildContext context, DeviceInfo d) async {
   }
 }
 
-/// Linked device: sign this device out of the account.
-Future<void> signOutThisDevice(BuildContext context) async {
+/// "Đăng xuất" (Settings, My devices). Confirmed with the account password when the install has
+/// one. A linked device asks the main one to revoke it; the main device forgets the account here
+/// (linked devices keep working). Signing back in needs the recovery phrase, a backup file or a
+/// link from another signed-in device — there is no server that knows the password.
+Future<void> signOutHere(BuildContext context) async {
+  final devices = context.read<DevicesStore>();
+  if (devices.list == null) await devices.load().catchError((_) {});
+  if (!context.mounted) return;
   final s = S.read(context);
-  final ok = await confirm(context, title: s('dv_logout_self_title'), body: s('dv_logout_self_body'), action: s('dv_signout_action'), danger: true);
-  if (!ok || !context.mounted) return;
-  try {
-    await context.read<LumoraApi>().deviceLogout();
-    // `device_revoked {by_self}` follows and shows the signed-out notice.
-  } catch (e) {
-    if (context.mounted) toast(context, deviceError(s, e));
-  }
+  final primary = devices.isPrimary;
+  final session = context.read<SessionStore>();
+  final protection = session.me?.protection ?? '';
+  final needsPass = protection.isNotEmpty ? protection == 'passphrase' : context.read<Settings>().hasPassphrase;
+  final api = context.read<LumoraApi>();
+  final pass = TextEditingController();
+  String? error;
+  var busy = false;
+  final done = await showDialog<bool>(
+    context: context,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) {
+        Future<void> go() async {
+          if (busy || (needsPass && pass.text.isEmpty)) return;
+          set(() {
+            busy = true;
+            error = null;
+          });
+          try {
+            await api.deviceLogout(primaryOk: primary, passphrase: needsPass ? pass.text : null);
+            if (c.mounted) Navigator.pop(c, true);
+          } catch (e) {
+            set(() {
+              busy = false;
+              error = e is ApiException && e.code == 'err.wrong_passphrase' ? s('err_wrong_passphrase') : deviceError(s, e);
+            });
+          }
+        }
+
+        return AlertDialog(
+          icon: const IconTile(AppIcons.signOut, color: LC.danger, size: IconTileSize.lg, circle: true),
+          title: Text(s(primary ? 'dv_logout_main_title' : 'dv_logout_self_title'), textAlign: TextAlign.center),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(s(primary ? 'dv_logout_main_body' : 'dv_logout_self_body'), style: c.tt.bodyMedium?.copyWith(height: 1.5, color: c.lc.muted)),
+                if (needsPass) ...[
+                  const SizedBox(height: 14),
+                  PasswordField(
+                    controller: pass,
+                    label: s('dv_logout_password'),
+                    autofocus: true,
+                    policy: false,
+                    errorText: error,
+                    onChanged: (_) => set(() => error = null),
+                    onSubmitted: (_) => go(),
+                  ),
+                ] else if (error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(error!, style: const TextStyle(color: LC.danger)),
+                ],
+                if (primary)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => showRecoveryPhraseDialog(c),
+                      icon: const Icon(AppIcons.recoveryPhrase, size: 18),
+                      label: Text(s('dv_logout_main_show')),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: busy ? null : () => Navigator.pop(c, false), child: Text(s('cancel'))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: LC.danger),
+              onPressed: busy || (needsPass && pass.text.isEmpty) ? null : go,
+              child: Text(s('dv_signout_action')),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+  // `device_revoked {by_self}` follows and shows the signed-out notice (the dialog's field is
+  // disposed with it; the controller is left to the GC so a closing animation never reads a
+  // disposed one).
+  if (done != true) return;
 }
+
+/// Linked device: sign this device out of the account.
+Future<void> signOutThisDevice(BuildContext context) => signOutHere(context);
 
 // ---------------------------------------------------------- make main
 

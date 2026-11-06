@@ -9,6 +9,7 @@ import '../chats/chat_view.dart';
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
+import '../../core/text_fold.dart';
 
 Future<void> showCreateGroup(BuildContext context, {bool community = false}) async {
   final desktop = isDesktop(context);
@@ -75,7 +76,7 @@ class _CreateGroupFormState extends State<CreateGroupForm> {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final friends = context.watch<ContactsStore>().friends.where((c) => _q.isEmpty || c.displayName.toLowerCase().contains(_q)).toList();
+    final friends = context.watch<ContactsStore>().friends.where((c) => _q.isEmpty || foldText(c.displayName).contains(_q)).toList();
     final contacts = context.read<ContactsStore>();
     final can = _name.text.trim().isNotEmpty && _selected.isNotEmpty && !_busy;
     return Column(children: [
@@ -133,7 +134,7 @@ class _CreateGroupFormState extends State<CreateGroupForm> {
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
         child: TextField(
-          onChanged: (v) => setState(() => _q = v.toLowerCase()),
+          onChanged: (v) => setState(() => _q = foldText(v.trim())),
           decoration: InputDecoration(hintText: s('search_friends'), prefixIcon: const Icon(AppIcons.search, size: 20)),
         ),
       ),

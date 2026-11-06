@@ -110,15 +110,28 @@ fn device_kek(dir: &Path, create: bool) -> Result<(Zeroizing<[u8; 32]>, String)>
             // The Secret Service (D-Bus) can fail for a moment — right after login, or on a
             // busy machine. That is not "no key": retry, and never answer it with
             // "this device can no longer unlock your data" (nor replace the stored key).
-            let mut got = entry.get_secret();
-            for _ in 0..5 {
-                match &got {
-                    Ok(_) | Err(keyring::Error::NoEntry) => break,
-                    Err(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(300));
-                        got = entry.get_secret();
-                    }
+            // A Secret Service that never answers must not freeze startup: each read is
+            // bounded (the first one long enough for a "unlock your keyring" prompt).
+            let entry = std::sync::Arc::new(entry);
+            // `None`: no answer in time (then don't keep asking).
+            let read = |limit: std::time::Duration| -> Option<keyring::Result<Vec<u8>>> {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let e = entry.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(e.get_secret());
+                });
+                rx.recv_timeout(limit).ok()
+            };
+            let hung = || Err(keyring::Error::PlatformFailure("keyring did not answer".into()));
+            let mut got = read(std::time::Duration::from_secs(90)).unwrap_or_else(hung);
+            let mut tries = 0;
+            while tries < 5 && matches!(&got, Err(e) if !matches!(e, keyring::Error::NoEntry)) {
+                if matches!(&got, Err(keyring::Error::PlatformFailure(m)) if m.to_string() == "keyring did not answer") {
+                    break;
                 }
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                got = read(std::time::Duration::from_secs(5)).unwrap_or_else(hung);
             }
             let unavailable = matches!(&got, Err(e) if !matches!(e, keyring::Error::NoEntry));
             match got {

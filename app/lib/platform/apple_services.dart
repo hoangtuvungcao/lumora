@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -87,6 +88,14 @@ class AppleServices with WidgetsBindingObserver {
   @visibleForTesting
   Set<String> get callKitCalls => Set.unmodifiable(_callKit);
 
+  /// CallKit is showing (and ringing) this call: Lumora must not ring too.
+  bool showsOnCallKit(String callId) => _callKit.contains(callId);
+
+  /// Bumped whenever the calls CallKit shows may have changed (sound_alerts.dart
+  /// stops its own ringtone once CallKit rings).
+  final ValueNotifier<int> callKitRevision = ValueNotifier(0);
+  void _kitChanged() => callKitRevision.value++;
+
   @visibleForTesting
   void debugReset() {
     _api = null;
@@ -138,12 +147,82 @@ class AppleServices with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      unawaited(syncReminders(background: true));
+      return;
+    }
     if (state != AppLifecycleState.resumed) return;
     final api = _api;
     if (api == null) return;
+    unawaited(syncReminders(background: false));
     // Reconnect now (friends flush their outbox to us) and refresh the daily Bonjour name.
     api.request('resume').catchError((_) => null);
     _advertise();
+  }
+
+  // ---------------------------------------------------------------- reminders
+
+  /// Settings mirrored by AppServices: reminders alert at all (notifications
+  /// and the reminder sound on), texts hidden, the app's language.
+  static bool reminderAlerts = true;
+  static bool hideContent = false;
+  static String language = 'vi';
+
+  /// Reminders snoozed in the app (reminder_snooze.dart), with `snooze_until`.
+  static List<Map<String, dynamic>> Function() snoozedReminders = () => const [];
+
+  /// In the background the core is suspended and cannot raise `reminder_due`:
+  /// the upcoming reminders (and snoozed ones) become local notifications with
+  /// the system sound. Back in front they are removed again (the core rings
+  /// them in-app). Asks for notification permission once, in front, when
+  /// there is something to remind.
+  Future<void> syncReminders({required bool background}) async {
+    if (!isIOS) return;
+    if (!background) {
+      await _push.invokeMethod<void>('clearReminders').catchError((_) {});
+      final items = await reminderItems();
+      if (items.isNotEmpty && reminderAlerts) await _push.invokeMethod<bool>('requestLocalAlerts').catchError((_) => false);
+      return;
+    }
+    final items = reminderAlerts ? await reminderItems() : const <Map<String, Object>>[];
+    await _push.invokeMethod<void>('scheduleReminders', {'items': items}).catchError((_) {});
+  }
+
+  /// What [syncReminders] schedules: {id, at_ms, title, body, conv}, private
+  /// for locked chats / hidden content.
+  @visibleForTesting
+  Future<List<Map<String, Object>>> reminderItems() async {
+    final out = <Map<String, Object>>[];
+    final vi = language != 'en';
+    final word = vi ? 'Nhắc hẹn' : 'Reminder';
+    void add(Map d, int at) {
+      final id = d['msg_id']?.toString() ?? '';
+      if (id.isEmpty || at <= 0) return;
+      final conv = d['conv']?.toString() ?? '';
+      final private = hideContent || _lockedConvs.contains(conv);
+      final title = d['title']?.toString() ?? '';
+      final note = d['note']?.toString() ?? '';
+      out.add({
+        'id': id,
+        'at_ms': at,
+        'conv': conv,
+        'title': private ? 'Lumora' : (title.isEmpty ? word : '$word: $title'),
+        'body': private ? (vi ? 'Bạn có một nhắc hẹn' : 'You have a reminder') : (note.isNotEmpty ? note : (vi ? 'Đến giờ hẹn rồi' : "It's time")),
+      });
+    }
+
+    try {
+      final list = await _api?.request('reminders');
+      if (list is List) {
+        for (final d in list) {
+          if (d is Map) add(d, (d['at_ms'] as num?)?.toInt() ?? 0);
+        }
+      }
+    } catch (_) {}
+    for (final d in snoozedReminders()) {
+      add(d, (d['snooze_until'] as num?)?.toInt() ?? 0);
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------- push (opt-in)
@@ -172,11 +251,20 @@ class AppleServices with WidgetsBindingObserver {
   /// The Notification Service Extension reads this (App Group) and then shows only
   /// "New message" instead of the sender and text.
   static void syncHideContent(bool hide) {
+    hideContent = hide;
     if (!isIOS) return;
     _push.invokeMethod<void>('setHideContent', {'hide': hide}).catchError((_) {});
   }
 
   Future<dynamic> _onPushCall(MethodCall call) async {
+    try {
+      return await _handlePush(call);
+    } finally {
+      _kitChanged();
+    }
+  }
+
+  Future<dynamic> _handlePush(MethodCall call) async {
     final api = _api;
     final a = (call.arguments as Map?)?.cast<String, dynamic>() ?? const {};
     final id = a['call_id']?.toString() ?? '';
@@ -279,7 +367,10 @@ class AppleServices with WidgetsBindingObserver {
       while (_recentlyEnded.length > 32) {
         _recentlyEnded.remove(_recentlyEnded.keys.first);
       }
-      if (_callKit.remove(id)) _endCallKit(id, reason);
+      if (_callKit.remove(id)) {
+        _endCallKit(id, reason);
+        _kitChanged();
+      }
       return;
     }
     final first = !_states.containsKey(id);
@@ -295,7 +386,10 @@ class AppleServices with WidgetsBindingObserver {
       if (first && !_callKit.contains(id)) {
         // CallKit may show it already (or a ring whose push Swift could not open).
         _push.invokeMethod<bool>('coreIncoming', {'call_id': id}).then((shown) {
-          if (shown == true && _states.containsKey(id)) _callKit.add(id);
+          if (shown == true && _states.containsKey(id)) {
+            _callKit.add(id);
+            _kitChanged();
+          }
         }).catchError((_) {});
       }
     } else if (state == 'active' && _callKit.contains(id) && !_answeredInCallKit.contains(id)) {

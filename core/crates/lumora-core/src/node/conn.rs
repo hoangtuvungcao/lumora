@@ -849,7 +849,7 @@ impl Node {
     }
 
     /// Messages one of my own devices may send me directly (everything else between my
-    /// devices travels as sync items).
+    /// devices travels as sync items; stories have no sync item: my own story comes as is).
     fn own_device_msg(m: &PeerMsg) -> bool {
         !matches!(
             m,
@@ -862,7 +862,7 @@ impl Node {
                 | PeerMsg::Action { .. }
                 | PeerMsg::Read { .. }
                 | PeerMsg::Typing { .. }
-                | PeerMsg::Story { .. }
+                // (a Story is allowed: my own story, posted on another of my devices)
                 | PeerMsg::StorySeen { .. }
                 | PeerMsg::JoinRequest { .. }
                 | PeerMsg::JoinPublic { .. }

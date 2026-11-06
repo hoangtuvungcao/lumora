@@ -23,6 +23,7 @@ import 'task_sheets.dart';
 import 'emoji_picker.dart';
 import 'forward_sheet.dart';
 import '../widgets/peer_avatar.dart';
+import '../../core/text_fold.dart';
 
 /// Makes the voice-note recorder (tests swap in a fake).
 @visibleForTesting
@@ -498,15 +499,15 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
   }
 
   List<(String, String?)> _mentionOptions() {
-    final q = (_mentionQuery ?? '').toLowerCase();
+    final q = foldText(_mentionQuery ?? '');
     final me = context.read<SessionStore>().me?.peer;
     final contacts = context.read<ContactsStore>();
     final out = <(String, String?)>[];
-    if ('all'.startsWith(q) || 'mọi'.startsWith(q)) out.add(('all', null));
+    if ('all'.startsWith(q) || 'moi'.startsWith(q)) out.add(('all', null));
     for (final m in _members) {
       if (m.peer == me) continue;
       final name = contacts[m.peer]?.displayName ?? m.name;
-      if (q.isEmpty || name.toLowerCase().contains(q)) out.add((name, m.peer));
+      if (q.isEmpty || foldText(name).contains(q)) out.add((name, m.peer));
     }
     return out.take(6).toList();
   }

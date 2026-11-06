@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The notification channel sounds (Notifier.kt) are referenced only by URI:
+     keep them if resource shrinking is ever turned on. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/lumora_mention,@raw/lumora_reminder" />

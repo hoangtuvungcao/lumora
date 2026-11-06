@@ -25,5 +25,19 @@
     <string name="a11y_later">Để sau</string>
     <string name="a11y_enabled">Đã bật điều khiển từ xa ✓</string>
     <string name="notif_ch_messages">Tin nhắn</string>
-    <string name="notif_ch_alerts">Cuộc gọi và yêu cầu</string>
+    <string name="notif_ch_alerts">Yêu cầu</string>
+    <string name="notif_ch_messages_quiet">Tin nhắn (không âm thanh)</string>
+    <string name="notif_ch_calls">Cuộc gọi đến</string>
+    <string name="notif_ch_calls_quiet">Cuộc gọi đến (không âm thanh)</string>
+    <string name="notif_ch_mentions">Nhắc đến bạn</string>
+    <string name="notif_ch_mentions_quiet">Nhắc đến bạn (không âm thanh)</string>
+    <string name="notif_ch_reminders">Nhắc hẹn</string>
+    <string name="notif_ch_reminders_quiet">Nhắc hẹn (không âm thanh)</string>
+    <string name="notif_reminder_snooze">Hoãn 10 phút</string>
+    <string name="notif_reminder_open">Mở</string>
+    <!-- "me" in a chat notification (MessagingStyle) -->
+    <string name="notif_me">Bạn</string>
+    <!-- incoming-call notification buttons -->
+    <string name="notif_call_answer">Trả lời</string>
+    <string name="notif_call_decline">Từ chối</string>
 </resources>

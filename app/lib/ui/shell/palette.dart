@@ -21,6 +21,7 @@ import '../theme.dart';
 import '../flows.dart';
 import '../widgets/common.dart';
 import '../widgets/peer_avatar.dart';
+import '../../core/text_fold.dart';
 
 class _Item {
   _Item({required this.section, required this.title, this.subtitle, required this.leading, required this.run, this.shortcut, this.verified = false, this.onReport});
@@ -117,6 +118,8 @@ class _CommandPaletteState extends State<CommandPalette> {
 
   List<_Item> _items(S s) {
     final q = _q.text.trim().toLowerCase();
+    // names / titles: case and diacritics ignored ("tieng viet" finds "Tiếng Việt")
+    final fq = foldText(q);
     final chat = context.read<ChatStore>();
     final contacts = context.read<ContactsStore>();
     final settings = context.read<Settings>();
@@ -153,11 +156,11 @@ class _CommandPaletteState extends State<CommandPalette> {
         leading: const Icon(AppIcons.language),
         run: () => close(() => settings.update((x) => x.locale = x.locale == 'vi' ? 'en' : 'vi')),
       ),
-    ].where((i) => q.isEmpty || i.title.toLowerCase().contains(q)).toList();
+    ].where((i) => q.isEmpty || foldText(i.title).contains(fq)).toList();
 
     final convs = chat.sorted
         .where((c) => !lock.isChatHidden(c.id))
-        .where((c) => q.isEmpty ? true : (c.isSaved ? s('saved_messages') : c.title).toLowerCase().contains(q))
+        .where((c) => q.isEmpty ? true : foldText(c.isSaved ? s('saved_messages') : c.title).contains(fq))
         .take(q.isEmpty ? 5 : 8)
         .map((c) => _Item(
               section: s('chats'),
@@ -171,7 +174,7 @@ class _CommandPaletteState extends State<CommandPalette> {
     final people = q.isEmpty
         ? const <_Item>[]
         : contacts.friends
-            .where((c) => c.displayName.toLowerCase().contains(q) || c.shortId.replaceAll(' ', '').contains(q.replaceAll(' ', '')))
+            .where((c) => foldText(c.displayName).contains(fq) || c.shortId.replaceAll(' ', '').contains(q.replaceAll(' ', '')))
             .where((c) => !chat.convs.containsKey('d:${c.peer}'))
             .take(5)
             .map((c) => _Item(
@@ -201,7 +204,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         }
       }
     }
-    final targets = contacts.friends.where((c) => who.isNotEmpty && c.displayName.toLowerCase().contains(who)).take(4).toList();
+    final targets = contacts.friends.where((c) => who.isNotEmpty && foldText(c.displayName).contains(foldText(who))).take(4).toList();
     for (final c in targets) {
       final conv = 'd:${c.peer}';
       final all = <(String, IconData, String, VoidCallback)>[
@@ -222,7 +225,7 @@ class _CommandPaletteState extends State<CommandPalette> {
     }
     final files = q.length < 2
         ? const <_Item>[]
-        : context.read<FilesStore>().sorted.where((f) => !lock.isChatHidden(f.conv) && f.name.toLowerCase().contains(q)).take(5).map((f) => _Item(
+        : context.read<FilesStore>().sorted.where((f) => !lock.isChatHidden(f.conv) && foldText(f.name).contains(fq)).take(5).map((f) => _Item(
               section: s('files'),
               title: f.name,
               subtitle: s.bytes(f.size),
@@ -233,7 +236,7 @@ class _CommandPaletteState extends State<CommandPalette> {
         ? const <_Item>[]
         : [
             for (final k in ['settings_profile', 'settings_appearance', 'settings_privacy', 'settings_remote', 'settings_storage', 'settings_security', 'settings_language', 'settings_advanced', 'wallpaper', 'diagnostics'])
-              if (s(k).toLowerCase().contains(q))
+              if (foldText(s(k)).contains(fq))
                 _Item(section: s('settings'), title: s(k), leading: const Icon(AppIcons.settings), run: () => close(() => nav.go(k == 'diagnostics' ? Section.network : Section.settings))),
           ];
     final msgs = _found.where((m) => !lock.isChatHidden(m.conv)).map((m) => _Item(

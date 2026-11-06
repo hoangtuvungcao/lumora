@@ -9,7 +9,7 @@ checklists, reminders, silent messages,
 group create/invite/message/remove with key rotation, offline queue (outbox) delivery
 after restart, encrypted-at-rest check.
 """
-import argparse, json, os, queue, shutil, subprocess, sys, tempfile, threading, time, hashlib
+import argparse, base64, json, os, queue, shutil, subprocess, sys, tempfile, threading, time, hashlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -443,6 +443,31 @@ def main():
             assert any(x["id"] == st["id"] for x in B.call("stories"))
             B.call("story_seen", story_id=st["id"])
             wait_until(lambda: pb in A.call("story_viewers", story_id=st["id"]), 10, "story view")
+            # photo story: a big phone photo is shrunk to a JPEG and reaches the friend with its picture
+            import struct, zlib
+            w, h = 2400, 1600
+            raw = b"".join(b"\x00" + bytes(v for x in range(w) for v in (x * 7 % 256, y % 256, 90)) for y in range(h))
+            def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+            photo = os.path.join(dirs["alice"], "story.png")
+            open(photo, "wb").write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 1)) + chunk(b"IEND", b""))
+            ps = A.call("post_story", image_path=photo, bg="aurora")
+            B.wait_event(lambda e: e["event"] == "story" and e["id"] == ps["id"], what="photo story")
+            assert [x for x in B.call("stories") if x["id"] == ps["id"]][0]["has_image"]
+            assert not [x for x in B.call("stories") if x["id"] == st["id"]][0]["has_image"]
+            img = base64.b64decode(B.call("story_image", story_id=ps["id"])["image"])
+            assert img[:2] == b"\xff\xd8" and len(img) > 1000, len(img)
+            # the author keeps it in their archive; deleting takes it down at the friend's too
+            arch = A.call("story_archive")
+            assert {ps["id"], st["id"]} <= {x["id"] for x in arch} and all(x["active"] for x in arch[:2])
+            try:
+                B.call("story_delete", story_id=ps["id"])
+                raise AssertionError("deleted someone else's story")
+            except RuntimeError as e:
+                assert "err.story_not_yours" in str(e), e
+            A.call("story_delete", story_id=ps["id"])
+            assert not any(x["id"] == ps["id"] for x in A.call("stories") + A.call("story_archive"))
+            B.wait_event(lambda e: e["event"] == "story_removed" and e["id"] == ps["id"], what="story removed at friend")
+            assert not any(x["id"] == ps["id"] for x in B.call("stories"))
         _()
 
         @step("calls: caller hangs up while ringing → callee stops ringing; ask-to-control reaches friend")
@@ -746,6 +771,46 @@ def main():
                 assert len(N.call("contacts")) >= 2 and len(N.call("groups")) >= 1
             finally:
                 N.stop()
+        _()
+
+        @step("sign out of the main device: refused without confirmation, then a fresh start on restart")
+        def _():
+            nd = os.path.join(tmp, "signout-main")
+            os.makedirs(nd)
+            D = Node("SignOut", a.bin, nd, extra + ["--port", "0", "--passphrase", "mk-cua-dave"])
+            try:
+                old = D.me["peer"]
+                try:
+                    D.call("device_logout", passphrase="mk-cua-dave")
+                    raise AssertionError("main device signed out without confirmation")
+                except RuntimeError as e:
+                    assert "err.primary_logout" in str(e), e
+                for bad in (None, "sai-mat-khau"):
+                    try:
+                        D.call("device_logout", primary_ok=True, **({"passphrase": bad} if bad else {}))
+                        raise AssertionError("signed out without the account password")
+                    except RuntimeError as e:
+                        assert "err.wrong_passphrase" in str(e), e
+                D.call("device_logout", primary_ok=True, passphrase="mk-cua-dave")
+                D.wait_event(lambda e: e["event"] == "device_revoked" and e.get("by_self"), 10, what="signed out")
+                D.stop(); D.start()
+                assert D.me["peer"] != old, "account still on this device after signing out"
+            finally:
+                D.stop()
+        _()
+
+        @step("a deleted chat comes back to the list when either side writes again")
+        def _():
+            A.call("send_text", conv=f"d:{pb}", text="trước khi xoá")
+            A.call("delete_conversation", conv=f"d:{pb}")
+            assert not any(c["id"] == f"d:{pb}" for c in A.call("conversations")), "chat not deleted"
+            m = B.call("send_text", conv=f"d:{pa}", text="nhắn lại sau khi bạn xoá")
+            wait_until(lambda: any(c["id"] == f"d:{pb}" for c in A.call("conversations")), 30, "chat back after their message")
+            assert [x["id"] for x in A.call("messages", conv=f"d:{pb}")] == [m["id"]]
+            A.call("delete_conversation", conv=f"d:{pb}")
+            mine = A.call("send_text", conv=f"d:{pb}", text="mình nhắn trước")
+            assert any(c["id"] == f"d:{pb}" for c in A.call("conversations")), "chat missing after my own message"
+            wait_until(lambda: any(x["id"] == mine["id"] for x in B.call("messages", conv=f"d:{pa}")), 30, "reaches Bob")
         _()
 
         @step("restore an account from its 24-word recovery phrase (and a legacy one)")

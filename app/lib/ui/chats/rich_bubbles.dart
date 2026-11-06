@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 // Location (static + live), voice message and contact-card bubbles.
 
 import 'dart:async';
@@ -192,6 +193,27 @@ class MapSketchPainter extends CustomPainter {
   bool shouldRepaint(covariant MapSketchPainter old) => old.seed != seed || old.dark != dark;
 }
 
+/// Hands the place to the phone's maps app (geo: on Android, Apple Maps on iOS/macOS),
+/// falling back to OpenStreetMap in the browser; says so if nothing can open it.
+Future<void> openInMaps(BuildContext context, LocationData loc) async {
+  final s = S.read(context);
+  final label = Uri.encodeComponent(loc.label.isNotEmpty ? loc.label : 'Lumora');
+  final tries = <Uri>[
+    if (Platform.isAndroid) Uri.parse('geo:${loc.lat},${loc.lon}?q=${loc.lat},${loc.lon}($label)'),
+    if (Platform.isIOS || Platform.isMacOS) Uri.parse('https://maps.apple.com/?ll=${loc.lat},${loc.lon}&q=$label'),
+    // Google Maps opens its app when installed, else the web page; works where openstreetmap.org
+    // doesn't resolve (owner saw a DNS error on their network)
+    Uri.parse('https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lon}'),
+    Uri.parse('https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=16/${loc.lat}/${loc.lon}'),
+  ];
+  for (final u in tries) {
+    try {
+      if (await launchUrl(u, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {}
+  }
+  if (context.mounted) toast(context, s('no_maps_app'));
+}
+
 Future<void> openLocation(BuildContext context, Message m) {
   return Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => LocationScreen(message: m)));
 }
@@ -205,13 +227,18 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen> {
   bool _showMap = false;
+  bool _tileError = false;
 
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
     // Follow live updates.
     final m = context.select<ChatStore, Message>((c) => c.thread(widget.message.conv).byId(widget.message.id) ?? widget.message);
-    final loc = LocationData.parse(m.body)!;
+    final loc = LocationData.parse(m.body);
+    if (loc == null) {
+      // never a red screen: an unreadable location says so
+      return Scaffold(body: SafeArea(child: Column(children: [PaneHeader(title: Text(s('location'))), Expanded(child: Center(child: Text(s('location_unreadable'))))])));
+    }
     final point = LatLng(loc.lat, loc.lon);
     final name = m.mine ? s('you') : context.read<ContactsStore>().nameOf(m.author);
     return Scaffold(
@@ -226,11 +253,27 @@ class _LocationScreenState extends State<LocationScreen> {
                 ? FlutterMap(
                     options: MapOptions(initialCenter: point, initialZoom: 16),
                     children: [
-                      TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'vn.lumora.lumora'),
+                      TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'vn.lumora.lumora',
+                        // tiles that can't load (offline, blocked) stay blank instead of erroring
+                        errorTileCallback: (tile, error, stack) {
+                          // every failed tile reports: rebuild once, never after the screen closed
+                          if (mounted && !_tileError) setState(() => _tileError = true);
+                        },
+                      ),
                       MarkerLayer(markers: [
                         Marker(point: point, width: 60, height: 60, child: const Icon(AppIcons.location, color: LC.danger, size: 44)),
                       ]),
                       const RichAttributionWidget(attributions: [TextSourceAttribution('OpenStreetMap contributors')]),
+                      if (_tileError)
+                        Align(
+                          alignment: Alignment.topCenter,
+                          child: Card(
+                            margin: const EdgeInsets.all(12),
+                            child: Padding(padding: const EdgeInsets.all(12), child: Text(s('map_tiles_failed'), textAlign: TextAlign.center)),
+                          ),
+                        ),
                     ],
                   )
                 : Stack(fit: StackFit.expand, children: [
@@ -265,7 +308,7 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
               const SizedBox(width: 8),
               FilledButton.icon(
-                onPressed: () => launchUrl(Uri.parse('https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=16/${loc.lat}/${loc.lon}'), mode: LaunchMode.externalApplication),
+                onPressed: () => openInMaps(context, loc),
                 icon: const Icon(AppIcons.openExternal, size: 18),
                 label: Text(s('open_in_maps')),
               ),

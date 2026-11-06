@@ -648,7 +648,8 @@ class _EmojiPickerState extends State<EmojiPicker> {
     if (widget.onCustomSticker != null) {
       return Column(
         children: [
-          Expanded(child: StickerPanel(onSend: widget.onCustomSticker!)),
+          Expanded(child: ClipRect(child: StickerPanel(onSend: widget.onCustomSticker!))),
+          Divider(height: 1, color: context.lc.divider),
           SizedBox(
             height: 52,
             child: ListView(

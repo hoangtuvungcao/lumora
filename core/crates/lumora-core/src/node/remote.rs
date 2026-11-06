@@ -912,6 +912,14 @@ impl RemoteState {
                     Some(g) => format!("g:{}", hex::encode(g)),
                     None => direct_conv(&acct),
                 };
+                // A device ringing me again cannot still be in a 1:1 call with me: it
+                // restarted (app killed, phone rebooted…) and its new connection replaced
+                // the old one before that one was seen closing, so the old call never
+                // ended here. End it instead of answering "busy" forever.
+                let stale = stale_calls_with(&self.calls.lock(), &from);
+                for id in stale {
+                    node.end_call(&id, false);
+                }
                 let busy = !self.calls.lock().is_empty();
                 if busy {
                     // The caller takes a decline from one device as the account's answer
@@ -1961,6 +1969,12 @@ mod pre_auth_tests {
     }
 }
 
+/// 1:1 calls whose only other side is `from` (see the `CallInvite` handler: that
+/// device ringing again means it left them).
+fn stale_calls_with(calls: &HashMap<[u8; 16], Arc<Call>>, from: &PeerId) -> Vec<[u8; 16]> {
+    calls.values().filter(|c| *c.peers.lock() == [*from]).map(|c| c.id).collect()
+}
+
 #[cfg(test)]
 mod call_log_tests {
     use super::*;
@@ -2042,6 +2056,32 @@ mod call_log_tests {
             got |= e["event"] == "call" && e["reason"] == "busy" && e["from"] == bob.to_base32().as_str();
         }
         assert!(got, "no busy call event");
+        n.shutdown();
+    }
+
+    /// Regression: a phone killed mid-call reconnects (its new connection replaces the
+    /// old one, so no disconnect is seen) and rings again — the old 1:1 call with that
+    /// device is stale and must not make every new call "busy".
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ringing_again_finds_the_stale_one_to_one_call() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let bob = Identity::generate().peer_id();
+        let carol = Identity::generate().peer_id();
+        n.store.upsert_contact(&bob, Some("b"), Some(3)).unwrap();
+        let conv = direct_conv(&bob);
+        n.store.ensure_conv(&conv, 0, "b").unwrap();
+        let v = n.call_start(&conv, false).await.unwrap();
+        let id: [u8; 16] = hex::decode(v["call_id"].as_str().unwrap()).unwrap().try_into().unwrap();
+        let c = n.remote.calls.lock().get(&id).cloned().unwrap();
+        // still ringing (nobody joined): not stale — glare is not a restart
+        assert!(stale_calls_with(&n.remote.calls.lock(), &bob).is_empty());
+        *c.peers.lock() = vec![bob];
+        assert_eq!(stale_calls_with(&n.remote.calls.lock(), &bob), vec![id]);
+        assert!(stale_calls_with(&n.remote.calls.lock(), &carol).is_empty());
+        // a group call goes on without that device
+        *c.peers.lock() = vec![bob, carol];
+        assert!(stale_calls_with(&n.remote.calls.lock(), &bob).is_empty());
         n.shutdown();
     }
 }

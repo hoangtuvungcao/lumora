@@ -181,10 +181,21 @@ fn thumb_limits() -> image::Limits {
     l
 }
 
-fn make_thumb(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
-    let mut r = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?;
+/// Decode a picture upright: phone cameras store portrait shots sideways plus an EXIF
+/// orientation tag, which a plain decode ignores.
+pub(super) fn decode_upright(path: &std::path::Path) -> anyhow::Result<image::DynamicImage> {
+    use image::ImageDecoder;
+    let mut r = image::ImageReader::open(path)?.with_guessed_format()?;
     r.limits(thumb_limits());
-    let img = r.decode().ok()?;
+    let mut dec = r.into_decoder()?;
+    let orientation = dec.orientation().unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut img = image::DynamicImage::from_decoder(dec)?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
+fn make_thumb(path: &std::path::Path) -> Option<(Vec<u8>, u32, u32)> {
+    let img = decode_upright(path).ok()?;
     let (w, h) = (img.width(), img.height());
     let t = img.thumbnail(320, 320).to_rgb8();
     let mut out = std::io::Cursor::new(Vec::new());

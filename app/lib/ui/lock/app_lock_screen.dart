@@ -26,7 +26,7 @@ class AppLockLayer extends StatelessWidget {
     final obscured = context.select<AppLock, bool>((l) => l.obscured && l.enabled);
     final ready = context.select<SessionStore, bool>((s) => s.phase == SessionPhase.ready);
     if (!ready) return const SizedBox.shrink();
-    if (locked) return const Positioned.fill(child: LayerHost(key: ValueKey('app-lock'), child: PinLockScreen()));
+    if (locked) return const Positioned.fill(child: LayerHost(key: ValueKey('app-lock'), barrier: true, child: PinLockScreen()));
     // In the app switcher (mobile): a plain cover, so the preview shows no chats.
     if (obscured) return Positioned.fill(child: ColoredBox(color: context.lc.bg, child: const Center(child: LumoraLogo(size: 72))));
     return const SizedBox.shrink();

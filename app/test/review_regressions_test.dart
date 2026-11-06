@@ -280,14 +280,15 @@ void main() {
       dir.createSync(recursive: true);
     });
     tearDown(() {
-      for (final p in ['/tmp/lumora-test', '/tmp/lumora-test.onboarding']) {
+      final aside = Directory('/tmp').listSync().where((e) => e.path.startsWith('/tmp/lumora-test.unfinished-')).map((e) => e.path);
+      for (final p in ['/tmp/lumora-test', '/tmp/lumora-test.onboarding', ...aside]) {
         try {
           FileSystemEntity.isDirectorySync(p) ? Directory(p).deleteSync(recursive: true) : File(p).deleteSync();
         } catch (_) {}
       }
     });
 
-    testWidgets('a half-made identity is wiped at the next launch', (t) async {
+    testWidgets('a half-made identity is set aside (never deleted) at the next launch', (t) async {
       final api = _Spy();
       final sv = await makeServices(t, api: api, start: false);
       File('${dir.path}/keystore.json').writeAsStringSync('{}');
@@ -299,6 +300,11 @@ void main() {
       expect(File('${dir.path}/keystore.json').existsSync(), isFalse);
       expect(File('${dir.path}/lumora.db').existsSync(), isFalse);
       expect(File('/tmp/lumora-test.onboarding').existsSync(), isFalse);
+      // kept next to the data folder and listed with the other kept folders
+      final kept = sv.settings.asideData.single;
+      expect(kept, startsWith('/tmp/lumora-test.unfinished-'));
+      expect(File('$kept/keystore.json').readAsStringSync(), '{}');
+      expect(File('$kept/lumora.db').readAsStringSync(), 'x');
       await t.pump(const Duration(seconds: 100));
       sv.dispose();
     });

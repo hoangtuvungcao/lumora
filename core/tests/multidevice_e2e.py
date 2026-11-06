@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """Multi-device end-to-end test: one account on several devices (docs/src/dev/multi-device.md).
 
-    python3 core/tests/multidevice_e2e.py [--bin core/target/debug/lumorad]
+    python3 core/tests/multidevice_e2e.py [--bin core/target/debug/lumorad] [--only base|matrix]
+
+The sync matrix (`run_matrix`, runs first) drives one account on three devices (M0 main,
+M1 + M2 linked, later M3) and friends F, G (+ H, S): every synced data type is changed on
+one device and checked on all the others within a few seconds — live, with a device
+offline / restarted meanwhile, under races (same item changed on two devices at once,
+messages arriving while a device links) — plus search (Vietnamese with / without
+diacritics) and finding people by 9-digit ID, @username and invite link from each device.
 
 Real `lumorad` nodes on the LAN (no Internet services), driven over the JSON API with the
 harness from e2e.py. Devices: A0 (main device), A1 (linked by QR), A2 (linked by code),
@@ -17,7 +24,7 @@ calls ringing every device (first answer wins), device short IDs, revocation wit
 wipe and group re-keying, signing a device out, promoting a linked device with the
 recovery phrase.
 """
-import argparse, json, os, shutil, sys, tempfile, time, hashlib
+import argparse, base64, json, os, shutil, struct, sys, tempfile, threading, time, hashlib, zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from e2e import Node, wait_until, step, RESULTS  # noqa: E402
@@ -41,11 +48,618 @@ def conv_row(n, conv):
     return next((c for c in n.call("conversations") if c["id"] == conv), None)
 
 
+# ---------------------------------------------------------------------------------------
+# Sync matrix: one account on three devices (M0 main, M1 + M2 linked) and two friends (F, G).
+# Every data type is changed on one device and must reach every other device within a few
+# seconds — live, with a device offline (and restarted) meanwhile, and under races.
+# ---------------------------------------------------------------------------------------
+
+SYNC_S = 12  # convergence budget per device (the sibling sync runs every second)
+
+
+def _png(path, w=24, h=24, rgb=(200, 80, 40)):
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+    return path
+
+
+def run_matrix(tmp, start, link, befriend):
+    """Returns True when every matrix scenario passed (each one is reported on its own)."""
+    nodes = []
+    ok = [True]
+
+    only = os.environ.get("MATRIX_ONLY")  # debug: run setup + scenarios whose name has this text
+
+    def scenario(name):
+        def deco(fn):
+            if only and only not in name and not name.startswith("setup"):
+                return lambda: None
+            try:
+                step("matrix: " + name)(fn)()
+            except Exception:
+                ok[0] = False
+            return lambda: None  # (already ran)
+        return deco
+
+    def everywhere(devs, pred, what, t=SYNC_S):
+        for d in devs:
+            wait_until(lambda d=d: pred(d), t, f"{d.name}: {what}")
+
+    def msg(n, conv, mid):
+        return next((m for m in msgs(n, conv) if m["id"] == mid), None)
+
+    def contact(n, peer):
+        return next((c for c in n.call("contacts") if c["peer"] == peer), None)
+
+    def group_of(n, gid):
+        return next((g for g in n.call("groups") if g["gid"] == gid), None)
+
+    def in_group(n, gid):
+        try:
+            return n.call("group_info", gid=gid)["my_role"] != "none"
+        except RuntimeError:
+            return False
+
+    def devnames(n):
+        return {d["device"]: d["name"] for d in n.call("devices")["devices"]}
+
+    def running(*ns):
+        """(after a failed scenario left a device stopped)"""
+        for n in ns:
+            if n.p.poll() is not None or n.p.stdin.closed:
+                n.start()
+
+    ctx = {}
+    try:
+        M0 = start("M0")
+        F = start("F")
+        G = start("G")
+        nodes += [M0, F, G]
+        pm, pf, pg = M0.me["peer"], F.me["peer"], G.me["peer"]
+        dF, dG, dM = f"d:{pf}", f"d:{pg}", f"d:{pm}"
+
+        @scenario("setup: M0 + friends F, G; M1 and M2 linked (3 devices)")
+        def _():
+            befriend(F, M0)
+            befriend(G, M0)
+            befriend(F, G)
+            F.call("set_username", username="ban_f")
+            # (in "Saved messages": the chats with F and G get cleared / deleted further on)
+            ctx["viet"] = M0.call("send_text", conv="s:me", text="Tiếng Việt có dấu: chúc mừng năm mới")["id"]
+            m = F.call("send_text", conv=dM, text="trước khi liên kết")
+            M0.wait_event(lambda e: e["event"] == "message" and e["id"] == m["id"], 15, "pre-link msg")
+            for nm in ("M1", "M2"):
+                N = link(M0, nm, "qr", history="all")
+                nodes.append(N)
+                ctx[nm] = N
+                wait_until(lambda N=N: N.call("history_status")["done"], 60, f"{nm} history")
+            for n in (M0, ctx["M1"], ctx["M2"]):
+                wait_until(lambda n=n: len(n.call("devices")["devices"]) == 3, 20, f"{n.name} lists 3 devices")
+            wait_until(lambda: len(F.call("contact_devices", peer=pm)) == 3, 20, "F learns 3 devices")
+        _()
+        M1, M2 = ctx["M1"], ctx["M2"]
+        A = [M0, M1, M2]
+
+        # ------------------------------------------------------------ messages
+        @scenario("1-1: sent from a linked device → friend + every sibling; friend's reply → all")
+        def _():
+            m = M1.call("send_text", conv=dF, text="xin chào từ M1")
+            F.wait_event(lambda e: e["event"] == "message" and e["id"] == m["id"], 15, "F got it")
+            everywhere(A, lambda n: (msg(n, dF, m["id"]) or {}).get("mine") is True, "M1's message, mine")
+            r = F.call("send_text", conv=dM, text="trả lời cho M")
+            everywhere(A, lambda n: msg(n, dF, r["id"]) is not None, "F's reply")
+            ctx["r"] = r["id"]
+        _()
+
+        @scenario("group: created on M2 → M0, M1 members; messages both ways reach every device")
+        def _():
+            g = M2.call("create_group", name="Nhóm ma trận", members=[pf, pg])
+            ctx["g"] = g
+            everywhere(A + [F, G], lambda n: in_group(n, g["gid"]), "in the group")
+            gm = G.call("send_text", conv=g["conv"], text="G chào nhóm")
+            everywhere(A + [F], lambda n: msg(n, g["conv"], gm["id"]) is not None, "G's group message")
+            mm = M0.call("send_text", conv=g["conv"], text="M0 chào nhóm")
+            everywhere([M1, M2, F, G], lambda n: msg(n, g["conv"], mm["id"]) is not None, "M0's group message")
+            ctx["gm"] = mm["id"]
+        _()
+
+        @scenario("edit: M0 edits, then M2 edits the same message again → every device + friend")
+        def _():
+            e = M0.call("send_text", conv=dF, text="bản gốc")
+            everywhere(A[1:] + [F], lambda n: msg(n, dF if n is not F else dM, e["id"]) is not None, "original")
+            M0.call("edit_message", conv=dF, msg_id=e["id"], text="đã sửa")
+            everywhere(A[1:] + [F], lambda n: (msg(n, dF if n is not F else dM, e["id"]) or {}).get("body", {}).get("text") == "đã sửa", "edit 1")
+            M2.call("edit_message", conv=dF, msg_id=e["id"], text="sửa lần hai")
+            everywhere(A + [F], lambda n: (msg(n, dF if n is not F else dM, e["id"]) or {}).get("body", {}).get("text") == "sửa lần hai", "edit 2")
+            # group edit too
+            M1.call("edit_message", conv=ctx["g"]["conv"], msg_id=ctx["gm"], text="M0 chào nhóm (sửa)")
+            everywhere(A + [F, G], lambda n: (msg(n, ctx["g"]["conv"], ctx["gm"]) or {}).get("body", {}).get("text") == "M0 chào nhóm (sửa)", "group edit")
+        _()
+
+        @scenario("delete for everyone (M2) and delete for me (M0) → every device")
+        def _():
+            d = M1.call("send_text", conv=dF, text="xoá cho mọi người")
+            everywhere(A, lambda n: msg(n, dF, d["id"]) is not None, "msg")
+            F.wait_event(lambda e: e["event"] == "message" and e["id"] == d["id"], 15, "F got it")
+            M2.call("delete_message", conv=dF, msg_id=d["id"], for_everyone=True)
+            gone = lambda n, c: (msg(n, c, d["id"]) is None) or msg(n, c, d["id"])["deleted"]
+            everywhere(A, lambda n: gone(n, dF), "deleted for everyone")
+            wait_until(lambda: gone(F, dM), SYNC_S, "F: deleted for everyone")
+            x = F.call("send_text", conv=dM, text="xoá cho tôi")
+            everywhere(A, lambda n: msg(n, dF, x["id"]) is not None, "msg")
+            M0.call("delete_message", conv=dF, msg_id=x["id"], for_everyone=False)
+            everywhere(A, lambda n: msg(n, dF, x["id"]) is None, "deleted for me")
+            time.sleep(1)
+            assert msg(F, dM, x["id"]) is not None, "delete-for-me reached the friend"
+        _()
+
+        @scenario("reactions: add on M1, remove on M2 → every device + friend")
+        def _():
+            rid = ctx["r"]
+            M1.call("react", conv=dF, msg_id=rid, emoji="❤️", on=True)
+            has = lambda n, c: "❤️" in ((msg(n, c, rid) or {}).get("reactions") or {})
+            everywhere(A, lambda n: has(n, dF), "reaction")
+            wait_until(lambda: has(F, dM), SYNC_S, "F sees the reaction")
+            M2.call("react", conv=dF, msg_id=rid, emoji="❤️", on=False)
+            everywhere(A, lambda n: not has(n, dF), "reaction removed")
+            wait_until(lambda: not has(F, dM), SYNC_S, "F: reaction removed")
+        _()
+
+        @scenario("read state + unread counts: read on M2 → 0 unread on M0, M1; friend sees 'read'")
+        def _():
+            ids = [F.call("send_text", conv=dM, text=f"chưa đọc {i}")["id"] for i in range(2)]
+            everywhere(A, lambda n: all(msg(n, dF, i) for i in ids) and conv_row(n, dF)["unread"] >= 2, "2 unread")
+            M2.call("mark_read", conv=dF)
+            everywhere(A, lambda n: conv_row(n, dF)["unread"] == 0, "unread cleared")
+            wait_until(lambda: all((msg(F, dM, i) or {}).get("status") == 3 for i in ids), SYNC_S, "F sees read")
+        _()
+
+        @scenario("pins: message pin (M0) and chat pin / unpin (M1 / M2) → every device")
+        def _():
+            rid = ctx["r"]
+            M0.call("pin_message", conv=dF, msg_id=rid, on=True)
+            everywhere(A, lambda n: (msg(n, dF, rid) or {}).get("pinned") is True, "message pinned")
+            M1.call("conv_flag", conv=dF, flag="pinned", value=True)
+            everywhere(A, lambda n: conv_row(n, dF)["pinned"] is True, "chat pinned")
+            M2.call("conv_flag", conv=dF, flag="pinned", value=False)
+            everywhere(A, lambda n: conv_row(n, dF)["pinned"] is False, "chat unpinned")
+        _()
+
+        @scenario("archive (M2) and mute / unmute (M1 / M0) → every device")
+        def _():
+            M2.call("conv_flag", conv=dG, flag="archived", value=True)
+            everywhere(A, lambda n: conv_row(n, dG)["archived"] is True, "archived")
+            M2.call("conv_flag", conv=dG, flag="archived", value=False)
+            everywhere(A, lambda n: conv_row(n, dG)["archived"] is False, "unarchived")
+            M1.call("mute", conv=dF, until=now_ms() + 3_600_000)
+            everywhere(A, lambda n: conv_row(n, dF)["muted"] is True, "muted")
+            M0.call("mute", conv=dF, until=0)
+            everywhere(A, lambda n: conv_row(n, dF)["muted"] is False, "unmuted")
+        _()
+
+        @scenario("retention (M0 sets 7 days, M1 back to forever) → every device")
+        def _():
+            M0.call("set_retention", conv=dG, mode="7d")
+            everywhere(A, lambda n: n.call("get_retention", conv=dG)["mode"] == "7d", "7d")
+            M1.call("set_retention", conv=dG, mode="forever")
+            everywhere(A, lambda n: n.call("get_retention", conv=dG)["mode"] == "forever", "forever")
+        _()
+
+        @scenario("profile: name, bio, avatar (M1), cover (M2), username (M2) → every device + friend")
+        def _():
+            av = base64.b64encode(b"\x89PNG-avatar-matrix" * 20).decode()
+            cv = base64.b64encode(b"\x89PNG-cover-matrix" * 40).decode()
+            M1.call("set_profile", name="Mai Ma Trận", bio="tiểu sử mới", avatar=av)
+            everywhere(A, lambda n: (lambda p: p["name"] == "Mai Ma Trận" and p["bio"] == "tiểu sử mới" and p["avatar"] == av)(n.call("profile")), "profile")
+            everywhere(A, lambda n: n.call("me")["name"] == "Mai Ma Trận", "me.name")
+            M2.call("set_cover", cover=cv)
+            everywhere(A, lambda n: n.call("profile")["cover"] == cv, "cover")
+            M2.call("set_username", username="mai_matran")
+            everywhere(A, lambda n: n.call("profile")["username"] == "mai_matran", "username")
+            wait_until(lambda: (contact(F, pm) or {}).get("name") == "Mai Ma Trận", SYNC_S, "F sees the new name")
+            wait_until(lambda: F.call("contact_avatar", peer=pm)["avatar"] == av, SYNC_S, "F sees the avatar")
+            wait_until(lambda: F.call("contact_cover", peer=pm)["cover"] == cv, SYNC_S, "F sees the cover")
+            wait_until(lambda: any(r["peer"] == pm for r in F.call("resolve_username", handle="@mai_matran")), SYNC_S, "F finds @mai_matran")
+        _()
+
+        @scenario("contacts: request accepted on M1, nickname (M2), remove (M0), add (M0), block / unblock → every device")
+        def _():
+            H = start("H")
+            nodes.append(H)
+            ph = H.me["peer"]
+            ctx["H"] = H
+            H.call("connect", peer=pm, timeout=40)
+            H.call("add_contact", target=pm, note="cho mình kết bạn")
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status") == 2, "incoming request")
+            M1.call("accept_contact", peer=ph)
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status") == 3, "friends")
+            wait_until(lambda: (contact(H, pm) or {}).get("status") == 3, SYNC_S, "H: friends")
+            everywhere(A, lambda n: conv_row(n, f"d:{ph}") is not None, "direct chat")
+            M2.call("rename_contact", peer=ph, alias="Bạn H")
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("alias") == "Bạn H", "nickname")
+            M0.call("remove_contact", peer=ph)
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status", 0) == 0, "removed")
+            M0.call("add_contact", target=ph, note="kết bạn lại")
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status") == 1, "request sent")
+            H.wait_event(lambda e: e["event"] == "friend_request" and e["peer"] == pm, 20, "H gets the request")
+            H.call("accept_contact", peer=pm)
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status") == 3, "friends again")
+            M1.call("block_contact", peer=ph)
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status") == 4, "blocked")
+            M2.call("unblock_contact", peer=ph)
+            everywhere(A, lambda n: (contact(n, ph) or {}).get("status", 0) == 0, "unblocked")
+        _()
+
+        @scenario("groups: join by link (M1), roles + settings + rename (M0/M1/M2), member changes, leave (M2) → every device")
+        def _():
+            g = ctx["g"]
+            gid = g["gid"]
+            M0.call("group_set_role", gid=gid, peer=pf, role="admin")
+            role = lambda n: next((m["role"] for m in n.call("group_info", gid=gid)["members"] if m["peer"] == pf), None)
+            everywhere(A + [F, G], lambda n: role(n) == "admin", "F is admin")
+            M1.call("group_settings", gid=gid, admins_only=True)
+            everywhere(A + [F, G], lambda n: n.call("group_info", gid=gid)["admins_only"] is True, "admins only")
+            M2.call("group_rename", gid=gid, name="Nhóm ma trận 2")
+            everywhere(A + [F, G], lambda n: n.call("group_info", gid=gid)["name"] == "Nhóm ma trận 2", "renamed")
+            everywhere(A, lambda n: (conv_row(n, g["conv"]) or {}).get("title") == "Nhóm ma trận 2", "chat title")
+            M0.call("group_remove", gid=gid, peer=pg)
+            everywhere(A + [F], lambda n: all(m["peer"] != pg for m in n.call("group_info", gid=gid)["members"]), "G removed")
+            M1.call("group_add", gid=gid, peer=pg)
+            everywhere(A + [F, G], lambda n: any(m["peer"] == pg for m in n.call("group_info", gid=gid)["members"]), "G back")
+            # someone else's group, joined by link on a linked device
+            gx = G.call("create_group", name="Nhóm của G", members=[pf])
+            link_ = G.call("create_invite", gid=gx["gid"])["link"]
+            M1.call("join_invite", link=link_)
+            everywhere(A, lambda n: in_group(n, gx["gid"]), "joined by link")
+            everywhere(A, lambda n: conv_row(n, gx["conv"]) is not None, "chat of the joined group")
+            wait_until(lambda: any(m["peer"] == pm for m in G.call("group_info", gid=gx["gid"])["members"]), SYNC_S, "G sees M")
+            mx = G.call("send_text", conv=gx["conv"], text="chào thành viên mới")
+            everywhere(A, lambda n: msg(n, gx["conv"], mx["id"]) is not None, "message in the joined group")
+            M2.call("group_leave", gid=gx["gid"])
+            everywhere(A, lambda n: not in_group(n, gx["gid"]), "left")
+            wait_until(lambda: all(m["peer"] != pm for m in G.call("group_info", gid=gx["gid"])["members"]), SYNC_S, "G sees M left")
+        _()
+
+        @scenario("stickers: pack + sticker made on M0, removed on M1 → every device")
+        def _():
+            pk = M0.call("sticker_pack_create", name="Gói ma trận")
+            png = _png(os.path.join(tmp, "matrix-sticker.png"))
+            s1 = M0.call("sticker_add", pack=pk["id"], path=png, emoji="😺")
+            h = s1.get("hash") if isinstance(s1, dict) else None
+            pack = lambda n: next((p for p in n.call("sticker_packs") if p["id"] == pk["id"]), None)
+            everywhere(A, lambda n: pack(n) is not None and len(pack(n)["stickers"]) == 1, "pack with its sticker")
+            if h:
+                everywhere(A, lambda n: n.call("sticker_get", hash=h)["data"], "sticker image")
+            M1.call("sticker_pack_delete", pack=pk["id"])
+            everywhere(A, lambda n: pack(n) is None, "pack deleted")
+        _()
+
+        @scenario("BotFather bots: made on M1, deleted on M2 → every device")
+        def _():
+            M1.call("bot_create", name="Trợ lý ma trận", username="matran_bot")
+            has = lambda n: any(b.get("username") == "matran_bot" for b in n.call("bot_list"))
+            everywhere(A, has, "bot listed")
+            M2.call("bot_delete", username="matran_bot")
+            everywhere(A, lambda n: not has(n), "bot deleted")
+        _()
+
+        @scenario("chat locks, privacy settings and wallpaper → every device")
+        def _():
+            M0.call("locked_chats_set", chats=[dF])
+            everywhere(A, lambda n: n.call("locked_chats_get")["chats"] == [dF], "locked")
+            M2.call("locked_chats_set", chats=[])
+            everywhere(A, lambda n: n.call("locked_chats_get")["chats"] == [], "unlocked")
+            M1.call("settings_set", read_receipts=False, typing=False)
+            everywhere(A, lambda n: (lambda s: not s["read_receipts"] and not s["typing"])(n.call("settings_get")), "privacy off")
+            M0.call("settings_set", read_receipts=True, typing=True)
+            everywhere(A, lambda n: (lambda s: s["read_receipts"] and s["typing"])(n.call("settings_get")), "privacy on")
+            M2.call("set_wallpaper", conv=dF, wallpaper="midnight")
+            everywhere(A, lambda n: n.call("get_wallpaper", conv=dF)["wallpaper"] == "midnight", "wallpaper")
+        _()
+
+        @scenario("stories: posted on M0 → M1, M2 and friends; deleted on M1 → gone everywhere")
+        def _():
+            s = M0.call("post_story", text="tin ma trận", bg="aurora")
+            has = lambda n: any(x.get("id") == s["id"] for x in n.call("stories"))
+            everywhere(A + [F], has, "story")
+            M1.call("story_delete", story_id=s["id"])
+            everywhere(A + [F], lambda n: not has(n), "story deleted")
+        _()
+
+        @scenario("checklists (M1 sends, M2 ticks) and reminders (M0) → every device")
+        def _():
+            c = M1.call("send_checklist", conv=dF, title="Việc cần làm", items=["mua sữa", "gọi điện"])
+            everywhere(A, lambda n: msg(n, dF, c["id"]) is not None, "checklist")
+            before = msg(M2, dF, c["id"])
+            M2.call("checklist_toggle", conv=dF, msg_id=c["id"], item=1, done=True)
+            after = lambda n, cv=dF: (lambda m: m and (m["body"], m["reactions"]) != (before["body"], before["reactions"]) and m)(msg(n, cv, c["id"]))
+            wait_until(lambda: after(M2), SYNC_S, "ticked on M2")
+            want = (msg(M2, dF, c["id"])["body"], msg(M2, dF, c["id"])["reactions"])
+            everywhere(A, lambda n: (lambda m: (m["body"], m["reactions"]) == want)(msg(n, dF, c["id"])), "tick")
+            wait_until(lambda: after(F, dM), SYNC_S, "F sees the tick")
+            r = M0.call("send_reminder", conv=dF, title="Họp nhóm", at_ms=now_ms() + 3_600_000)
+            everywhere(A, lambda n: any(x["msg_id"] == r["id"] for x in n.call("reminders")), "reminder pending")
+            M2.call("reminder_cancel", conv=dF, msg_id=r["id"])
+            everywhere(A, lambda n: not any(x["msg_id"] == r["id"] for x in n.call("reminders")), "reminder cancelled")
+        _()
+
+        @scenario("call history: F calls, M1 answers → call line on every device; M1 calls F → line on siblings")
+        def _():
+            c = F.call("call_start", conv=dM, video=False)
+            M1.wait_event(lambda e: e["event"] == "call" and e["call_id"] == c["call_id"] and e["state"] == "incoming", 20, "M1 rings")
+            M1.call("call_answer", call_id=c["call_id"], accept=True)
+            F.wait_event(lambda e: e["event"] == "call" and e["call_id"] == c["call_id"] and e["state"] == "active", 15, "active")
+            time.sleep(1)
+            F.call("call_end", call_id=c["call_id"])
+            calls = lambda n: [m for m in msgs(n, dF) if m["kind"] == "call"]
+            everywhere(A, lambda n: len(calls(n)) >= 1, "call line (incoming)")
+            k = len(calls(M0))
+            c2 = M1.call("call_start", conv=dF, video=False)
+            F.wait_event(lambda e: e["event"] == "call" and e["call_id"] == c2["call_id"] and e["state"] == "incoming", 20, "F rings")
+            F.call("call_answer", call_id=c2["call_id"], accept=False)
+            everywhere(A, lambda n: len(calls(n)) >= k + 1, "call line (outgoing, from M1)")
+        _()
+
+        @scenario("clear history (M1) and delete conversation (M2) → every device; new messages come back")
+        def _():
+            old = F.call("send_text", conv=dM, text="trước khi xoá lịch sử")
+            everywhere(A, lambda n: msg(n, dF, old["id"]) is not None, "msg")
+            M1.call("clear_history", conv=dF)
+            everywhere(A, lambda n: msg(n, dF, old["id"]) is None, "history cleared")
+            new = F.call("send_text", conv=dM, text="sau khi xoá lịch sử")
+            everywhere(A, lambda n: msg(n, dF, new["id"]) is not None, "new message after clear")
+            g1 = G.call("send_text", conv=f"d:{pm}", text="tin trong chat sẽ bị xoá")
+            everywhere(A, lambda n: msg(n, dG, g1["id"]) is not None, "msg")
+            M2.call("delete_conversation", conv=dG)
+            everywhere(A, lambda n: conv_row(n, dG) is None, "conversation deleted")
+            g2 = G.call("send_text", conv=f"d:{pm}", text="chat mới sau khi xoá")
+            everywhere(A, lambda n: msg(n, dG, g2["id"]) is not None and conv_row(n, dG) is not None, "chat back with the new message")
+        _()
+
+        @scenario("device list: rename (M0) → every device and friends")
+        def _():
+            M0.call("device_rename", device=M2.me["device"], name="Máy tính M2")
+            everywhere(A, lambda n: devnames(n).get(M2.me["device"]) == "Máy tính M2", "device name")
+            wait_until(lambda: any(d["name"] == "Máy tính M2" for d in F.call("contact_devices", peer=pm)), SYNC_S, "F sees the name")
+        _()
+
+        # ------------------------------------------------------------ search
+        @scenario("search: a linked device finds history from the main device (Vietnamese with / without diacritics, any case)")
+        def _():
+            vid = ctx["viet"]
+            for n in A:
+                for q in ("tiếng việt", "Tiếng Việt", "TIẾNG VIỆT", "tieng viet", "TIENG VIET", "chuc mung nam moi", "năm mới"):
+                    got = [m["id"] for m in n.call("search", q=q)]
+                    assert vid in got, f"{n.name}: '{q}' → {len(got)} results, not the message"
+                # field names of the stored body are not text
+                assert not any(m["id"] == vid for m in n.call("search", q="text")), f"{n.name}: 'text' matched the JSON key"
+            # a message that only exists on the main device's history → found on a linked one
+            live = M0.call("send_text", conv=dF, text="Đặt lịch họp đầu năm")
+            everywhere(A, lambda n: live["id"] in [m["id"] for m in n.call("search", q="dat lich hop")], "search a synced message")
+        _()
+
+        @scenario("find people from every device: 9-digit ID, @username, invite link, device ID")
+        def _():
+            S = start("S")
+            nodes.append(S)
+            ps = S.me["peer"]
+            sid = S.me["short_id"].replace(" ", "")
+            for n in A:
+                n.call("connect", peer=ps, timeout=40)
+            for n in A:
+                for t in (sid, S.me["short_id"], f"{sid[:3]}-{sid[3:6]}-{sid[6:]}", f"lumora://add/{ps}", f"https://getlumora.pages.dev/add/{ps}?id={sid}"):
+                    r = n.call("add_contact", target=t, note="")
+                    assert r["peer"] == ps, (n.name, t, r)
+            S.wait_event(lambda e: e["event"] == "friend_request" and e["peer"] == pm, 20, "S gets the request")
+            everywhere(A, lambda n: (contact(n, ps) or {}).get("status") == 1, "request pending")
+            for n in A:
+                got = n.call("resolve_username", handle="@ban_f")
+                assert any(x["peer"] == pf for x in got), (n.name, got)
+            # a friend's linked device's own 9-digit ID → the friend's account
+            F1 = link(F, "F1", "qr", history="none")
+            nodes.append(F1)
+            fsid = F1.me["device"]
+            wait_until(lambda: all(any(d["device"] == fsid for d in n.call("contact_devices", peer=pf)) for n in A), 20, "F's 2nd device known")
+            short = [d for d in M1.call("contact_devices", peer=pf) if d["device"] == fsid][0]["short_id"]
+            for n in A:
+                assert n.call("add_contact", target=short, note="")["peer"] == pf
+        _()
+
+        # ------------------------------------------------------------ offline + restart
+        @scenario("offline: M2 off while M0/M1 change everything, M2 restarts → converges")
+        def _():
+            M2.stop()
+            H = ctx["H"]
+            sent = M0.call("send_text", conv=dF, text="lúc M2 tắt (M0)")["id"]
+            wait_until(lambda: msg(M1, dF, sent) is not None, SYNC_S, "M1 has M0's message")
+            got = [F.call("send_text", conv=dM, text=f"F gửi lúc M2 tắt {i}")["id"] for i in range(3)]
+            M1.call("edit_message", conv=dF, msg_id=sent, text="lúc M2 tắt (sửa trên M1)")
+            M1.call("react", conv=dF, msg_id=got[0], emoji="👍", on=True)
+            M0.call("set_profile", name="Tên khi M2 tắt", bio="bio khi M2 tắt")
+            M1.call("conv_flag", conv=dF, flag="pinned", value=True)
+            M0.call("mute", conv=dF, until=now_ms() + 7_200_000)
+            M1.call("bot_create", name="Bot offline", username="offline_bot")
+            M0.call("locked_chats_set", chats=[dF])
+            M1.call("rename_contact", peer=pf, alias="F (offline)")
+            pk = M0.call("sticker_pack_create", name="Gói offline")
+            st = M1.call("post_story", text="tin lúc M2 tắt")
+            gm = M1.call("send_text", conv=ctx["g"]["conv"], text="nhóm lúc M2 tắt")
+            M0.call("pin_message", conv=dF, msg_id=got[1], on=True)
+            for i in got:
+                wait_until(lambda i=i: msg(M1, dF, i) is not None, SYNC_S, "M1 got F's message")
+            M1.call("mark_read", conv=dF)
+            time.sleep(1)
+            M2.start()
+            checks = [
+                ("sent by M0", lambda: msg(M2, dF, sent) is not None),
+                ("edit by M1", lambda: msg(M2, dF, sent)["body"]["text"] == "lúc M2 tắt (sửa trên M1)"),
+                ("F's messages", lambda: all(msg(M2, dF, i) for i in got)),
+                ("reaction", lambda: "👍" in (msg(M2, dF, got[0])["reactions"] or {})),
+                ("message pin", lambda: msg(M2, dF, got[1])["pinned"] is True),
+                ("profile", lambda: (lambda p: p["name"] == "Tên khi M2 tắt" and p["bio"] == "bio khi M2 tắt")(M2.call("profile"))),
+                ("me.name", lambda: M2.call("me")["name"] == "Tên khi M2 tắt"),
+                ("chat pinned + muted + read", lambda: (lambda c: c["pinned"] and c["muted"] and c["unread"] == 0)(conv_row(M2, dF))),
+                ("bot", lambda: any(b.get("username") == "offline_bot" for b in M2.call("bot_list"))),
+                ("chat lock", lambda: M2.call("locked_chats_get")["chats"] == [dF]),
+                ("nickname", lambda: contact(M2, pf)["alias"] == "F (offline)"),
+                ("sticker pack", lambda: any(p["id"] == pk["id"] for p in M2.call("sticker_packs"))),
+                ("story", lambda: any(x.get("id") == st["id"] for x in M2.call("stories"))),
+                ("group message", lambda: msg(M2, ctx["g"]["conv"], gm["id"]) is not None),
+            ]
+            for what, fn in checks:
+                wait_until(fn, 30, f"M2 after restart: {what}")
+            M0.call("locked_chats_set", chats=[])
+            assert H  # (H stays a stranger now)
+        _()
+
+        @scenario("offline main device: M1 and M2 keep syncing with each other; M0 restarts → converges")
+        def _():
+            running(M0, M1, M2)
+            M0.stop()
+            m = M1.call("send_text", conv=dF, text="lúc máy chính tắt")
+            wait_until(lambda: msg(M2, dF, m["id"]) is not None, SYNC_S, "M2 gets M1's message")
+            f = F.call("send_text", conv=dM, text="F gửi lúc máy chính tắt")
+            everywhere([M1, M2], lambda n: msg(n, dF, f["id"]) is not None, "F's message")
+            M2.call("set_profile", name="Tên lúc máy chính tắt")
+            wait_until(lambda: M1.call("me")["name"] == "Tên lúc máy chính tắt", SYNC_S, "M1 name")
+            M2.call("conv_flag", conv=dF, flag="pinned", value=False)
+            wait_until(lambda: conv_row(M1, dF)["pinned"] is False, SYNC_S, "M1 unpinned")
+            M0.start()
+            for what, fn in [
+                ("M1's message", lambda: msg(M0, dF, m["id"]) is not None),
+                ("F's message", lambda: msg(M0, dF, f["id"]) is not None),
+                ("name", lambda: M0.call("me")["name"] == "Tên lúc máy chính tắt"),
+                ("unpinned", lambda: conv_row(M0, dF)["pinned"] is False),
+                ("3 devices", lambda: len(M0.call("devices")["devices"]) == 3),
+            ]:
+                wait_until(fn, 30, f"M0 after restart: {what}")
+        _()
+
+        @scenario("both linked devices offline, changes on M0, both restart → converge")
+        def _():
+            running(M0, M1, M2)
+            M1.stop()
+            M2.stop()
+            m = M0.call("send_text", conv=dF, text="cả hai máy phụ tắt")
+            M0.call("set_profile", bio="bio lúc hai máy phụ tắt")
+            M0.call("conv_flag", conv=dF, flag="archived", value=True)
+            M1.start()
+            M2.start()
+            everywhere([M1, M2], lambda n: msg(n, dF, m["id"]) is not None and n.call("profile")["bio"] == "bio lúc hai máy phụ tắt"
+                       and conv_row(n, dF)["archived"] is True, "converged", t=30)
+            M0.call("conv_flag", conv=dF, flag="archived", value=False)
+        _()
+
+        # ------------------------------------------------------------ races
+        def both(f1, f2):
+            ts = [threading.Thread(target=f1), threading.Thread(target=f2)]
+            for t in ts:
+                t.start()
+            for t in ts:
+                t.join()
+
+        @scenario("race: the same message edited on M0 and M1 at once → one text everywhere (friend too)")
+        def _():
+            running(M0, M1, M2)
+            e = M0.call("send_text", conv=dF, text="trước khi sửa cùng lúc")
+            everywhere(A, lambda n: msg(n, dF, e["id"]) is not None, "msg")
+            both(lambda: M0.call("edit_message", conv=dF, msg_id=e["id"], text="sửa từ M0"),
+                 lambda: M1.call("edit_message", conv=dF, msg_id=e["id"], text="sửa từ M1"))
+            time.sleep(3)
+            txt = lambda n, c=dF: msg(n, c, e["id"])["body"]["text"]
+            if os.environ.get("MATRIX_DEBUG"):
+                print("   texts:", {n.name: txt(n) for n in A}, "F:", txt(F, dM), flush=True)
+            wait_until(lambda: len({txt(n) for n in A} | {txt(F, dM)}) == 1, SYNC_S, f"one text (now { {n.name: txt(n) for n in A} } F={txt(F, dM)})")
+        _()
+
+        @scenario("race: chat pinned on M0 and unpinned on M1 at once; names set on M1 and M2 at once → converge")
+        def _():
+            both(lambda: M0.call("conv_flag", conv=dF, flag="pinned", value=True),
+                 lambda: M1.call("conv_flag", conv=dF, flag="pinned", value=False))
+            wait_until(lambda: len({conv_row(n, dF)["pinned"] for n in A}) == 1, SYNC_S, "one pin state")
+            both(lambda: M1.call("set_name", name="Tên từ M1"), lambda: M2.call("set_name", name="Tên từ M2"))
+            wait_until(lambda: len({n.call("me")["name"] for n in A}) == 1, SYNC_S, "one name")
+            name = M0.call("me")["name"]
+            wait_until(lambda: (contact(F, pm) or {}).get("name") == name, SYNC_S, f"F sees the winning name {name}")
+        _()
+
+        @scenario("race: F and M1 react to the same message at once → both reactions on every device")
+        def _():
+            t = F.call("send_text", conv=dM, text="thả tim cùng lúc")
+            everywhere(A, lambda n: msg(n, dF, t["id"]) is not None, "msg")
+            both(lambda: F.call("react", conv=dM, msg_id=t["id"], emoji="😂", on=True),
+                 lambda: M1.call("react", conv=dF, msg_id=t["id"], emoji="🔥", on=True))
+            r = lambda n, c=dF: set((msg(n, c, t["id"])["reactions"] or {}).keys())
+            everywhere(A, lambda n: {"😂", "🔥"} <= r(n), "both reactions")
+            wait_until(lambda: {"😂", "🔥"} <= r(F, dM), SYNC_S, "F: both reactions")
+            time.sleep(3)
+            for n in A:
+                assert {"😂", "🔥"} <= r(n), f"{n.name} lost a reaction later: {r(n)}"
+        _()
+
+        @scenario("race: messages arrive while a new device links (M3) → none lost, none doubled")
+        def _():
+            running(M0, M1, M2)
+            sent = []
+            stop = threading.Event()
+
+            def spam():
+                i = 0
+                while not stop.is_set() and i < 40:
+                    sent.append(F.call("send_text", conv=dM, text=f"lúc đang liên kết {i}")["id"])
+                    i += 1
+                    time.sleep(0.15)
+            th = threading.Thread(target=spam)
+            th.start()
+            M3 = link(M0, "M3", "qr", history="all")
+            nodes.append(M3)
+            ctx["M3"] = M3
+            th.join()
+            stop.set()
+            wait_until(lambda: M3.call("history_status")["done"], 60, "M3 history")
+            wait_until(lambda: all(msg(M3, dF, i) for i in sent), 30, "M3 has every message")
+            ids = [m["id"] for m in msgs(M3, dF)]
+            assert len(ids) == len(set(ids)), "duplicates"
+            everywhere(A, lambda n: len(n.call("devices")["devices"]) == 4, "4 devices")
+            # search on the new device finds the main device's history
+            assert ctx["viet"] in [m["id"] for m in M3.call("search", q="tieng viet")], "M3 search"
+        _()
+
+        @scenario("device list: revoke (M0 signs M3 out) and sign out (M2) → every device + friend")
+        def _():
+            M3 = ctx["M3"]
+            d3 = M3.me["device"]
+            M0.call("device_revoke", device=d3, wipe_media=False)
+            everywhere([M0, M1, M2], lambda n: d3 not in devnames(n), "M3 gone")
+            wait_until(lambda: all(d["device"] != d3 for d in F.call("contact_devices", peer=pm)), SYNC_S, "F drops M3")
+            d2 = M2.me["device"]
+            M2.call("device_logout")
+            everywhere([M0, M1], lambda n: d2 not in devnames(n), "M2 gone")
+            wait_until(lambda: all(d["device"] != d2 for d in F.call("contact_devices", peer=pm)), SYNC_S, "F drops M2")
+        _()
+    except Exception as e:  # setup failed: the scenarios above were reported one by one
+        print(f"  matrix aborted: {e}")
+        ok[0] = False
+    finally:
+        for n in nodes:
+            n.stop()
+    return ok[0]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=os.path.join(ROOT, "target", "debug", "lumorad"))
     ap.add_argument("--keep", action="store_true")
+    ap.add_argument("--only", choices=["all", "base", "matrix"], default="all",
+                    help="base: the original scenarios; matrix: the sync matrix (3 devices + 2 friends)")
     a = ap.parse_args()
+    os.environ.setdefault("LUMORA_TEST_CAMERA", "1")  # never open a real webcam
 
     tmp = tempfile.mkdtemp(prefix="lumora-md-")
     os.environ["E2E_TMP"] = tmp
@@ -74,14 +688,6 @@ def main():
                     os.environ[k] = v
 
     print(f"data: {tmp}")
-    A0 = start("A0")
-    B0 = start("B0")
-    C = start("C")
-    nodes = [A0, B0, C]
-    ok = True
-    pa, pb, pc = A0.me["peer"], B0.me["peer"], C.me["peer"]
-    dA, dB, dC = f"d:{pa}", f"d:{pb}", f"d:{pc}"
-    ctx = {}
 
     def befriend(x, y):
         x.call("connect", peer=y.me["peer"], timeout=40)
@@ -142,6 +748,24 @@ def main():
         assert N.me["peer"] == E.me["account"] and not N.me["primary"], N.me
         return N
 
+    ok = True
+    if a.only != "base":
+        ok = run_matrix(tmp, start, link, befriend) and ok
+        if a.only == "matrix":
+            passed = sum(1 for r in RESULTS if r[1])
+            print(f"\n{passed}/{len(RESULTS)} scenarios passed")
+            if not a.keep and ok:
+                shutil.rmtree(tmp, ignore_errors=True)
+            elif not ok:
+                print(f"logs kept in {tmp}")
+            sys.exit(0 if ok else 1)
+    A0 = start("A0")
+    B0 = start("B0")
+    C = start("C")
+    nodes = [A0, B0, C]
+    pa, pb, pc = A0.me["peer"], B0.me["peer"], C.me["peer"]
+    dA, dB, dC = f"d:{pa}", f"d:{pb}", f"d:{pc}"
+    ctx = {}
     try:
         print(f"A {A0.me['short_id']}  B {B0.me['short_id']}  C {C.me['short_id']}")
 

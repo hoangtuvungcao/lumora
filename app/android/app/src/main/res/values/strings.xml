@@ -25,5 +25,19 @@
     <string name="a11y_later">Not now</string>
     <string name="a11y_enabled">Remote control is enabled ✓</string>
     <string name="notif_ch_messages">Messages</string>
-    <string name="notif_ch_alerts">Calls and requests</string>
+    <string name="notif_ch_alerts">Requests</string>
+    <string name="notif_ch_messages_quiet">Messages (silent)</string>
+    <string name="notif_ch_calls">Incoming calls</string>
+    <string name="notif_ch_calls_quiet">Incoming calls (silent)</string>
+    <string name="notif_ch_mentions">Mentions</string>
+    <string name="notif_ch_mentions_quiet">Mentions (silent)</string>
+    <string name="notif_ch_reminders">Reminders</string>
+    <string name="notif_ch_reminders_quiet">Reminders (silent)</string>
+    <string name="notif_reminder_snooze">Snooze 10 min</string>
+    <string name="notif_reminder_open">Open</string>
+    <!-- "me" in a chat notification (MessagingStyle) -->
+    <string name="notif_me">You</string>
+    <!-- incoming-call notification buttons -->
+    <string name="notif_call_answer">Answer</string>
+    <string name="notif_call_decline">Decline</string>
 </resources>

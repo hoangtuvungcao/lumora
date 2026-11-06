@@ -155,7 +155,11 @@ abstract class LumoraApi {
 
   /// A linked device signs itself out; `device_revoked {by_self: true}` follows.
   /// Returns whether the main device could be told right away.
-  Future<bool> deviceLogout() async => _b(_map(await request('device_logout')), 'notified');
+  /// [primaryOk]: the main device may sign out too (the user confirmed they kept the recovery
+  /// phrase); without it the core refuses with `err.primary_logout`.
+  /// [passphrase]: required when the install is password-protected (else `err.wrong_passphrase`).
+  Future<bool> deviceLogout({bool primaryOk = false, String? passphrase}) async =>
+      _b(_map(await request('device_logout', {if (primaryOk) 'primary_ok': true, 'passphrase': ?passphrase})), 'notified');
 
   /// Make this linked device the main one (needs the 24-word recovery phrase);
   /// `link_state {state: restart, reason: promoted}` follows. Errors:
@@ -383,6 +387,11 @@ abstract class LumoraApi {
   Future<List<Story>> stories() async => _list(await request('stories')).map(Story.fromJson).toList();
   Future<String?> storyImage(String id) async => _map(await request('story_image', {'story_id': id}))['image'] as String?;
   Future<void> storySeen(String id) => request('story_seen', {'story_id': id});
+  /// Take my story down (here, on my devices and at friends'); `story_removed {id}` follows.
+  Future<void> storyDelete(String id) => request('story_delete', {'story_id': id});
+  /// My stories, newest first, including the ones past their 24 h (`active` = still shown).
+  Future<List<Story>> storyArchive(String me) async =>
+      _list(await request('story_archive')).map((j) => Story.fromJson({...j, 'author': me, 'seen': true})).toList();
   Future<List<Map<String, dynamic>>> storyViewers(String id) async => _list(await request('story_viewers', {'story_id': id}));
 
   /// smooth | balanced | sharp | saver

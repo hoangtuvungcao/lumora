@@ -73,6 +73,11 @@ pub struct NodeConfig {
     /// Start as a new device waiting to be linked into an existing account (shows a link
     /// QR / code; see node/link.rs). Nothing is published and no contacts are created.
     pub link_pending: bool,
+    /// Open the account that already lives in `data_dir` (the app's unlock / lock screen):
+    /// never create a new identity and never finish a pending sign-out here. A missing
+    /// keystore fails with `err.no_account`, a pending sign-out with `err.device_signed_out`,
+    /// so a password typed on the lock screen can never turn into a brand-new account.
+    pub open_existing: bool,
 }
 
 impl Default for NodeConfig {
@@ -99,6 +104,7 @@ impl Default for NodeConfig {
             bot_token: None,
             lang: None,
             link_pending: false,
+            open_existing: false,
         }
     }
 }
@@ -477,8 +483,21 @@ impl Node {
 
     async fn start_locked(mut cfg: NodeConfig) -> Result<Arc<Node>> {
         let dir = cfg.data_dir.clone();
-        // this device was signed out of its account last time: start as a fresh install
-        revoke::apply_reset_marker(&dir);
+        if cfg.open_existing {
+            // unlocking the existing account: a pending sign-out is shown to the user (the app
+            // reads the marker), never silently turned into a fresh account under this password
+            if dir.join(revoke::RESET_MARKER).exists() {
+                scrub_secrets(&mut cfg);
+                return Err(crate::i18n::user_err("err.device_signed_out").into());
+            }
+            if !crate::keystore::exists(&dir) {
+                scrub_secrets(&mut cfg);
+                return Err(crate::i18n::user_err("err.no_account").into());
+            }
+        } else {
+            // this device was signed out of its account last time: start as a fresh install
+            revoke::apply_reset_marker(&dir);
+        }
         let unlocked = Self::open_keystore(&cfg);
         // the password / recovery phrase / backup password are not needed any more: wipe
         // them now (also on failure) instead of keeping them in `node.cfg` for the app's life
@@ -544,12 +563,17 @@ impl Node {
         // keep the same UDP port across restarts (friends' caches stay valid)
         let _ = store.kv_set("net.port", &net.local_port().to_le_bytes());
 
-        // a secondary's `cfg.name` names the device, never the (shared) profile
-        let name = cfg
-            .name
-            .clone()
-            .filter(|n| !n.is_empty() && !secondary)
-            .or_else(|| store.kv_get("profile.name").and_then(|v| String::from_utf8(v).ok()))
+        store.set_rev_device(&device);
+        // a secondary's `cfg.name` names the device, never the (shared) profile. The name
+        // given at start (the app passes the one typed at onboarding, every time) only
+        // names a new profile: the stored one may have been changed since, here or on
+        // another device of the account — overwriting it (with a fresh sync stamp) undid
+        // a rename made on the phone each time the PC restarted.
+        let name = store
+            .kv_get("profile.name")
+            .and_then(|v| String::from_utf8(v).ok())
+            .filter(|n| !n.is_empty())
+            .or_else(|| cfg.name.clone().filter(|n| !n.is_empty() && !secondary))
             .unwrap_or_else(|| format!("Lumora {}", &me.short_id().to_string()[..3]));
         if !secondary {
             let _ = store.kv_set("profile.name", name.as_bytes());

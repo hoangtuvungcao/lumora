@@ -19,13 +19,21 @@ class DeviceSignedOutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final out = context.select<DevicesStore, DeviceSignOut?>((d) => d.signedOut) ?? const DeviceSignOut();
-    final body = out.bySelf ? s('dv_out_self') : '${s('dv_out_remote')}${out.wipe ? ' ${s('dv_out_wipe')}' : ''}';
+    final body = out.bySelf
+        ? s('dv_out_self')
+        : out.kept
+            ? s('dv_out_auto')
+            : '${s('dv_out_remote')}${out.wipe ? ' ${s('dv_out_wipe')}' : ''}';
     return Scaffold(
       body: SecureFrame(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SecureHero(icon: AppIcons.signOut, tone: LC.accent, title: s('dv_out_title'), subtitle: body),
           const SizedBox(height: 22),
           SecureNote(s('dv_out_hint'), icon: AppIcons.info),
+          if (out.kept) ...[
+            const SizedBox(height: 10),
+            SecureNote(s('dv_out_kept'), icon: AppIcons.lock),
+          ],
           const SizedBox(height: 24),
           SecurePrimaryButton(label: s('dv_out_continue'), icon: AppIcons.next, onPressed: onStartOver),
         ]),

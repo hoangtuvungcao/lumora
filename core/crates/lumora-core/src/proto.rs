@@ -446,6 +446,8 @@ pub mod ext {
     pub const GROUP_REPORT: u16 = 0x32;
     /// Own devices only: reports handled on the sender (`{ids}` hex), dropped here too.
     pub const GROUP_REPORT_DONE: u16 = 0x33;
+    /// The author took a story down: `{id}`; friends and the author's own devices drop it.
+    pub const STORY_DELETE: u16 = 0x34;
     /// Legacy bridge (Phase 9): to the own primary only.
     pub const PROXY: u16 = 0x40;
     pub const REMOTE_CHALLENGE_V2: u16 = 0x50;

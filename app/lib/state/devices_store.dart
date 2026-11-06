@@ -10,9 +10,12 @@ import '../core/api.dart';
 
 /// What this device was told when it was signed out of the account.
 class DeviceSignOut {
-  const DeviceSignOut({this.bySelf = false, this.wipe = false});
+  const DeviceSignOut({this.bySelf = false, this.wipe = false, this.kept = false});
   final bool bySelf;
   final bool wipe;
+
+  /// The old account's messages stay on this device, set aside (not deleted).
+  final bool kept;
 }
 
 class DevicesStore extends ChangeNotifier {
@@ -35,6 +38,14 @@ class DevicesStore extends ChangeNotifier {
 
   /// Set when this device was signed out of the account.
   DeviceSignOut? signedOut;
+
+  /// A sign-out found at launch (the core's marker in the data folder): the
+  /// notice is shown instead of the lock screen, so a password typed there can
+  /// never start a new account in place of the old one.
+  void markSignedOut(DeviceSignOut out) {
+    signedOut = out;
+    notifyListeners();
+  }
 
   /// `link_state` / `link_request` events for the open link screen.
   final _link = StreamController<ApiEvent>.broadcast();
@@ -151,7 +162,8 @@ class DevicesStore extends ChangeNotifier {
       case 'link_state' || 'link_request':
         _link.add(ApiEvent(name, d));
       case 'device_revoked':
-        signedOut = DeviceSignOut(bySelf: d['by_self'] == true, wipe: d['wipe'] == true);
+        // (the core keeps the data aside unless a wipe was asked or I signed out here)
+        signedOut = DeviceSignOut(bySelf: d['by_self'] == true, wipe: d['wipe'] == true, kept: d['by_self'] != true && d['wipe'] != true);
         notifyListeners();
     }
   }

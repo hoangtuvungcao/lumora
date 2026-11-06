@@ -22,8 +22,12 @@ class _Api extends MockLumoraApi {
   /// Calls the core knows about (call_answer fails for others, like the real core).
   final known = <String>{};
 
+  /// Upcoming reminders (`reminders`).
+  List<Map<String, dynamic>> reminders = [];
+
   @override
   Future<dynamic> request(String cmd, [Map<String, dynamic> args = const {}]) async {
+    if (cmd == 'reminders') return reminders;
     if (cmd == 'call_answer' || cmd == 'call_end' || cmd == 'call_set') {
       final id = args['call_id'].toString();
       if (!known.contains(id)) throw Exception('err.call_ended');
@@ -289,6 +293,46 @@ void main() {
     test('a runner without the channel is fine', () async {
       await DesktopLinks.init(); // no mock handler: MissingPluginException is swallowed
       expect(pendingDeepLink.value, isNull);
+    });
+  });
+
+  group('reminders while in the background', () {
+    tearDown(() {
+      AppleServices.hideContent = false;
+      AppleServices.reminderAlerts = true;
+      AppleServices.snoozedReminders = () => const [];
+    });
+
+    test('upcoming and snoozed reminders become local notifications; private ones say nothing', () async {
+      api.reminders = [
+        {'conv': 'd:bob', 'msg_id': 'r1', 'at_ms': 2000000000000, 'title': 'Họp', 'note': 'Phòng 2'},
+        {'conv': 'd:secret', 'msg_id': 'r2', 'at_ms': 2000000000001, 'title': 'Bí mật', 'note': ''},
+      ];
+      AppleServices.lockedConvs = {'d:secret'};
+      AppleServices.snoozedReminders = () => [
+            {'conv': 'd:bob', 'msg_id': 'r3', 'title': 'Gọi lại', 'snooze_until': 2000000000002},
+          ];
+      await apple.syncReminders(background: true);
+      final call = toSwift.singleWhere((c) => c.method == 'scheduleReminders');
+      final items = ((call.arguments as Map)['items'] as List).cast<Map>();
+      expect(items.map((x) => x['id']), ['r1', 'r2', 'r3']);
+      expect(items[0]['title'], 'Nhắc hẹn: Họp');
+      expect(items[0]['body'], 'Phòng 2');
+      expect(items[1]['title'], 'Lumora');
+      expect('${items[1]}', isNot(contains('Bí mật')));
+      expect(items[2]['at_ms'], 2000000000002);
+    });
+
+    test('back in front: cleared (the core rings them); off: nothing scheduled', () async {
+      api.reminders = [
+        {'conv': 'd:bob', 'msg_id': 'r1', 'at_ms': 2000000000000, 'title': 'Họp'},
+      ];
+      await apple.syncReminders(background: false);
+      expect(toSwift.map((c) => c.method), containsAllInOrder(['clearReminders', 'requestLocalAlerts']));
+      toSwift.clear();
+      AppleServices.reminderAlerts = false;
+      await apple.syncReminders(background: true);
+      expect((toSwift.single.arguments as Map)['items'], isEmpty);
     });
   });
 }
