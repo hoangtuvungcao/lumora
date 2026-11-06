@@ -54,7 +54,8 @@ jobs:
         run: |
           cargo build --locked -p lumora-cli --features lumora-core/openh264-source
           cp target/debug/lumorad "$RUNNER_TEMP/lumorad-h264dev"
-      - run: cargo build -p lumora-cli -p lumora-relay
+      # media: video_e2e runs its VP8 scenarios on this binary (the e2e suites only need chat)
+      - run: cargo build --locked -p lumora-cli -p lumora-relay --features lumora-cli/media
         working-directory: core
       - run: python3 core/tests/e2e.py
       - name: linked devices (phone + computer on one account, history sync, unlink)
