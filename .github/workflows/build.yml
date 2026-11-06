@@ -193,7 +193,7 @@ jobs:
         run: |
           f=core/target/release/${{ matrix.lib }}
           if grep -a -q -E 'runner/work|/home/runner|runneradmin|\\a\\lumora' "$f"; then
-            grep -a -o -E 'runner/work|/home/runner|runneradmin|\\a\\lumora' "$f" | sort | uniq -c
+            grep -a -o -E '[[:print:]]{0,60}(runner/work|/home/runner|runneradmin|\\a\\lumora)[[:print:]]{0,100}' "$f" | sort | uniq -c | sort -rn | head -40 || true
             echo "::error::build paths leaked into $f"; exit 1
           fi
       - if: matrix.target == 'linux'
@@ -645,7 +645,7 @@ jobs:
       - name: check for leaked build paths
         run: |
           if grep -a -q -E 'runner/work|/home/runner' app/android/app/src/main/jniLibs/*/liblumora_ffi.so; then
-            grep -a -o -E 'runner/work|/home/runner' app/android/app/src/main/jniLibs/*/liblumora_ffi.so | sort | uniq -c
+            grep -a -o -E '[[:print:]]{0,60}(runner/work|/home/runner)[[:print:]]{0,100}' app/android/app/src/main/jniLibs/*/liblumora_ffi.so | sort | uniq -c | sort -rn | head -40 || true
             echo "::error::build paths leaked into liblumora_ffi.so"; exit 1
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -725,7 +725,7 @@ jobs:
         shell: bash
         run: |
           if grep -a -q -E 'runner/work|/home/runner|/Users/runner|runneradmin' "${{ matrix.out }}"; then
-            grep -a -o -E 'runner/work|/home/runner|/Users/runner|runneradmin' "${{ matrix.out }}" | sort | uniq -c
+            grep -a -o -E '[[:print:]]{0,60}(runner/work|/home/runner|/Users/runner|runneradmin)[[:print:]]{0,100}' "${{ matrix.out }}" | sort | uniq -c | sort -rn | head -40 || true
             echo "::error::build paths leaked into ${{ matrix.out }}"; exit 1
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
