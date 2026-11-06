@@ -960,11 +960,21 @@ jobs:
           The signature proves SHA256SUMS was produced by the official Lumora build workflow for $TAG.
           Chữ ký chứng minh SHA256SUMS do quy trình build chính thức của Lumora tạo ra cho bản $TAG.
           NOTES
+      # The signed release set, always kept as a workflow artifact: without RELEASE_REPO_TOKEN
+      # the owner publishes it to the public repo by hand (gh release create … from this folder).
+      - name: keep the release set
+        run: cp notes.md dist/RELEASE_NOTES.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with: { name: "release-${{ github.ref_name }}", path: dist/*, if-no-files-found: error }
       - name: create the draft release in the public repo
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then echo "::error::secret RELEASE_REPO_TOKEN is not set (fine-grained PAT: contents read/write on $PUBLIC_REPO)"; exit 1; fi
+          rm -f dist/RELEASE_NOTES.md
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::RELEASE_REPO_TOKEN not set: publish the 'release-$TAG' artifact to $PUBLIC_REPO by hand"
+            exit 0
+          fi
           if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --repo "$PUBLIC_REPO" --clobber
           else
