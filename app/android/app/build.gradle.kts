@@ -74,6 +74,16 @@ android {
         // CI passes --build-name/--build-number from the tag (docs/src/ops/release.md).
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // `flutter build apk --target-platform android-arm64` (one ABI): package only that
+        // ABI's native libraries. src/main/jniLibs holds the Lumora core for every ABI and
+        // Flutter's flag doesn't filter it — the "64-bit" APK carried all three (2x size).
+        val abis = mapOf("android-arm64" to "arm64-v8a", "android-arm" to "armeabi-v7a", "android-x64" to "x86_64")
+        val only = abis[project.findProperty("target-platform") as String?]
+        logger.lifecycle("Lumora: target-platform=${project.findProperty("target-platform")} → native libs: ${only ?: "all ABIs"}")
+        if (only != null) {
+            // (Flutter resets ndk.abiFilters; exclusions at packaging time always apply)
+            packaging { jniLibs { excludes += abis.values.filter { it != only }.map { "lib/$it/**" } } }
+        }
     }
 
     signingConfigs {
