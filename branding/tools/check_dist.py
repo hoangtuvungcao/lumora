@@ -25,21 +25,30 @@ def resolve(url, base):
 
 class P(HTMLParser):
     def __init__(s, f):
-        super().__init__(); s.f = f; s.ids = set(); s.refs = []; s.in_script = False
+        super().__init__(); s.f = f; s.ids = set(); s.refs = []; s.in_script = False; s.h1 = 0; s.ld = []; s.in_ld = False
     def handle_starttag(s, tag, a):
         a = dict(a)
         if 'id' in a: s.ids.add(a['id'])
         if 'style' in a: errors.append(f'{s.f}: inline style attr on <{tag}>')
         for k in a:
             if k.startswith('on'): errors.append(f'{s.f}: inline handler {k}')
+        if tag == 'h1': s.h1 += 1
         if tag == 'script':
-            if 'src' not in a: errors.append(f'{s.f}: inline <script>')
+            # JSON-LD structured data is a data block, never executed (not affected by the CSP).
+            if a.get('type') == 'application/ld+json': s.in_ld = True; s.ld.append('')
+            elif 'src' not in a: errors.append(f'{s.f}: inline <script>')
         if tag == 'style': errors.append(f'{s.f}: <style> element')
         for k in ('href', 'src'):
             v = a.get(k)
             if v: s.refs.append((tag, v))
+        if tag == 'img' and 'alt' not in a: errors.append(f'{s.f}: <img> without alt')
         if tag == 'svg' and a.get('aria-hidden') != 'true' and 'aria-label' not in a and 'role' not in a:
             errors.append(f'{s.f}: svg without aria-hidden')
+
+    def handle_endtag(s, tag):
+        if tag == 'script': s.in_ld = False
+    def handle_data(s, d):
+        if s.in_ld: s.ld[-1] += d
 
 SPRITE = (D / 'assets/img/icons.svg').read_text(encoding='utf-8')
 SPRITE_IDS = set(re.findall(r'<symbol id="([^"]+)"', SPRITE))
@@ -50,11 +59,34 @@ for sym_bad in [s for s in re.findall(r'<symbol [^>]*>', SPRITE) if 'viewBox="0 
 if (D / 'assets/img/icons.svg').stat().st_size > 60_000: errors.append('icons.svg: over 60 KB')
 
 # The only external site public pages may link to: the official binaries-only release repo.
-OFFICIAL_EXTERNAL = ('https://github.com/hoangtuvungcao/get_lumora/', 'https://report.cybertip.org/')  # (+ the child-safety page's official reporting line)
+# (+ the child-safety page's official reporting line and the public contact address the owner approved)
+OFFICIAL_EXTERNAL = ('https://github.com/hoangtuvungcao/get_lumora/', 'https://report.cybertip.org/', 'mailto:trong20843@gmail.com')
 
 pages = {}
 for f in sorted(D.rglob('*.html')):
     p = P(f.relative_to(D)); p.feed(f.read_text(encoding='utf-8')); pages[f] = p
+
+# SEO basics on every indexable page: one <h1>, a unique title and description, a canonical URL,
+# Open Graph image, and JSON-LD blocks that parse.
+seen_titles, seen_desc = {}, {}
+for f, p in pages.items():
+    t = f.read_text(encoding='utf-8')
+    for blk in p.ld:
+        try: json.loads(blk)
+        except ValueError as e: errors.append(f'{p.f}: JSON-LD does not parse: {e}')
+    if 'name="robots" content="noindex"' in t or f.name != 'index.html':
+        continue
+    if p.h1 != 1: errors.append(f'{p.f}: {p.h1} <h1> elements (want exactly 1)')
+    ti = re.search(r'<title>([^<]+)</title>', t); de = re.search(r'<meta name="description" content="([^"]+)"', t)
+    if not ti or not de: errors.append(f'{p.f}: missing <title> or meta description'); continue
+    if ti.group(1) in seen_titles: errors.append(f'{p.f}: same <title> as {seen_titles[ti.group(1)]}')
+    if de.group(1) in seen_desc: errors.append(f'{p.f}: same meta description as {seen_desc[de.group(1)]}')
+    seen_titles[ti.group(1)] = p.f; seen_desc[de.group(1)] = p.f
+    rel_url = '/' + f.relative_to(D).parent.as_posix() + '/'
+    if rel_url == '/./': rel_url = '/'
+    if f'<link rel="canonical" href="https://getlumora.pages.dev{rel_url}">' not in t: errors.append(f'{p.f}: canonical is not {rel_url}')
+    for must in ('property="og:image"', 'name="twitter:card"', 'hreflang="en"', 'hreflang="x-default"', 'application/ld+json'):
+        if must not in t: errors.append(f'{p.f}: missing {must}')
 
 for f, p in pages.items():
     for tag, v in p.refs:
@@ -187,9 +219,9 @@ if (D / '_worker.js').exists() or (D / 'functions').exists():
 # The privacy policy tells people which switch turns a feature off ("…" ở/in Cài đặt / Settings):
 # every quoted name must be a real label in the app (VI in the page, EN in legal.js), and the
 # features that are on by default must name their switch.
-STRINGS = Path(__file__).resolve().parents[2] / 'app' / 'lib' / 'l10n' / 'strings_data.dart'
-if STRINGS.exists():
-    labels = STRINGS.read_text(encoding='utf-8')
+STRINGS = sorted((Path(__file__).resolve().parents[2] / 'app' / 'lib' / 'l10n').glob('strings*.dart'))
+if STRINGS:
+    labels = ''.join(x.read_text(encoding='utf-8') for x in STRINGS)
     priv = (D / 'privacy' / 'index.html').read_text(encoding='utf-8').replace('&quot;', '"')
     legal = (D / 'assets' / 'js' / 'legal.js').read_text(encoding='utf-8').replace('\\"', '"')
     named = set()
@@ -200,7 +232,8 @@ if STRINGS.exists():
             named.add(name)
             if f"'{name}'" not in labels:
                 errors.append(f'privacy: names setting "{name}" that is not an app label')
-    for must in ('Giúp bạn bè kết nối', 'Help friends connect', 'Gửi qua bạn bè khi ngoại tuyến', 'Tìm bạn bè trong cùng mạng Wi-Fi'):
+    for must in ('Giúp bạn bè kết nối', 'Help friends connect', 'Gửi qua bạn bè khi ngoại tuyến', 'Tìm bạn bè trong cùng mạng Wi-Fi',
+                 'Giúp bạn bè khôi phục lịch sử', 'Help friends restore their history'):
         if must not in named:
             errors.append(f'privacy: does not say how to turn off "{must}"')
 

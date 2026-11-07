@@ -118,7 +118,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 | `sticker_get` | `hash` | `{mime, data}` (base64) |
 | `sticker_pack_export` / `sticker_pack_import` | `pack, path` / `path` | result |
 
-### Stories (24 h)
+### Moments (24 h, `stories`)
 | cmd | args | data |
 |---|---|---|
 | `post_story` | `text?, image_path?, bg?: "aurora", audience?: "friends" \| "close"` | `{id, recipients}` (friends on `story_hidden` never get it; `close` = only `story_close`) |

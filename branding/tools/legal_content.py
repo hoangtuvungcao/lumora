@@ -12,7 +12,8 @@ renders a link (https only).
 
 COMMON = {
     "lg.badge": ("Minh bạch, dễ hiểu", "Clear and simple"),
-    "lg.updated": ("Cập nhật lần cuối: 6 tháng 11 năm 2026", "Last updated: 6 November 2026"),
+    "lg.toc": ("Trên trang này", "On this page"),
+    "lg.updated": ("Cập nhật lần cuối: 8 tháng 11 năm 2026", "Last updated: 8 November 2026"),
 }
 
 PRIVACY = {
@@ -91,11 +92,15 @@ PRIVACY = {
             ("Ba tuỳ chọn \"Danh sách công khai\", \"Tìm bạn qua các thiết bị khác\" và \"Tự mở đường qua modem Wi-Fi\" nằm ở Cài đặt › Nâng cao › Mạng. Tắt chúng có thể làm việc tìm nhau và kết nối chậm hơn hoặc khó hơn.",
              "The three options \"Public directory\", \"Find friends via other devices\" and \"Open a path via the Wi-Fi router\" are in Settings › Advanced › Network. Turning them off can make finding each other and connecting slower or harder."),
         ]},
-        {"id": "friends-help", "t": ("Bạn bè giúp nhau kết nối", "Friends help each other connect"), "p": [
+        {"id": "friends-help", "t": ("Bạn bè giúp nhau, và ai liên hệ được với bạn", "Friends helping each other, and who can reach you"), "p": [
             ("Khi hai người bạn của bạn không kết nối thẳng được với nhau (ví dụ do mạng công ty hay nhà mạng chặn), thiết bị của bạn có thể chuyển tiếp dữ liệu giữa họ, và bạn bè cũng có thể giúp bạn như vậy. Việc này bật sẵn, chỉ diễn ra giữa những người là bạn bè của nhau, giới hạn khoảng 1 MB/giây cho mỗi người và tối đa 16 người bạn. Nội dung vẫn được mã hoá đầu cuối: người chuyển tiếp không đọc được gì. Bạn có thể tắt \"Giúp bạn bè kết nối\" ở Cài đặt › Quyền riêng tư.",
              "When two of your friends can't connect to each other directly (for example because a company or mobile network blocks it), your device may pass data between them, and your friends may do the same for you. This is on by default, only happens between people who are friends, and is limited to about 1 MB/s per friend and at most 16 friends. The content stays end-to-end encrypted: the friend passing it along can't read any of it. You can turn off \"Help friends connect\" in Settings › Privacy."),
             ("Khi người nhận đang ngoại tuyến, bạn bè chung có thể giữ hộ tin nhắn đã khoá cho đến khi họ trực tuyến. Bạn có thể tắt \"Gửi qua bạn bè khi ngoại tuyến\" ở Cài đặt › Quyền riêng tư.",
              "When the recipient is offline, mutual friends may hold your locked messages until they come online. You can turn off \"Deliver via friends when offline\" in Settings › Privacy."),
+            ("Khi một người bạn khôi phục tài khoản bằng cụm từ khôi phục, thiết bị của bạn có thể gửi lại cho đúng người bạn đó cuộc trò chuyện riêng của hai bạn trong 6 tháng gần đây (mã hoá đầu cuối) và đưa họ trở lại các nhóm chung. Tin nhắn đã xoá hoặc tự huỷ không bao giờ được gửi. Việc này bật sẵn; bạn có thể tắt \"Giúp bạn bè khôi phục lịch sử\" ở Cài đặt › Quyền riêng tư.",
+             "When a friend restores their account with their recovery phrase, your device may send that friend your private chat from the last 6 months (end-to-end encrypted) and bring them back into the groups you share. Deleted and disappearing messages are never sent. This is on by default; you can turn off \"Help friends restore their history\" in Settings › Privacy."),
+            ("Mặc định, chỉ bạn bè mới gọi được cho bạn, thêm bạn vào nhóm và thấy bạn đang online; cuộc gọi từ người lạ không đổ chuông. Bạn đổi được các lựa chọn \"Ai được gọi cho tôi\", \"Ai được thêm tôi vào nhóm\" và \"Ai thấy tôi đang online\" ở Cài đặt › Quyền riêng tư.",
+             "By default, only friends can call you, add you to groups and see when you're online; calls from strangers never ring. You can change \"Who can call me\", \"Who can add me to groups\" and \"Who can see when I’m online\" in Settings › Privacy."),
         ]},
         {"id": "public", "t": ("Những gì là công khai", "What is public"), "p": [
             ("Nếu bạn chọn đặt @tên người dùng, hoặc tạo nhóm công khai, thì @tên đó cùng tên hiển thị (với nhóm là tên và mô tả nhóm) sẽ có trong danh sách công khai để người khác tìm thấy bạn. Việc này hoàn toàn tuỳ chọn, và bạn có thể bỏ @tên bất cứ lúc nào.",
@@ -262,14 +267,14 @@ DELETE_ACCOUNT = {
         "How to delete your Lumora account and all your data.",
     ),
     "summary": [
-        ("Xoá trong ứng dụng: Cài đặt → Bảo mật → Xoá tài khoản.", "In the app: Settings → Security → Delete account."),
+        ("Xoá trong ứng dụng: Cài đặt › Bảo mật › Xoá tài khoản.", "In the app: Settings › Security › Delete account."),
         ("Xoá trên thiết bị chính sẽ đăng xuất và xoá dữ liệu trên mọi thiết bị đã liên kết.", "Deleting on the main device signs out and wipes every linked device."),
         ("Chúng tôi không có máy chủ lưu tài khoản, nên không còn gì để xoá thêm.", "We have no server holding accounts, so nothing else is left to delete."),
     ],
     "sections": [
         {"id": "steps", "t": ("Các bước", "Steps"), "p": [
             {"li": [
-                ("Mở Lumora → Cài đặt → Bảo mật → Xoá tài khoản.", "Open Lumora → Settings → Security → Delete account."),
+                ("Mở Lumora › Cài đặt › Bảo mật › Xoá tài khoản.", "Open Lumora › Settings › Security › Delete account."),
                 ("Nhập mật khẩu tài khoản (nếu đã đặt) và xác nhận.", "Enter your account password (if you set one) and confirm."),
                 ("Tin nhắn, bạn bè, nhóm, tệp đã tải và khoá mã hoá trên thiết bị này bị xoá; các thiết bị đã liên kết cũng bị đăng xuất và xoá dữ liệu.", "Messages, friends, groups, downloaded files and encryption keys on this device are deleted; linked devices are signed out and wiped too."),
                 ("Gỡ ứng dụng nếu bạn muốn.", "Uninstall the app if you like."),

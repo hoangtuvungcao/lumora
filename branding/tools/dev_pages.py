@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 import markdown
@@ -164,58 +165,164 @@ def parse_bilingual(path):
 
 # ----------------------------------------------------------------------------- page chrome
 
-NAV = [
-    ("overview", "/developers/", "Tổng quan", "Overview"),
-    ("quickstart", "/developers/quickstart/", "Bắt đầu nhanh", "Quickstart"),
-    ("guides", "/developers/guides/", "Hướng dẫn", "Guides"),
-    ("reference", "/developers/reference/", "Tham chiếu SDK", "SDK reference"),
-    ("api", "/developers/api/", "JSON API", "JSON API"),
-    ("examples", "/developers/examples/", "Ví dụ", "Examples"),
-    ("production", "/developers/production/", "Vận hành", "Production"),
+# Sidebar of every developer page: groups of (key, href, vi, en). The flat order is also the prev/next order.
+TREE = [
+    (("Bắt đầu", "Get started"), [
+        ("overview", "/developers/", "Tổng quan", "Overview"),
+        ("quickstart", "/developers/quickstart/", "Bắt đầu nhanh", "Quickstart"),
+    ]),
+    (("Xây dựng bot", "Build a bot"), [
+        ("guides", "/developers/guides/", "Hướng dẫn", "Guides"),
+        ("examples", "/developers/examples/", "Ví dụ", "Examples"),
+    ]),
+    (("Tham chiếu", "Reference"), [
+        ("reference", "/developers/reference/", "Tham chiếu SDK", "SDK reference"),
+        ("ref-python", "/developers/reference/python/", "SDK Python", "Python SDK"),
+        ("ref-js", "/developers/reference/js/", "SDK JavaScript", "JavaScript SDK"),
+        ("api", "/developers/api/", "JSON API", "JSON API"),
+    ]),
+    (("Vận hành", "Operate"), [
+        ("production", "/developers/production/", "Vận hành", "Production"),
+    ]),
 ]
+FLAT = [item for _, items in TREE for item in items]
+SUB = {"ref-python": "reference", "ref-js": "reference"}  # pages shown under a parent in the breadcrumb
+
+# Client-side search index (written to /developers/search.json by write_search()).
+SEARCH = []
 
 
-def subnav(current):
-    cur = ' aria-current="page"'
-    items = "".join(f'<a href="{href}"{cur if key == current else ""}>{bi(vi, en)}</a>' for key, href, vi, en in NAV)
-    return f'<nav class="devnav" aria-label="Developers">{items}</nav>'
+def _fold(t):
+    """Lower case without Vietnamese marks, for the search index (the browser folds the query the same way)."""
+    t = unicodedata.normalize("NFD", t.replace("đ", "d").replace("Đ", "D"))
+    return re.sub(r"\s+", " ", "".join(c for c in t if unicodedata.category(c) != "Mn").lower()).strip()
 
 
-def page(head_for, foot, *, page_id, path, nav, title, desc, badge, icon, h1, lead, body, I):
-    """Write one developer page. title/desc/badge/h1/lead are (vi, en) pairs."""
-    head = head_for(page_id, path, f"{title[0]} — Lumora", desc[0], og_title=f"{title[0]} — Lumora", dev_js=True)
-    head = head.replace(f'data-page="{page_id}"',
-                        f'data-page="{page_id}" data-title-en="{html.escape(title[1])} — Lumora" data-desc-en="{html.escape(desc[1])}"', 1)
+def _text(h):
+    return html.unescape(re.sub(r"<[^>]+>", " ", h))
+
+
+def _sidebar(current):
+    groups = []
+    for (gvi, gen), items in TREE:
+        links = []
+        for key, href, vi, en in items:
+            cur = ' aria-current="page"' if key == current else ""
+            sub = " docs-nav__sub" if key in SUB else ""
+            links.append(f'<li><a class="docs-nav__link{sub}" href="{href}"{cur}>{bi(vi, en)}</a></li>')
+        groups.append(f'<p class="docs-nav__group">{bi(gvi, gen)}</p><ul>{"".join(links)}</ul>')
+    return "".join(groups)
+
+
+def _toc_items(toc):
+    return "".join(f'<li class="toc--{lvl}"><a href="#{tid}">{bi(vi, en)}</a></li>' for tid, vi, en, lvl in toc)
+
+
+def page(head_for, foot, *, page_id, path, title, desc, badge, icon, h1, lead, article, I, toc=None, nav=None, hero_cta=""):
+    """Write one developer page in the docs layout: sidebar (search + navigation), breadcrumbs,
+    content, prev/next, and the on-page table of contents. title/desc/badge/h1/lead are (vi, en) pairs;
+    toc is [(id, vi, en, level)]."""
+    key = nav or page_id
+    keys = [k for k, *_ in FLAT]
+    idx = keys.index(key)
+    me = FLAT[idx]
+    crumbs = [("Nhà phát triển", "Developers", "/developers/")]
+    if key in SUB:
+        parent = FLAT[keys.index(SUB[key])]
+        crumbs.append((parent[2], parent[3], parent[1]))
+    if key != "overview":
+        crumbs.append((me[2], me[3], me[1]))
+    head = head_for(page_id, path, f"{title[0]} — Tài liệu Lumora", desc[0], og_title=f"{title[0]} — Lumora", dev_js=True,
+                    og_image="og-developers", crumbs=[(vi, u) for vi, _, u in crumbs],
+                    title_en=f"{title[1]} — Lumora docs", desc_en=desc[1])
+    crumb_html = '<li><a href="/">Lumora</a></li>' + "".join(
+        (f'<li><span aria-current="page">{bi(vi, en)}</span></li>' if i == len(crumbs) - 1
+         else f'<li><a href="{u}">{bi(vi, en)}</a></li>') for i, (vi, en, u) in enumerate(crumbs))
+    prev_, next_ = (FLAT[idx - 1] if idx else None), (FLAT[idx + 1] if idx + 1 < len(FLAT) else None)
+    pager = ""
+    if prev_:
+        pager += (f'<a class="glass docs-pager__link" href="{prev_[1]}" rel="prev"><small>{bi("Trang trước", "Previous")}</small>'
+                  f'<b>{bi(prev_[2], prev_[3])}</b></a>')
+    else:
+        pager += '<span></span>'
+    if next_:
+        pager += (f'<a class="glass docs-pager__link docs-pager__link--next" href="{next_[1]}" rel="next"><small>{bi("Trang tiếp", "Next")}</small>'
+                  f'<b>{bi(next_[2], next_[3])}</b></a>')
+    toc_rail = toc_m = ""
+    if toc:
+        items = _toc_items(toc)
+        on = bi("Trên trang này", "On this page")
+        toc_rail = f'<nav class="docs-toc" aria-label="On this page"><p class="docs-toc__h">{on}</p><ul>{items}</ul></nav>'
+        toc_m = f'<details class="docs-mtoc glass"><summary>{I("bars", "ic ic--sm")}{on}</summary><ul>{items}</ul></details>'
+    sidebar = _sidebar(key)
     main = f'''<main id="main">
-  <section class="page-head page-head--left page-head--docs">
-    <div class="container">
-      {subnav(nav)}
-      <p class="badge-gold">{I(icon, "ic ic--sm")}{bi(*badge)}</p>
-      <h1 class="hero__title">{bi_html(*h1)}</h1>
-      <p class="lead-p">{bi(*lead)}</p>
+  <div class="container docs{" docs--wide" if not toc else ""}">
+    <aside class="docs-side">
+      <div class="docs-search" role="search">
+        <label class="sr-only" for="docs-q">{bi("Tìm trong tài liệu", "Search the docs")}</label>
+        {I("search", "ic ic--sm docs-search__ic")}
+        <input id="docs-q" class="docs-search__input" type="search" placeholder="Tìm trong tài liệu…" data-i18n-attr="placeholder:docs.searchPh"
+               autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="docs-results" aria-autocomplete="list">
+        <kbd class="docs-search__kbd" aria-hidden="true">/</kbd>
+        <ul class="docs-results glass" id="docs-results" role="listbox" hidden></ul>
+      </div>
+      <nav class="docs-nav" aria-label="Tài liệu" data-i18n-attr="aria-label:docs.nav">{sidebar}</nav>
+      <details class="docs-mnav glass"><summary>{I("book-open", "ic ic--sm")}{bi("Mục lục tài liệu", "Documentation")}</summary><nav aria-label="Tài liệu (thu gọn)" data-i18n-attr="aria-label:docs.nav">{sidebar}</nav></details>
+    </aside>
+    <div class="docs-main">
+      <nav class="crumbs" aria-label="Breadcrumb" data-i18n-attr="aria-label:docs.crumbs"><ol>{crumb_html}</ol></nav>
+      <header class="docs-head">
+        <p class="badge-gold">{I(icon, "ic ic--sm")}{bi(*badge)}</p>
+        <h1 class="docs-title">{bi_html(*h1)}</h1>
+        <p class="lead-p">{bi(*lead)}</p>{hero_cta}
+      </header>
+      {toc_m}
+{article}
+      <nav class="docs-pager" aria-label="{html.escape("Trang trước / tiếp")}">{pager}</nav>
     </div>
-  </section>
-{body}
+    {toc_rail}
+  </div>
+</main>
 '''
     out = DEV / path.strip("/").removeprefix("developers").strip("/") / "index.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(head + main + foot, encoding="utf-8")
+    # search index: the page, then each section of its table of contents with the text under it
+    SEARCH.append({"u": path, "t": [title[0], title[1]], "p": [me[2], me[3]], "k": _fold(f"{title[0]} {title[1]} {_text(lead[0])} {_text(lead[1])}")[:300]})
+    if toc:
+        pos = [(article.find(f'id="{tid}"'), tid, vi, en) for tid, vi, en, _ in toc]
+        pos = sorted(p for p in pos if p[0] >= 0)
+        for i, (start, tid, vi, en) in enumerate(pos):
+            end = pos[i + 1][0] if i + 1 < len(pos) else len(article)
+            SEARCH.append({"u": f"{path}#{tid}", "t": [_text(vi).strip(), _text(en).strip()], "p": [me[2], me[3]],
+                           "k": _fold(f"{_text(vi)} {_text(en)} {_text(article[start:end])}")[:320]})
 
 
-def doc_layout(sections, I, *, after=""):
-    toc = "".join(f'<li><a href="#{sid}">{bi(tvi, ten)}</a></li>' for sid, tvi, ten, _ in sections)
+def write_search():
+    import json
+    (DEV / "search.json").write_text(json.dumps(SEARCH, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+
+
+def doc_article(sections, *, after=""):
     secs = "\n".join(
         f'<section class="doc-sec" id="{sid}"><h2>{bi(tvi, ten)}</h2>\n{h}\n</section>' for sid, tvi, ten, h in sections)
-    return f'''  <section class="section section--tight">
-    <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline">{bi("Trên trang này", "On this page")}</p><ul>{toc}</ul></nav>
-      <article class="prose prose--docs">
+    return f'''      <article class="prose prose--docs">
 {secs}
 {after}
-      </article>
-    </div>
-  </section>
-'''
+      </article>'''
+
+
+def sections_toc(sections):
+    return [(sid, tvi, ten, 2) for sid, tvi, ten, _ in sections]
+
+
+def heading_toc(body):
+    """[(id, text, text, level)] of the h2/h3 headings of an English-only reference page."""
+    out = []
+    for lvl, hid, txt in re.findall(r'<h([23]) id="([^"]+)">(.*?)</h\1>', body):
+        t = html.unescape(re.sub("<[^>]+>", "", txt))
+        out.append((hid, t, t, int(lvl)))
+    return out
 
 
 def next_links(items, I):
@@ -325,7 +432,8 @@ def build(head_for, foot, I, code):
                 ("/developers/examples/", "bot", "Ví dụ", "Examples", "4 bot hoàn chỉnh, Python và JavaScript", "4 complete bots in Python and JavaScript"),
             ], I)
         page(head_for, foot, page_id=f"dev-{slug}", path=f"/developers/{slug}/", nav=nav, title=title, desc=desc, badge=badge, icon=icon,
-             h1=(html.escape(title[0]), html.escape(title[1])), lead=lead, body=doc_layout(sections, I, after=after), I=I)
+             h1=(html.escape(title[0]), html.escape(title[1])), lead=lead, article=doc_article(sections, after=after),
+             toc=sections_toc(sections), I=I)
     for lang, name, label in [("python", "Python", "lumora_bot.py"), ("js", "JavaScript", "lumora-bot.mjs")]:
         build_reference(head_for, foot, I, lang, name, label)
     build_examples(head_for, foot, I, code)
@@ -335,26 +443,18 @@ def build_reference(head_for, foot, I, lang, name, label):
     md = (DOCS / f"reference-{lang}.md").read_text(encoding="utf-8")
     md = re.sub(r"^# .*\n", "", md, count=1)
     body = md_html(md)
-    toc = "".join(
-        f'<li class="toc--{lvl}"><a href="#{hid}">{re.sub("<[^>]+>", "", txt)}</a></li>'
-        for lvl, hid, txt in re.findall(r'<h([23]) id="([^"]+)">(.*?)</h\1>', body))
-    content = f'''  <section class="section section--tight">
-    <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline">{bi("Trên trang này", "On this page")}</p><ul>{toc}</ul></nav>
-      <article class="prose prose--ref" lang="en">
-<p class="muted small l-vi">Phần tham chiếu được viết bằng tiếng Anh và tạo tự động từ mã nguồn SDK.</p>
+    content = f'''      <article class="prose prose--ref" lang="en">
+<p class="muted small l-vi" lang="vi">Phần tham chiếu được viết bằng tiếng Anh và tạo tự động từ mã nguồn SDK.</p>
 {body}
-      </article>
-    </div>
-  </section>
-'''
-    page(head_for, foot, page_id=f"dev-ref-{lang}", path=f"/developers/reference/{lang}/", nav="reference",
+      </article>'''
+    page(head_for, foot, page_id=f"dev-ref-{lang}", path=f"/developers/reference/{lang}/", nav=f"ref-{'python' if lang == 'python' else 'js'}",
          title=(f"Tham chiếu SDK {name}", f"{name} SDK reference"),
          desc=(f"Tham chiếu đầy đủ Lumora Bot SDK cho {name}: lớp Bot, ngữ cảnh, lưu trữ, lỗi, hàm trợ giúp.",
                f"Complete Lumora Bot SDK reference for {name}: Bot, Context, Storage, errors, helpers."),
          badge=(f"SDK {name}", f"{name} SDK"), icon="code",
          h1=(f"Tham chiếu SDK {name}", f"{name} SDK reference"),
-         lead=(f"Mọi lớp, hàm và tham số của {label}.", f"Every class, method and parameter of {label}."), body=content, I=I)
+         lead=(f"Mọi lớp, hàm và tham số của {label}.", f"Every class, method and parameter of {label}."), article=content,
+         toc=heading_toc(body), I=I)
 
 
 def build_examples(head_for, foot, I, code):
@@ -398,24 +498,18 @@ def build_examples(head_for, foot, I, code):
                       "BOT_DIR=./team-tasks python3 team_tasks_bot.py      # Python", "BOT_DIR=./team-tasks node team-tasks-bot.mjs          # JavaScript"]), "bash")}
 </section>'''
     toc.append(("run", "Chạy ví dụ", "Run an example"))
-    tochtml = "".join(f'<li><a href="#{sid}">{bi(vi, en)}</a></li>' for sid, vi, en in toc)
-    body = f'''  <section class="section section--tight">
-    <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline">{bi("Trên trang này", "On this page")}</p><ul>{tochtml}</ul></nav>
-      <article class="prose prose--docs">
+    body = f'''      <article class="prose prose--docs">
 {chr(10).join(secs)}
 {run}
-      </article>
-    </div>
-  </section>
-'''
+      </article>'''
     page(head_for, foot, page_id="dev-examples", path="/developers/examples/", nav="examples",
          title=("Ví dụ bot", "Example bots"),
          desc=("Bot Lumora mẫu bằng Python và JavaScript: quản lý nhóm, việc nhóm với danh sách việc và nhắc hẹn, tóm tắt tệp, nút bấm.",
                "Sample Lumora bots in Python and JavaScript: group helper, team tasks with checklists and reminders, file summary, buttons."),
          badge=("Đã kiểm thử", "Tested"), icon="bot", h1=("Ví dụ bot", "Example bots"),
          lead=("Bốn bot hoàn chỉnh, mỗi bot có bản Python và JavaScript giống nhau, được kiểm thử tự động.",
-               "Four complete bots, each in matching Python and JavaScript versions, tested automatically."), body=body, I=I)
+               "Four complete bots, each in matching Python and JavaScript versions, tested automatically."), article=body,
+         toc=[(sid, vi, en, 2) for sid, vi, en in toc], I=I)
 
 
 def build_overview(head_for, foot, I, code, version):
@@ -513,8 +607,7 @@ await bot.run();'''
         f'<a class="glass sdk{" sdk--wide" if wide else ""}" href="{href}"{" download" if down else ""}>{I(icon)}<span><b>{html.escape(name)}</b>'
         f'<small>{bi(*d)}</small></span>{I("download" if down else "arrow-right", "ic ic--sm")}</a>'
         for href, icon, name, d, down, wide in dl)
-    body = f'''  <section class="section section--tight">
-    <div class="container">
+    body = f'''      <div class="docs-overview">
       <div class="doc-cards">{doc_cards}</div>
 
       <div class="grid-2 grid-2--gap dev-intro">
@@ -559,25 +652,15 @@ await bot.run();'''
         <a class="btn btn--primary btn--xl" href="/developers/api/">{I("book-open")}{bi("Mở tài liệu API", "Open the API reference")}</a>
       </div>
     </div>
-  </section>
 '''
-    head = head_for("developers", "/developers/", "Nhà phát triển — Tạo bot cho Lumora",
-                    "Tạo bot cho Lumora: Xưởng Bot, Lumora Bot Runner và SDK Python/JavaScript. Nút bấm, nhóm, tệp, danh sách việc, nhắc hẹn. Không cần thuê máy chủ, miễn phí.",
-                    og_title="Tạo bot cho Lumora — Lumora Developers", dev_js=True)
-    head = head.replace('data-page="developers"',
-                        'data-page="developers" data-title-en="Developers — Build a Lumora bot" '
-                        'data-desc-en="Build Lumora bots with Bot Studio, Lumora Bot Runner and the Python/JavaScript SDK: buttons, groups, files, checklists, reminders. No server to rent, free."', 1)
-    main = f'''<main id="main">
-  <section class="page-head page-head--docs">
-    <div class="container">
-      {subnav("overview")}
-      <p class="badge-gold">{I("code", "ic ic--sm")}{bi("Dành cho lập trình viên", "For developers")}</p>
-      <h1 class="hero__title">{bi_html('Tạo bot cho <span class="grad-text">Lumora</span>', 'Build a <span class="grad-text">Lumora</span> bot')}</h1>
-      <p>{bi("Trả lời khách, quản lý nhóm, nhắc việc, nhận tệp. Bot chạy trên máy của bạn, miễn phí, với SDK Python và JavaScript.",
-             "Answer customers, run groups, remind teams, take files. Your bot runs on your own computer, free, with Python and JavaScript SDKs.")}</p>
-      <p class="nf-actions"><a class="btn btn--primary btn--xl" href="/developers/quickstart/">{I("sparkles")}{bi("Bắt đầu nhanh", "Quickstart")}</a> <a class="btn btn--glass btn--xl" href="/developers/guides/">{I("compass")}{bi("Hướng dẫn", "Guides")}</a></p>
-    </div>
-  </section>
-{body}
-'''
-    (DEV / "index.html").write_text(head + main + foot, encoding="utf-8")
+    cta = (f'\n        <p class="nf-actions"><a class="btn btn--primary btn--xl" href="/developers/quickstart/">{I("sparkles")}{bi("Bắt đầu nhanh", "Quickstart")}</a> '
+           f'<a class="btn btn--glass btn--xl" href="/developers/guides/">{I("compass")}{bi("Hướng dẫn", "Guides")}</a></p>')
+    page(head_for, foot, page_id="developers", path="/developers/", nav="overview",
+         title=("Tạo bot cho Lumora", "Build a Lumora bot"),
+         desc=("Tạo bot cho Lumora: Xưởng Bot, Lumora Bot Runner và SDK Python/JavaScript (giấy phép MIT). Nút bấm, nhóm, tệp, danh sách việc, nhắc hẹn. Không cần thuê máy chủ, miễn phí.",
+               "Build Lumora bots with Bot Studio, Lumora Bot Runner and the Python/JavaScript SDK (MIT license): buttons, groups, files, checklists, reminders. No server to rent, free."),
+         badge=("Dành cho lập trình viên", "For developers"), icon="code",
+         h1=('Tạo bot cho <span class="grad-text">Lumora</span>', 'Build a <span class="grad-text">Lumora</span> bot'),
+         lead=("Trả lời khách, quản lý nhóm, nhắc việc, nhận tệp. Bot chạy trên máy của bạn, miễn phí, với SDK Python và JavaScript.",
+               "Answer customers, run groups, remind teams, take files. Your bot runs on your own computer, free, with Python and JavaScript SDKs."),
+         article=body, hero_cta=cta, I=I)

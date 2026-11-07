@@ -16,6 +16,7 @@ Requires: pip install markdown
 Usage:    python3 branding/tools/build_pages.py
 """
 import html
+import json
 import re
 import subprocess
 import sys
@@ -29,8 +30,54 @@ SDK = ROOT / "sdk"
 # Public, curated reference (no network internals). The full internal contract stays in api.md.
 API_MD = ROOT / "docs" / "src" / "dev" / "api-public.md"
 
+SITE = "https://getlumora.pages.dev"
+LD_RE = re.compile(r"(<!-- ld:begin[^>]*-->\n)(.*?)(<!-- ld:end -->)", re.S)
+
+
+def ld_script(obj):
+    """One JSON-LD block (a data block: never executed, so the strict CSP does not apply)."""
+    txt = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return f'<script type="application/ld+json">{txt}</script>\n'
+
+
+def strip_tags(t):
+    return html.unescape(re.sub(r"<[^>]+>", "", t)).strip()
+
+
+ORG = {"@type": "Organization", "@id": f"{SITE}/#org", "name": "Lumora", "url": f"{SITE}/",
+       "logo": f"{SITE}/assets/img/icons/icon-512.png", "email": "trong20843@gmail.com",
+       "sameAs": ["https://github.com/hoangtuvungcao/get_lumora"]}
+
+
+def build_home_ld():
+    """Structured data of the home page, from the page itself (FAQ = the visible questions and answers)."""
+    page = (L / "index.html").read_text(encoding="utf-8")
+    desc = re.search(r'<meta name="description" content="([^"]*)">', page).group(1)
+    faq = [{"@type": "Question", "name": strip_tags(q), "acceptedAnswer": {"@type": "Answer", "text": strip_tags(a)}}
+           for q, a in re.findall(r'<details><summary data-i18n="q\d+">(.*?)</summary><p data-i18n="a\d+">(.*?)</p></details>', page, re.S)]
+    graph = [
+        ORG,
+        {"@type": "WebSite", "@id": f"{SITE}/#site", "name": "Lumora", "url": f"{SITE}/", "inLanguage": ["vi", "en"],
+         "publisher": {"@id": f"{SITE}/#org"}},
+        {"@type": "SoftwareApplication", "@id": f"{SITE}/#app", "name": "Lumora", "url": f"{SITE}/",
+         "description": html.unescape(desc), "applicationCategory": "CommunicationApplication",
+         "applicationSubCategory": "Messaging", "operatingSystem": "Windows 10+, macOS 11+, Linux, Android 8+, iOS 14+",
+         "downloadUrl": f"{SITE}/download/", "image": f"{SITE}/assets/img/og-image.png", "inLanguage": ["vi", "en"],
+         "isAccessibleForFree": True, "publisher": {"@id": f"{SITE}/#org"},
+         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+         "featureList": ["Tin nhắn mã hoá đầu cuối", "Nhóm và cộng đồng", "Gọi thoại và video", "Gửi tệp lớn",
+                         "Khoảnh khắc", "Hỗ trợ máy tính từ xa", "Bot và SDK"]},
+        {"@type": "FAQPage", "@id": f"{SITE}/#faq", "mainEntity": faq},
+    ]
+    block = ld_script({"@context": "https://schema.org", "@graph": graph})
+    new = LD_RE.sub(lambda m: m.group(1) + block + m.group(3), page, count=1)
+    if new != page:
+        (L / "index.html").write_text(new, encoding="utf-8")
+
+
+build_home_ld()
 src = (L / "index.html").read_text(encoding="utf-8")
-HEAD = src[: src.index('<main id="main">')]
+HEAD = LD_RE.sub(lambda m: m.group(1) + m.group(3), src[: src.index('<main id="main">')], count=1)
 FOOT = src[src.index("</main>"):]
 
 
@@ -38,21 +85,49 @@ def I(name, cls="ic"):
     return f'<svg class="{cls}" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#{name}"/></svg>'
 
 
-def head_for(page, path, title_vi, desc_vi, og_title=None, dev_js=False, noindex=False, page_js=None):
+def breadcrumb_ld(crumbs):
+    """crumbs: [(name, path), …] after the home page."""
+    items = [("Lumora", "/")] + list(crumbs)
+    return {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": i, "name": n, "item": f"{SITE}{u}"} for i, (n, u) in enumerate(items, 1)]}
+
+
+def head_for(page, path, title_vi, desc_vi, og_title=None, dev_js=False, noindex=False, page_js=None,
+             og_image="og-image", crumbs=None, ld=None, title_en=None, desc_en=None):
     h = HEAD.replace('<html lang="vi">', f'<html lang="vi" data-page="{page}">')
+    if title_en:
+        h = h.replace(f'data-page="{page}"', f'data-page="{page}" data-title-en="{html.escape(title_en)}"'
+                      + (f' data-desc-en="{html.escape(desc_en)}"' if desc_en else ""), 1)
     h = h.replace("<title>Lumora — Kết nối trực tiếp. Riêng tư theo cách của bạn.</title>", f"<title>{title_vi}</title>")
     h = re.sub(r'<meta name="description" content="[^"]*">', f'<meta name="description" content="{html.escape(desc_vi)}">', h)
-    url = f"https://getlumora.pages.dev{path}"
+    url = f"{SITE}{path}"
     if noindex:
-        h = h.replace('<link rel="canonical" href="https://getlumora.pages.dev/">\n', '<meta name="robots" content="noindex">\n')
+        h = h.replace('<meta name="robots" content="index, follow, max-image-preview:large">', '<meta name="robots" content="noindex">')
+        h = h.replace('<link rel="canonical" href="https://getlumora.pages.dev/">\n', "")
+        h = re.sub(r'<link rel="alternate" hreflang="[^"]+" href="[^"]*">\n', "", h)
     else:
         h = h.replace('<link rel="canonical" href="https://getlumora.pages.dev/">', f'<link rel="canonical" href="{url}">')
+        h = h.replace(f'hreflang="vi" href="{SITE}/"', f'hreflang="vi" href="{url}"')
+        h = h.replace(f'hreflang="en" href="{SITE}/?lang=en"', f'hreflang="en" href="{url}?lang=en"')
+        h = h.replace(f'hreflang="x-default" href="{SITE}/"', f'hreflang="x-default" href="{url}"')
     h = h.replace('<meta property="og:url" content="https://getlumora.pages.dev/">', f'<meta property="og:url" content="{url}">')
+    if path != "/":
+        h = h.replace('<meta property="og:type" content="website">', '<meta property="og:type" content="article">')
+    if og_image != "og-image":
+        h = h.replace("/assets/img/og-image.png", f"/assets/img/{og_image}.png")
     if og_title:
         h = re.sub(r'<meta property="og:title" content="[^"]*">', f'<meta property="og:title" content="{og_title}">', h)
         h = re.sub(r'<meta name="twitter:title" content="[^"]*">', f'<meta name="twitter:title" content="{og_title}">', h)
+        h = re.sub(r'<meta property="og:image:alt" content="[^"]*">', f'<meta property="og:image:alt" content="{og_title}">', h)
+        h = re.sub(r'<meta name="twitter:image:alt" content="[^"]*">', f'<meta name="twitter:image:alt" content="{og_title}">', h)
         h = re.sub(r'<meta property="og:description" content="[^"]*">', f'<meta property="og:description" content="{html.escape(desc_vi)}">', h)
         h = re.sub(r'<meta name="twitter:description" content="[^"]*">', f'<meta name="twitter:description" content="{html.escape(desc_vi)}">', h)
+    blocks = ""
+    if crumbs and not noindex:
+        blocks += ld_script(breadcrumb_ld(crumbs))
+    for obj in ld or []:
+        blocks += ld_script(obj)
+    h = re.sub(r"<!-- ld:begin[^>]*-->\n<!-- ld:end -->\n", lambda m: blocks, h, count=1)
     if dev_js:
         page_js = "dev.js"
     if page_js:
@@ -151,9 +226,11 @@ cosign verify-blob --bundle SHA256SUMS.sigstore.json \\
   </section>
 '''
     write(L / "download" / "index.html",
-          head_for("download", "/download/", "Tải về — Lumora",
-                   "Tải Lumora miễn phí cho Windows, Mac, Linux và Android. Không cần đăng ký.",
-                   og_title="Tải Lumora miễn phí") + main + FOOT)
+          head_for("download", "/download/", "Tải Lumora miễn phí cho Windows, macOS, Linux và Android",
+                   "Tải Lumora miễn phí cho Windows, macOS, Linux và Android, kèm bản cài thủ công cho iPhone/iPad. Không cần đăng ký, có mã kiểm tra SHA-256 và chữ ký số cho mọi tệp.",
+                   og_title="Tải Lumora miễn phí", og_image="og-download", crumbs=[("Tải về", "/download/")],
+                   title_en="Download Lumora for free: Windows, macOS, Linux, Android",
+                   desc_en="Download Lumora for free for Windows, macOS, Linux and Android, plus a manual-install build for iPhone/iPad. No sign-up, with SHA-256 checksums and a digital signature for every file.") + main + FOOT)
 
 
 # ---------------------------------------------------------------- 404
@@ -168,7 +245,7 @@ def build_404():
     </div>
   </section>
 '''
-    write(L / "404.html", head_for("404", "/404", "404 — Lumora", "Không tìm thấy trang.", noindex=True) + main + FOOT)
+    write(L / "404.html", head_for("404", "/404", "404 — Lumora", "Không tìm thấy trang.", noindex=True, title_en="404 — Lumora", desc_en="Page not found.") + main + FOOT)
 
 
 # ---------------------------------------------------------------- open (shared links)
@@ -257,43 +334,24 @@ def build_api():
     body = body.replace("<pre><code", '<pre class="code"><code')
     body = body.replace("<table>", '<div class="table-wrap"><table class="table table--api">').replace("</table>", "</table></div>")
     body = re.sub(r"<h1[^>]*>.*?</h1>", "", body, count=1)
-    toc = "".join(
-        f'<li class="toc--{lvl}"><a href="#{hid}">{re.sub("<[^>]+>", "", txt)}</a></li>'
-        for lvl, hid, txt in re.findall(r'<h([23]) id="([^"]+)">(.*?)</h\1>', body)
-    )
-    bi = dev_pages.bi
-    main = f'''<main id="main">
-  <section class="page-head page-head--left page-head--docs">
-    <div class="container">
-      {dev_pages.subnav("api")}
-      <p class="badge-gold">{I("book-open", "ic ic--sm")}{bi("Tài liệu tham chiếu", "Reference")}</p>
-      <h1 class="hero__title">{bi("Tài liệu JSON API", "JSON API reference")}</h1>
-      <p class="lead-p">{bi("Các lệnh và sự kiện mà bot (qua bot.call) và ứng dụng tích hợp có thể dùng. Mỗi yêu cầu là một dòng JSON; phản hồi và sự kiện cũng là các dòng JSON.",
-                            "Commands and events available to bots (through bot.call) and app integrations. Each request is one JSON line; responses and events are JSON lines too.")}</p>
-      <p class="muted small">{bi("Nội dung tham chiếu được viết bằng tiếng Anh.", "The reference itself is written in English.")}</p>
-    </div>
-  </section>
-  <section class="section section--tight">
-    <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline">{bi("Trên trang này", "On this page")}</p><ul>{toc}</ul></nav>
+    article = f'''      <p class="muted small l-vi">Nội dung tham chiếu được viết bằng tiếng Anh.</p>
       <article class="prose" lang="en">
 {body}
-      </article>
-    </div>
-  </section>
-'''
-    head = head_for("api", "/developers/api/", "Tài liệu JSON API — Lumora",
-                    "Tài liệu tham chiếu Lumora JSON API: lệnh, sự kiện và cấu trúc dữ liệu cho bot và ứng dụng.",
-                    og_title="Lumora JSON API reference", dev_js=True)
-    head = head.replace('data-page="api"', 'data-page="api" data-title-en="JSON API reference — Lumora" '
-                        'data-desc-en="Lumora JSON API reference: commands, events and data shapes for bots and app integrations."', 1)
-    write(L / "developers" / "api" / "index.html", head + main + FOOT)
+      </article>'''
+    dev_pages.page(head_for, FOOT, page_id="api", path="/developers/api/", nav="api",
+                   title=("Tài liệu JSON API", "JSON API reference"),
+                   desc=("Tài liệu tham chiếu Lumora JSON API: lệnh, sự kiện và cấu trúc dữ liệu cho bot và ứng dụng tích hợp.",
+                         "Lumora JSON API reference: commands, events and data shapes for bots and app integrations."),
+                   badge=("Tài liệu tham chiếu", "Reference"), icon="book-open",
+                   h1=("Tài liệu JSON API", "JSON API reference"),
+                   lead=("Các lệnh và sự kiện mà bot (qua bot.call) và ứng dụng tích hợp có thể dùng. Mỗi yêu cầu là một dòng JSON; phản hồi và sự kiện cũng là các dòng JSON.",
+                         "Commands and events available to bots (through bot.call) and app integrations. Each request is one JSON line; responses and events are JSON lines too."),
+                   article=article, toc=dev_pages.heading_toc(body), I=I)
 
 
 # ---------------------------------------------------------------- sitemap
-SITE = "https://getlumora.pages.dev"
 # Content date of the published pages (bump when the pages change meaningfully).
-LASTMOD = "2026-11-06"
+LASTMOD = "2026-11-08"
 
 
 def build_sitemap():
@@ -307,9 +365,13 @@ def build_sitemap():
             continue
         urls.append("/" if rel == "." else f"/{rel}/")
     urls.sort(key=lambda u: (u != "/", u.count("/"), u))
-    body = "".join(f"  <url><loc>{SITE}{u}</loc><lastmod>{LASTMOD}</lastmod></url>\n" for u in urls)
+    def entry(u):
+        alt = "".join(f'<xhtml:link rel="alternate" hreflang="{hl}" href="{SITE}{u}{q}"/>'
+                      for hl, q in (("vi", ""), ("en", "?lang=en"), ("x-default", "")))
+        return f"  <url><loc>{SITE}{u}</loc><lastmod>{LASTMOD}</lastmod>{alt}</url>\n"
+    body = "".join(entry(u) for u in urls)
     write(L / "sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n'
-          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + body + "</urlset>\n")
+          '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' + body + "</urlset>\n")
 
 
 # ---------------------------------------------------------------- privacy / terms
@@ -341,10 +403,11 @@ def build_legal():
         en[f"{pre}.title"] = pg["title"][1]
         en[f"{pre}.lead"] = pg["lead"][1]
         en[f"{pre}.meta"] = pg["desc"][1]
-        parts = []
+        parts, toc = [], []
         for si, sec in enumerate(pg["sections"], 1):
             k = f"{pre}.s{si}"
             en[k + ".t"] = sec["t"][1]
+            toc.append(f'<li><a href="#{sec["id"]}" data-i18n="{k}.t">{html.escape(sec["t"][0])}</a></li>')
             parts.append(f'<h2 id="{sec["id"]}" data-i18n="{k}.t">{html.escape(sec["t"][0])}</h2>')
             for pi, para in enumerate(sec["p"], 1):
                 if isinstance(para, dict):  # {"li": [(vi, en), ...]}
@@ -374,6 +437,7 @@ def build_legal():
   <section class="section section--tight">
     <div class="container container--narrow">
       <ul class="rules legal-summary">{"".join(summary)}</ul>
+      <nav class="legal-toc glass" aria-label="Trên trang này" data-i18n-attr="aria-label:lg.toc"><p class="overline" data-i18n="lg.toc">Trên trang này</p><ol>{"".join(toc)}</ol></nav>
       <article class="prose legal">
 {chr(10).join(parts)}
       </article>
@@ -383,7 +447,8 @@ def build_legal():
 '''
         write(L / slug / "index.html",
               head_for(slug, f"/{slug}/", f"{pg['title'][0]} — Lumora", pg["desc"][0],
-                       og_title=f"{pg['title'][0]} — Lumora", page_js="legal.js") + main + FOOT)
+                       og_title=f"{pg['title'][0]} — Lumora", page_js="legal.js", crumbs=[(pg["title"][0], f"/{slug}/")],
+                       title_en=f"{pg['title'][1]} — Lumora", desc_en=pg["desc"][1]) + main + FOOT)
 
     import json
     js = ("/* Lumora privacy/terms pages: English strings. GENERATED by branding/tools/build_pages.py\n"
@@ -403,6 +468,7 @@ if __name__ == "__main__":
     subprocess.run([sys.executable, str(ROOT / "sdk" / "tools" / "gen_reference.py")], check=True)
     dev_pages.build(head_for, FOOT, I, code)
     build_api()
+    dev_pages.write_search()
     build_legal()
     build_sitemap()
     from update_releases import sync_fallback

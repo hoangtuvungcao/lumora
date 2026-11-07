@@ -5,7 +5,8 @@
   var page = document.documentElement.getAttribute("data-page");
   var EN = {
   "lg.badge": "Clear and simple",
-  "lg.updated": "Last updated: 6 November 2026",
+  "lg.toc": "On this page",
+  "lg.updated": "Last updated: 8 November 2026",
   "pv.title": "Privacy policy",
   "pv.lead": "In short: we don't collect your data. This page explains exactly what that means.",
   "pv.meta": "Lumora needs no account and collects no data. Messages are end-to-end encrypted and stored on your device.",
@@ -37,9 +38,11 @@
   "pv.s5.p2.i4": "Your Wi-Fi router, via UPnP: asked to open a path so friends can connect directly. This only happens inside your home network. Can be turned off with \"Open a path via the Wi-Fi router\".",
   "pv.s5.p2.i5": "OpenStreetMap: only when you open the map of a shared location, the app loads map images from OpenStreetMap; the map server sees your IP address and the area you are viewing.",
   "pv.s5.p3": "The three options \"Public directory\", \"Find friends via other devices\" and \"Open a path via the Wi-Fi router\" are in Settings › Advanced › Network. Turning them off can make finding each other and connecting slower or harder.",
-  "pv.s6.t": "Friends help each other connect",
+  "pv.s6.t": "Friends helping each other, and who can reach you",
   "pv.s6.p1": "When two of your friends can't connect to each other directly (for example because a company or mobile network blocks it), your device may pass data between them, and your friends may do the same for you. This is on by default, only happens between people who are friends, and is limited to about 1 MB/s per friend and at most 16 friends. The content stays end-to-end encrypted: the friend passing it along can't read any of it. You can turn off \"Help friends connect\" in Settings › Privacy.",
   "pv.s6.p2": "When the recipient is offline, mutual friends may hold your locked messages until they come online. You can turn off \"Deliver via friends when offline\" in Settings › Privacy.",
+  "pv.s6.p3": "When a friend restores their account with their recovery phrase, your device may send that friend your private chat from the last 6 months (end-to-end encrypted) and bring them back into the groups you share. Deleted and disappearing messages are never sent. This is on by default; you can turn off \"Help friends restore their history\" in Settings › Privacy.",
+  "pv.s6.p4": "By default, only friends can call you, add you to groups and see when you're online; calls from strangers never ring. You can change \"Who can call me\", \"Who can add me to groups\" and \"Who can see when I’m online\" in Settings › Privacy.",
   "pv.s7.t": "What is public",
   "pv.s7.p1": "If you choose to set an @username, or create a public group, that @username and your display name (for a group: its name and description) appear in a public directory so others can find you. This is entirely optional, and you can remove your @username at any time.",
   "pv.s7.p2": "Your 9-digit ID is also listed in the public directory so others can find you and send a friend request. If you'd rather not, turn off \"Let strangers find me by ID\" in Settings › Privacy: friends still reach you, and others need your QR code or link (or your @username, if you set one).",
@@ -114,7 +117,7 @@
   "da.lead": "Your Lumora account lives only on your devices. Delete it right in the app; we keep no copy.",
   "da.meta": "How to delete your Lumora account and all your data.",
   "da.s1.t": "Steps",
-  "da.s1.p1.i1": "Open Lumora → Settings → Security → Delete account.",
+  "da.s1.p1.i1": "Open Lumora › Settings › Security › Delete account.",
   "da.s1.p1.i2": "Enter your account password (if you set one) and confirm.",
   "da.s1.p1.i3": "Messages, friends, groups, downloaded files and encryption keys on this device are deleted; linked devices are signed out and wiped too.",
   "da.s1.p1.i4": "Uninstall the app if you like.",
@@ -122,7 +125,7 @@
   "da.s2.p1": "All your data lives only on your devices, so once deleted it is gone. Note: messages you sent remain on the recipients' devices, as with any messaging app. If you still have your 24-word recovery phrase or a backup file, destroy them so nobody can restore the account.",
   "da.s3.t": "Need help",
   "da.s3.p1": "Can't open the app? Uninstalling it deletes the data on that device. Any questions: trong20843@gmail.com.",
-  "da.sum1": "In the app: Settings → Security → Delete account.",
+  "da.sum1": "In the app: Settings › Security › Delete account.",
   "da.sum2": "Deleting on the main device signs out and wipes every linked device.",
   "da.sum3": "We have no server holding accounts, so nothing else is left to delete."
 };

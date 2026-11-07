@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Render the 1200x630 Open Graph image (SVG + PNG) for the landing page.
+"""Render the 1200x630 Open Graph images for the website.
+
+  og-image.svg/.png   home page and pages without their own image
+  og-download.png     /download/
+  og-developers.png   /developers/…
 
 Text is outlined with fontTools so the output does not depend on installed fonts.
 Usage: python3 branding/tools/build_og.py
@@ -28,7 +32,17 @@ def chip(label, x, y):
             f'fill="#1F2340" stroke="#2A2F52"/><g transform="translate(20 31)">{t}</g></g>'), pw
 
 
-def main():
+VARIANTS = {
+    "og-image": ("Kết nối trực tiếp.", "Riêng tư theo cách của bạn.", "Direct. Private. Yours.",
+                 ("Nhắn tin & nhóm", "Gọi video", "Hỗ trợ từ xa", "Gửi tệp lớn", "Miễn phí trọn đời")),
+    "og-download": ("Tải Lumora miễn phí.", "Mọi thiết bị của bạn.", "Free download · No sign-up",
+                    ("Windows", "macOS", "Linux", "Android", "iPhone / iPad")),
+    "og-developers": ("Tạo bot cho Lumora.", "SDK Python & JavaScript.", "Lumora Developers · MIT licensed SDK",
+                      ("Xưởng Bot", "Nút bấm", "Nhóm", "Tệp", "Nhắc hẹn")),
+}
+
+
+def render(name, line1, line2, sub, chips):
     W, H = 1200, 630
     icon = app_icon_svg(size=1024)
     inner = icon[icon.index(">", icon.index("<svg")) + 1: icon.rindex("</svg>")]
@@ -48,14 +62,14 @@ def main():
     parts.append(f'<defs>{grad_def("og-m", 8, 6, 56, 58)}</defs><g opacity=".9">' + mark_group("url(#og-m)", 800, 70, 6.2) + '</g>')
     t, _ = text("Lumora", "Bold", 64, 216, 162, "#E8EAF6", -0.02)
     parts.append(t)
-    t, _ = text("Kết nối trực tiếp.", "Bold", 76, 80, 330, "#E8EAF6", -0.03)
+    t, _ = text(line1, "Bold", 76, 80, 330, "#E8EAF6", -0.03)
     parts.append(t)
-    t, _ = text("Riêng tư theo cách của bạn.", "Bold", 54, 80, 404, "url(#tg)", -0.03)
+    t, _ = text(line2, "Bold", 54, 80, 404, "url(#tg)", -0.03)
     parts.append(t)
-    t, _ = text("Direct. Private. Yours.", "Medium", 28, 80, 482, "#9AA0C3", 0)
+    t, _ = text(sub, "Medium", 28, 80, 482, "#9AA0C3", 0)
     parts.append(t)
     x = 80
-    for lab in ("Nhắn tin & nhóm", "Gọi video", "Hỗ trợ từ xa", "Gửi file lớn", "Miễn phí trọn đời"):
+    for lab in chips:
         c, w = chip(lab, x, 528)
         parts.append(c)
         x += w + 12
@@ -63,8 +77,14 @@ def main():
     svg = "".join(parts)
     # gradient fill for the text path uses objectBoundingBox -> fine per path
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / "og-image.svg").write_text(svg, encoding="utf-8")
-    cairosvg.svg2png(bytestring=svg.encode(), write_to=str(OUT_DIR / "og-image.png"), output_width=W, output_height=H)
+    if name == "og-image":  # brand source copy (not published, see make_dist.sh)
+        (OUT_DIR / "og-image.svg").write_text(svg, encoding="utf-8")
+    cairosvg.svg2png(bytestring=svg.encode(), write_to=str(OUT_DIR / f"{name}.png"), output_width=W, output_height=H)
+
+
+def main():
+    for name, v in VARIANTS.items():
+        render(name, *v)
     print("og done")
 
 
