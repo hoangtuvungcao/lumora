@@ -732,7 +732,7 @@ def main():
             # re-encrypts what wasn't acknowledged — nothing is lost
             B.call("debug_olm_drop", peer=pa)
             fire("resync", range(200))
-            delivered("resync", 200, 120)
+            print(f"     resync of 200 after a lost ratchet session in {delivered('resync', 200, 120):.1f}s")
             assert A.call("security_status", peer=pb)["forward_secrecy"], "session not re-established"
         _()
 

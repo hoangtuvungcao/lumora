@@ -44,7 +44,7 @@ pub struct OlmState {
     /// Undecryptable reliable messages: (device, delivery id) → attempts. After a few
     /// attempts the message is acknowledged anyway (an old sender re-sends the same
     /// ciphertext forever; a current one re-encrypts every re-send).
-    fails: Mutex<lru::LruCache<(PeerId, [u8; 16]), u8>>,
+    fails: Mutex<lru::LruCache<(PeerId, [u8; 16]), FailCount>>,
     /// Last unsolicited key hand-out per device (session repair, rate-limited).
     repaired: Mutex<HashMap<PeerId, Instant>>,
 }
@@ -61,8 +61,15 @@ impl Default for OlmState {
     }
 }
 
-/// Give up on an undecryptable reliable message after this many deliveries.
+/// (failed deliveries of one message, since when)
+type FailCount = (u8, Instant);
+
+/// Give up on an undecryptable reliable message after this many deliveries...
 pub(super) const OLM_MAX_FAILS: u8 = 4;
+/// ...and only once it has failed for this long: the sender re-sends quickly, often before
+/// the fresh key we handed it arrives (slow link / busy device) — counting those re-sends
+/// alone acknowledged good messages that the new session would have carried, i.e. lost them.
+pub(super) const OLM_GIVE_UP_AFTER: Duration = Duration::from_secs(600);
 
 impl Node {
     fn olm_account<R>(&self, f: impl FnOnce(&mut Account) -> R) -> R {
@@ -168,9 +175,10 @@ impl Node {
     /// Count a failed decryption of reliable message `id`; true = give up (acknowledge).
     pub(super) fn olm_give_up(&self, dev: &PeerId, id: [u8; 16]) -> bool {
         let mut f = self.olm.fails.lock();
-        let n = f.get(&(*dev, id)).copied().unwrap_or(0) + 1;
-        f.put((*dev, id), n);
-        n >= OLM_MAX_FAILS
+        let (n, first) = f.get(&(*dev, id)).copied().unwrap_or((0, Instant::now()));
+        let n = n.saturating_add(1);
+        f.put((*dev, id), (n, first));
+        n >= OLM_MAX_FAILS && first.elapsed() >= OLM_GIVE_UP_AFTER
     }
 
     fn olm_keys_msg(&self) -> Option<PeerMsg> {
