@@ -61,14 +61,18 @@ jobs:
       # media: video_e2e runs its VP8 scenarios on this binary (the e2e suites only need chat)
       - run: cargo build --locked -p lumora-cli -p lumora-relay --features lumora-cli/media
         working-directory: core
-      - run: python3 core/tests/e2e.py
-      - name: linked devices (phone + computer on one account, history sync, unlink)
+      - name: e2e (chat, files, groups, communities, calls, privacy, remote control)
         # remote-control scenarios capture a real screen: give the media build a virtual X display
         run: |
           sudo apt-get install -y xvfb
+          env -u WAYLAND_DISPLAY LUMORA_CAPTURE=x11 xvfb-run -a -s "-screen 0 1280x800x24" python3 core/tests/e2e.py
+      - name: linked devices (phone + computer on one account, history sync, unlink)
+        run: |
           env -u WAYLAND_DISPLAY LUMORA_CAPTURE=x11 xvfb-run -a -s "-screen 0 1280x800x24" python3 core/tests/multidevice_e2e.py
       - name: IP privacy (strangers never learn addresses; friends, own devices and groups do)
         run: env -u WAYLAND_DISPLAY LUMORA_CAPTURE=x11 xvfb-run -a -s "-screen 0 1280x800x24" python3 core/tests/ip_privacy_e2e.py
+      - name: history recovery from friends after a phrase restore
+        run: python3 core/tests/recovery_e2e.py
       - name: video calls (VP8, H.264, H.264 → VP8 switch; first frame < 1.5 s after answering)
         run: python3 core/tests/video_e2e.py --h264-bin "$RUNNER_TEMP/lumorad-h264dev"
       - name: iPhone features on Linux (Bonjour/mDNS discovery, push wake-ups through lumora-push)
