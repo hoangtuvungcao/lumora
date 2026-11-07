@@ -172,6 +172,10 @@ pub struct PeerConn {
     pub(crate) chosen_by_repair: std::sync::atomic::AtomicBool,
     /// A losing duplicate: the connection it lost to (see `Ext PATH_CHOSEN`).
     pub(crate) lost_to: Mutex<Option<std::sync::Weak<PeerConn>>>,
+    /// The peer said `PATH_CHOSEN { lan }` on it: the peer alone sees it as the LAN path
+    /// (hairpinning NAT). It keeps it against a later duplicate of the same rank, as the peer
+    /// does — the duplicate may reach this side only after the `PATH_CHOSEN`.
+    pub(crate) peer_lan: std::sync::atomic::AtomicBool,
 }
 
 /// Acks waiting to be written per connection, at most (beyond that the sender re-sends).
@@ -1328,7 +1332,10 @@ impl Node {
     /// one we kept looked dead to it (or it alone sees `pc` as the LAN path). Switch too —
     /// only when `pc` lost to (or was replaced by) the connection still in use; when that one
     /// was itself chosen that way here, the shared tiebreak decides, the same on both ends.
-    pub(crate) fn on_path_chosen(self: &Arc<Self>, pc: &Arc<PeerConn>) {
+    pub(crate) fn on_path_chosen(self: &Arc<Self>, pc: &Arc<PeerConn>, body: &[u8]) {
+        if proto::ext_body::<PathChosenMsg>(body).is_ok_and(|m| m.lan) {
+            pc.peer_lan.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         if !pc.alive() {
             return;
         }
@@ -1354,18 +1361,26 @@ impl Node {
         self.adopt(pc);
     }
 
+    /// Messages queued on a replaced connection whose control stream never opened would be
+    /// stranded — move them to the new connection. The receiver itself stays in its slot: the
+    /// dialer's control stream may still arrive on the old connection, and without it the
+    /// dialer closes that connection ("control stream failed") — fatal when the peer keeps
+    /// it or it is brought back (`PATH_CHOSEN`, `fallback_to_standby`).
+    fn move_pending(old: &PeerConn, new: &PeerConn) {
+        if let Some(rx) = old.ctl_rx.lock().as_mut() {
+            while let Ok(m) = rx.try_recv() {
+                let _ = new.ctl.try_send(m);
+            }
+        }
+    }
+
     /// Make a (so far losing) duplicate the connection in use; the one it replaces is
     /// retired.
     fn adopt(self: &Arc<Self>, pc: &Arc<PeerConn>) {
         pc.chosen_by_repair.store(true, std::sync::atomic::Ordering::Relaxed);
         let old = self.peers.write().insert(pc.peer, pc.clone()).filter(|o| !Arc::ptr_eq(o, pc));
         if let Some(old) = old {
-            let pending = old.ctl_rx.lock().take();
-            if let Some(mut rx) = pending {
-                while let Ok(m) = rx.try_recv() {
-                    let _ = pc.ctl.try_send(m);
-                }
-            }
+            Self::move_pending(&old, pc);
             if old.alive() {
                 self.retire(old);
             }
@@ -1429,11 +1444,13 @@ impl Node {
             ack_notify: tokio::sync::Notify::new(),
             chosen_by_repair: std::sync::atomic::AtomicBool::new(false),
             lost_to: Mutex::new(None),
+            peer_lan: std::sync::atomic::AtomicBool::new(false),
         });
         // Dedupe atomically: better path wins; on a tie, the connection dialed by the smaller key
         // wins (both sides compute the same answer).
-        let existing = {
+        let (existing, lan_chosen) = {
             let mut peers = self.peers.write();
+            let mut lan_chosen = false;
             let old = peers.get(&peer).filter(|c| c.alive()).cloned();
             if let Some(old) = &old {
                 // Both ends derive the same id from the TLS session, so they always agree on
@@ -1447,12 +1464,16 @@ impl Node {
                 // one and say so with `PATH_CHOSEN`, so the other side follows even when its
                 // tiebreak picked the hairpin path (NAT lab samenat-hp).
                 let lan_pref = !old.is_suspect() && path.rank() == old.path.rank() && (old.path == PathKind::Lan) != (path == PathKind::Lan);
+                // the peer alone sees the one in use as the LAN path and keeps it (see above)
+                let peer_lan_pref = !old.is_suspect() && path.rank() == old.path.rank() && old.peer_lan.load(std::sync::atomic::Ordering::Relaxed);
                 let keep_old = if old.is_suspect() {
                     false
                 } else if path.rank() != old.path.rank() {
                     old.path.rank() < path.rank()
                 } else if lan_pref {
                     old.path == PathKind::Lan
+                } else if peer_lan_pref {
+                    true
                 } else if old.path == PathKind::Direct && path == PathKind::Direct && direct_v6(&old.conn) != direct_v6(&conn) {
                     // Two direct paths over different families (both punched at once): keep the
                     // IPv6 one — no NAT on it to time out or rebind. Both ends see the same family
@@ -1475,7 +1496,7 @@ impl Node {
                     self.clone().spawn_conn_tasks(pc.clone());
                     if lan_pref {
                         keep.chosen_by_repair.store(true, std::sync::atomic::Ordering::Relaxed);
-                        let _ = keep.ctl.try_send(proto::ext(proto::ext::PATH_CHOSEN, &PathChosenMsg::default()));
+                        let _ = keep.ctl.try_send(proto::ext(proto::ext::PATH_CHOSEN, &PathChosenMsg { lan: true }));
                     }
                     let (me, dup) = (self.clone(), pc.clone());
                     tokio::spawn(async move {
@@ -1494,6 +1515,7 @@ impl Node {
                     });
                     return Ok(keep);
                 }
+                lan_chosen = lan_pref;
                 if old.is_suspect() || lan_pref {
                     pc.chosen_by_repair.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -1501,21 +1523,14 @@ impl Node {
                 *old.lost_to.lock() = Some(Arc::downgrade(&pc));
             }
             peers.insert(peer, pc.clone());
-            old
+            (old, lan_chosen)
         };
         if pc.chosen_by_repair.load(std::sync::atomic::Ordering::Relaxed) {
             // tell the other side, which may still trust the old path (older peers skip it)
-            let _ = pc.ctl.try_send(proto::ext(proto::ext::PATH_CHOSEN, &PathChosenMsg::default()));
+            let _ = pc.ctl.try_send(proto::ext(proto::ext::PATH_CHOSEN, &PathChosenMsg { lan: lan_chosen }));
         }
         if let Some(old) = &existing {
-            // Messages queued on the retired connection whose control stream never opened
-            // would be stranded — move them to the new connection.
-            let pending = old.ctl_rx.lock().take();
-            if let Some(mut rx) = pending {
-                while let Ok(m) = rx.try_recv() {
-                    let _ = pc.ctl.try_send(m);
-                }
-            }
+            Self::move_pending(old, &pc);
         }
         if let Some(old) = existing {
             self.retire(old);
@@ -1532,9 +1547,13 @@ impl Node {
     }
 }
 
-/// `Ext PATH_CHOSEN` (empty map; room for later fields).
+/// `Ext PATH_CHOSEN` (map; older versions sent an empty one and ignore `lan`).
 #[derive(Serialize, Deserialize, Default)]
-pub(crate) struct PathChosenMsg {}
+pub(crate) struct PathChosenMsg {
+    /// Chosen because only the sender sees it as the LAN path (see `PeerConn::peer_lan`).
+    #[serde(default)]
+    pub lan: bool,
+}
 
 #[cfg(test)]
 mod lock_tests {

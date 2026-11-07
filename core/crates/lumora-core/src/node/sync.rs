@@ -107,7 +107,7 @@ impl Node {
     pub(super) async fn on_ext(self: &Arc<Self>, pc: &Arc<PeerConn>, kind: u16, body: Vec<u8>) -> Result<()> {
         match kind {
             ext::DEVICE_SYNC | ext::DEVICE_LIST | ext::DEVICE_LIST_REQUEST | ext::DEVICE_ACCEPT | ext::DEVICE_REVOKED => self.on_device_ext(pc, kind, &body)?,
-            ext::PATH_CHOSEN => self.on_path_chosen(pc),
+            ext::PATH_CHOSEN => self.on_path_chosen(pc, &body),
             ext::DEVICE_REVOKE_REQUEST if pc.own => self.on_revoke_request(pc.peer, &body).await?,
             ext::GROUP_REKEY_REQUEST => self.on_rekey_request(pc.account, &body).await?,
             ext::GROUP_KEY_REQUEST => self.on_group_key_request(pc.account, &body).await?,

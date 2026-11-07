@@ -2196,32 +2196,52 @@ mod review_regression_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn peer_dropping_our_picked_duplicate_falls_back() {
         let tmp = tempfile::tempdir().unwrap();
-        let (a, b) = pair(tmp.path()).await;
-        let first = link(&a, &b).await;
-        let addr: SocketAddr = format!("127.0.0.1:{}", b.net.local_port()).parse().unwrap();
-        let mut switched = 0;
-        for round in 0..8 {
-            // a's second attempt reaches b (b installs it, maybe as the one in use)…
-            let c2 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
-            let t2 = conn_tiebreak_id(&c2);
-            tokio::time::sleep(Duration::from_millis(400)).await;
-            if b.peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == t2) {
-                switched += 1;
+        // b picks the duplicate when its tiebreak id is the smaller one: start from a first
+        // connection whose id leaves room for that (not a near-zero one)
+        let mut attempt = 0;
+        let (a, b, first) = loop {
+            let (a, b) = pair(&tmp.path().join(attempt.to_string())).await;
+            let first = link(&a, &b).await;
+            if conn_tiebreak_id(&first.conn)[0] >= 0x40 {
+                break (a, b, first);
             }
+            a.shutdown();
+            b.shutdown();
+            attempt += 1;
+        };
+        let t1 = conn_tiebreak_id(&first.conn);
+        let addr: SocketAddr = format!("127.0.0.1:{}", b.net.local_port()).parse().unwrap();
+        // b uses the connection with tiebreak id `t` (waits up to 15 s for it)
+        let on = |t: [u8; 16]| {
+            let (a, b) = (a.clone(), b.clone());
+            async move {
+                let ok = || b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == t);
+                let end = Instant::now() + Duration::from_secs(15);
+                while Instant::now() < end && !ok() {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                ok()
+            }
+        };
+        for round in 0..6 {
+            // a's second attempt reaches b and wins b's tiebreak (b installs it as the one in
+            // use; the losing attempts are dropped and never matter)…
+            let c2 = loop {
+                let c = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(10)).await.unwrap();
+                if conn_tiebreak_id(&c) < t1 {
+                    break c;
+                }
+            };
+            let t2 = conn_tiebreak_id(&c2);
+            assert!(on(t2).await, "round {round}: b did not pick the duplicate: the test proves nothing");
             // …and a drops it without ever installing it (closed with code 0)
             drop(c2);
-            let end = Instant::now() + Duration::from_secs(3);
-            let same = || b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == conn_tiebreak_id(&first.conn));
-            while Instant::now() < end && !same() {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            assert!(same(), "round {round}: b is not back on the connection a uses");
+            assert!(on(t1).await, "round {round}: b is not back on the connection a uses");
         }
-        assert!(switched > 0, "b never picked the duplicate: the test proves nothing");
         // the retirement of the connection in use again must not close it
         tokio::time::sleep(Duration::from_secs(11)).await;
         assert!(first.alive(), "a re-adopted connection was closed by its old retirement");
-        assert!(b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == conn_tiebreak_id(&first.conn)));
+        assert!(b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == t1));
         a.shutdown();
         b.shutdown();
     }
@@ -2236,25 +2256,29 @@ mod review_regression_tests {
             let tmp = tempfile::tempdir().unwrap();
             let (a, b) = pair(tmp.path()).await;
             let addr: SocketAddr = format!("127.0.0.1:{}", b.net.local_port()).parse().unwrap();
-            // a: one "direct" (hairpin) and one LAN connection; b sees both alike
-            let c1 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
-            let c2 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
-            let (lan_first, (lan, direct)) = if round % 2 == 0 { (true, (c1, c2)) } else { (false, (c2, c1)) };
+            // a: one "direct" (hairpin) and one LAN connection; b sees both alike. The hard
+            // case, always: b's own tiebreak (smaller id wins) picks the hairpin one.
+            let c1 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(10)).await.unwrap();
+            let c2 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(10)).await.unwrap();
+            let (lan, direct) = if conn_tiebreak_id(&c1) > conn_tiebreak_id(&c2) { (c1, c2) } else { (c2, c1) };
             let t_lan = conn_tiebreak_id(&lan);
-            if lan_first {
+            if round % 2 == 0 {
                 a.clone().setup_conn(lan, PathKind::Lan, a.device, None).await.unwrap();
                 a.clone().setup_conn(direct, PathKind::Direct, a.device, None).await.unwrap();
             } else {
                 a.clone().setup_conn(direct, PathKind::Direct, a.device, None).await.unwrap();
                 a.clone().setup_conn(lan, PathKind::Lan, a.device, None).await.unwrap();
             }
-            let end = Instant::now() + Duration::from_secs(5);
+            let end = Instant::now() + Duration::from_secs(15);
             let on_lan = |n: &Node, p: &PeerId| n.peer(p).is_some_and(|c| conn_tiebreak_id(&c.conn) == t_lan);
             while Instant::now() < end && !(on_lan(&a, &b.device) && on_lan(&b, &a.device)) {
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }
             assert!(on_lan(&a, &b.device), "round {round}: a left the LAN connection");
             assert!(on_lan(&b, &a.device), "round {round}: b did not follow onto the LAN connection");
+            // and it stays there (b's retirement of the LAN connection is cancelled)
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            assert!(on_lan(&a, &b.device) && on_lan(&b, &a.device), "round {round}: left the LAN connection again");
             a.shutdown();
             b.shutdown();
         }
