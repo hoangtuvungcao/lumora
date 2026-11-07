@@ -22,8 +22,8 @@ pub mod sync;
 /// (Small in unit tests so the caps can be exercised quickly.)
 pub const MAILBOX_MAX_PER_PEER: usize = if cfg!(test) { 512 * 1024 } else { 32 * 1024 * 1024 };
 pub const MAILBOX_MAX_TOTAL: usize = if cfg!(test) { 1024 * 1024 } else { 256 * 1024 * 1024 };
-/// How long my own stories stay in my archive.
-pub const STORY_ARCHIVE_MS: i64 = 365 * 86_400_000;
+/// My own stories stay in my archive until I delete them; only the newest this many are kept.
+pub const STORY_ARCHIVE_MAX: i64 = 1000;
 /// Active stories kept per author (a friend posting more is ignored until some expire).
 pub const MAX_STORIES_PER_AUTHOR: i64 = 50;
 /// Stranger contact rows (status 0) with nothing attached are forgotten after this long.
@@ -245,6 +245,14 @@ fn migrate(c: &Connection) {
         // when a sibling that hasn't heard yet (or a friend's late copy) brings them back
         "CREATE TABLE IF NOT EXISTS purged(id BLOB PRIMARY KEY, at INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS conv_gone(id TEXT PRIMARY KEY, upto INTEGER NOT NULL, at INTEGER NOT NULL)",
+        // recovery from friends (node/recovery.rs): the signed wire copy of a friend's 1-1
+        // message, so it can be handed back — verifiable — if that friend restores the account
+        "CREATE TABLE IF NOT EXISTS msg_wire(id BLOB PRIMARY KEY, conv TEXT NOT NULL, wire BLOB NOT NULL)",
+        // a deleted / edited / removed message never keeps its old signed copy around
+        "CREATE TRIGGER IF NOT EXISTS msg_wire_changed AFTER UPDATE OF body, deleted, expires ON messages
+           WHEN NEW.deleted<>0 OR NEW.body IS NOT OLD.body OR NEW.expires IS NOT NULL
+           BEGIN DELETE FROM msg_wire WHERE id=NEW.id; END",
+        "CREATE TRIGGER IF NOT EXISTS msg_wire_removed AFTER DELETE ON messages BEGIN DELETE FROM msg_wire WHERE id=OLD.id; END",
     ] {
         let _ = c.execute(sql, []);
     }
@@ -337,7 +345,7 @@ impl Store {
         c.execute("DELETE FROM group_env_pending WHERE at < ?1", params![now - 30 * 86_400_000])?;
         c.execute("DELETE FROM outbox WHERE created < ?1", params![now - 30 * 86_400_000])?;
         c.execute("DELETE FROM stories WHERE created < ?1 AND mine=0", params![now - 86_400_000])?;
-        c.execute("DELETE FROM stories WHERE created < ?1", params![now - STORY_ARCHIVE_MS])?;
+        self.story_archive_prune_on(&c)?;
         c.execute(
             "DELETE FROM sticker_blobs WHERE used < ?1 AND hash NOT IN (SELECT hash FROM stickers)",
             params![now - 60 * 86_400_000],
@@ -863,7 +871,27 @@ impl Store {
     }
     /// My own story: kept in the archive after it stops being shown.
     pub fn story_mark_mine(&self, id: &[u8]) -> Result<()> {
-        self.conn.lock().execute("UPDATE stories SET mine=1 WHERE id=?1", params![id])?;
+        let c = self.conn.lock();
+        if c.execute("UPDATE stories SET mine=1 WHERE id=?1 AND mine=0", params![id])? > 0 {
+            // my other devices keep it in their archive too
+            self.track(&c, sync::K_STORY, id);
+        }
+        Ok(())
+    }
+    /// Keep only the newest [`STORY_ARCHIVE_MAX`] of my own stories (no time limit). The
+    /// pruned ones get a tombstone (synced): a sibling's copy can't bring them back.
+    fn story_archive_prune_on(&self, c: &rusqlite::Connection) -> Result<()> {
+        let old: Vec<Vec<u8>> = c
+            .prepare("SELECT id FROM stories WHERE mine=1 AND id NOT IN (SELECT id FROM stories WHERE mine=1 ORDER BY created DESC, id DESC LIMIT ?1)")?
+            .query_map(params![STORY_ARCHIVE_MAX], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        for id in &old {
+            Self::story_bury_on(c, id)?;
+            c.execute("DELETE FROM stories WHERE id=?1", params![id])?;
+            self.track(c, sync::K_STORY, id);
+        }
+        c.execute("DELETE FROM story_views WHERE id NOT IN (SELECT id FROM stories)", [])?;
         Ok(())
     }
     /// My stories, newest first, including the ones no longer shown (archive).
@@ -871,11 +899,11 @@ impl Store {
         let c = self.conn.lock();
         let mut st = c.prepare_cached(
             "SELECT s.id, s.created, s.text, s.image IS NOT NULL, s.bg, (SELECT count(*) FROM story_views v WHERE v.id=s.id)
-             FROM stories s WHERE s.mine=1 ORDER BY s.created DESC LIMIT 500",
+             FROM stories s WHERE s.mine=1 ORDER BY s.created DESC LIMIT ?1",
         )?;
         let since = crate::util::now_ms() as i64 - 86_400_000;
         let rows = st
-            .query_map([], |r| {
+            .query_map(params![STORY_ARCHIVE_MAX], |r| {
                 let id: Vec<u8> = r.get(0)?;
                 let created: i64 = r.get(1)?;
                 Ok(serde_json::json!({
@@ -891,8 +919,18 @@ impl Store {
     /// Removes a story (and who saw it). True when there was one.
     pub fn story_delete(&self, id: &[u8]) -> Result<bool> {
         let c = self.conn.lock();
+        let mine = c.query_row("SELECT 1 FROM stories WHERE id=?1 AND mine=1", params![id], |_| Ok(())).optional()?.is_some();
+        if mine {
+            // tombstone: gone from every one of my devices, never synced back
+            Self::story_bury_on(&c, id)?;
+            self.track(&c, sync::K_STORY, id);
+        }
         c.execute("DELETE FROM story_views WHERE id=?1", params![id])?;
         Ok(c.execute("DELETE FROM stories WHERE id=?1", params![id])? > 0)
+    }
+    /// Taken down on one of my devices (tombstone): never stored again.
+    pub fn story_gone(&self, id: &[u8]) -> bool {
+        Self::story_gone_on(&self.conn.lock(), id)
     }
     pub fn story_image(&self, id: &[u8]) -> Option<Vec<u8>> {
         self.conn.lock().query_row("SELECT image FROM stories WHERE id=?1", params![id], |r| r.get(0)).optional().ok().flatten().flatten()
@@ -912,19 +950,27 @@ impl Store {
         )?;
         Ok(())
     }
-    pub fn story_viewers(&self, id: &[u8]) -> Vec<String> {
+    /// Who saw my story and when (ms), oldest first.
+    pub fn story_viewers(&self, id: &[u8]) -> Vec<(String, i64)> {
         let c = self.conn.lock();
-        let Ok(mut st) = c.prepare_cached("SELECT viewer FROM story_views WHERE id=?1 ORDER BY at") else { return vec![] };
-        st.query_map(params![id], |r| r.get::<_, Vec<u8>>(0)).map(|it| it.filter_map(|r| r.ok()).map(|v| b32(&v)).collect()).unwrap_or_default()
+        let Ok(mut st) = c.prepare_cached("SELECT viewer, at FROM story_views WHERE id=?1 ORDER BY at") else { return vec![] };
+        st.query_map(params![id], |r| Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, i64>(1)?)))
+            .map(|it| it.filter_map(|r| r.ok()).map(|(v, at)| (b32(&v), at)).collect())
+            .unwrap_or_default()
     }
-    /// Group moderation: soft-delete every message of `author` in the given conversations.
-    pub fn purge_author(&self, convs: &[String], author: &PeerId) -> Result<Vec<(String, Vec<u8>)>> {
+    /// Group moderation: soft-delete every message of `author` in the given conversations
+    /// (`by`: the moderator, kept as `meta.deleted_by`).
+    pub fn purge_author(&self, convs: &[String], author: &PeerId, by: &PeerId) -> Result<Vec<(String, Vec<u8>)>> {
         let c = self.conn.lock();
         let mut out = vec![];
+        let meta = serde_json::json!({ "deleted_by": b32(&by.0) }).to_string();
         for conv in convs {
             let mut st = c.prepare_cached("SELECT id FROM messages WHERE conv=?1 AND author=?2 AND deleted=0")?;
             let ids: Vec<Vec<u8>> = st.query_map(params![conv, &author.0[..]], |r| r.get(0))?.filter_map(|r| r.ok()).collect();
-            c.execute("UPDATE messages SET deleted=1, body='{}' WHERE conv=?1 AND author=?2", params![conv, &author.0[..]])?;
+            c.execute(
+                "UPDATE messages SET deleted=1, body='{}', meta=CASE WHEN deleted=0 THEN ?3 ELSE meta END WHERE conv=?1 AND author=?2",
+                params![conv, &author.0[..], meta],
+            )?;
             for i in &ids {
                 self.bump_if(&c, 1, i);
                 Self::group_log_forget_on(&c, i)?;
@@ -934,12 +980,29 @@ impl Store {
         Ok(out)
     }
     // ---------- group read markers ("seen by") ----------
-    pub fn group_read_set(&self, conv: &str, peer: &PeerId, upto: i64) -> Result<()> {
-        self.conn.lock().execute(
-            "INSERT INTO group_reads(conv,peer,upto) VALUES(?1,?2,?3) ON CONFLICT(conv,peer) DO UPDATE SET upto=MAX(upto, excluded.upto)",
+    /// A member read the group `conv` up to `upto` (hlc). Marks only move forward; `true`
+    /// when it moved (then it is also logged for my other devices).
+    pub fn group_read_set(&self, conv: &str, peer: &PeerId, upto: i64) -> Result<bool> {
+        let c = self.conn.lock();
+        Ok(self.group_read_set_on(&c, conv, peer, upto)?)
+    }
+    pub(crate) fn group_read_set_on(&self, c: &Connection, conv: &str, peer: &PeerId, upto: i64) -> rusqlite::Result<bool> {
+        let n = c.execute(
+            "INSERT INTO group_reads(conv,peer,upto) VALUES(?1,?2,?3) ON CONFLICT(conv,peer) DO UPDATE SET upto=excluded.upto WHERE excluded.upto > group_reads.upto",
             params![conv, &peer.0[..], upto],
         )?;
-        Ok(())
+        if n > 0 {
+            self.track(c, sync::K_GREAD, &sync::gread_key(conv, peer));
+        }
+        Ok(n > 0)
+    }
+    /// Every member's read mark in a group chat: (member, read up to).
+    pub fn group_reads(&self, conv: &str) -> Vec<(PeerId, i64)> {
+        let c = self.conn.lock();
+        let Ok(mut st) = c.prepare_cached("SELECT peer, upto FROM group_reads WHERE conv=?1") else { return vec![] };
+        st.query_map(params![conv], |r| Ok((r.get::<_, Vec<u8>>(0)?, r.get::<_, i64>(1)?)))
+            .map(|it| it.filter_map(|r| r.ok()).filter_map(|(p, u)| Some((PeerId(p.try_into().ok()?), u))).collect())
+            .unwrap_or_default()
     }
     pub fn group_seen_by(&self, conv: &str, hlc: i64) -> Vec<String> {
         let c = self.conn.lock();
@@ -1202,14 +1265,18 @@ impl Store {
         self.bump_if(&c, n, id);
         Ok(n > 0)
     }
-    pub fn delete_message(&self, id: &[u8], author: Option<&PeerId>) -> Result<bool> {
+    /// Delete for everyone. `author`: only if it is this author's message; `by`: who deleted
+    /// it (kept as `meta.deleted_by`, so the app can tell "recalled by its author" from
+    /// "removed by an admin"); the rest of the meta (forwarded-from name, mentions) goes.
+    pub fn delete_message(&self, id: &[u8], author: Option<&PeerId>, by: Option<&PeerId>) -> Result<bool> {
         let c = self.conn.lock();
+        let meta = by.map(|b| serde_json::json!({ "deleted_by": b32(&b.0) }).to_string()).unwrap_or_else(|| "{}".into());
         let n = match author {
             Some(a) => c.execute(
-                "UPDATE messages SET deleted=1, body='{}' WHERE id=?1 AND author=?2",
-                params![id, &a.0[..]],
+                "UPDATE messages SET deleted=1, body='{}', meta=CASE WHEN deleted=0 THEN ?3 ELSE meta END WHERE id=?1 AND author=?2",
+                params![id, &a.0[..], meta],
             )?,
-            None => c.execute("UPDATE messages SET deleted=1, body='{}' WHERE id=?1", params![id])?,
+            None => c.execute("UPDATE messages SET deleted=1, body='{}', meta=CASE WHEN deleted=0 THEN ?2 ELSE meta END WHERE id=?1", params![id, meta])?,
         };
         self.bump_if(&c, n, id);
         if n > 0 {
@@ -1270,6 +1337,12 @@ impl Store {
             .filter_map(|v| v.try_into().ok().map(PeerId))
             .collect();
         Ok(rows)
+    }
+    /// (test builds: what still waits in the outbox — recipient device + payload)
+    pub fn outbox_dump(&self) -> Vec<(Vec<u8>, Vec<u8>, i64)> {
+        let c = self.conn.lock();
+        let Ok(mut st) = c.prepare("SELECT to_peer, payload, attempts FROM outbox") else { return vec![] };
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map(|it| it.filter_map(|r| r.ok()).collect()).unwrap_or_default()
     }
     pub fn outbox_remove(&self, id: &[u8], to: &PeerId) -> Result<()> {
         self.conn.lock().execute("DELETE FROM outbox WHERE id=?1 AND to_peer=?2", params![id, &to.0[..]])?;
@@ -1586,6 +1659,12 @@ impl Store {
     pub fn group_log_has(&self, id: &[u8]) -> bool {
         self.conn.lock().query_row("SELECT 1 FROM group_log WHERE id=?1", params![id], |_| Ok(())).optional().ok().flatten().is_some()
     }
+    /// When this device first received group envelope `id` (epoch ms; None: never, or
+    /// stored before arrival times were kept).
+    pub fn group_log_rcv(&self, id: &[u8]) -> Option<u64> {
+        let v: Option<i64> = self.conn.lock().query_row("SELECT rcv FROM group_log WHERE id=?1", params![id], |r| r.get(0)).optional().ok().flatten();
+        v.filter(|v| *v > 0).map(|v| v as u64)
+    }
     /// Anti-flood: (count, bytes) of envelopes `signer` created in group `gid` with
     /// `from < hlc <= to` (creation time, so a sync replay of old history counts where it
     /// was written, not when it arrived).
@@ -1607,6 +1686,35 @@ impl Store {
             |r| r.get::<_, i64>(0),
         )
         .unwrap_or(0) as u64
+    }
+    /// Anti-flood for ops: (bytes of the op envelopes `signer` created in group `gid` with
+    /// `from < hlc <= to`, bytes of those that arrived since `rcv_since_ms`).
+    pub fn group_log_op_bytes(&self, gid: &[u8], signer: &PeerId, from: u64, to: u64, rcv_since_ms: u64) -> (u64, u64) {
+        let c = self.conn.lock();
+        c.query_row(
+            "SELECT (SELECT COALESCE(SUM(length(env)),0) FROM group_log WHERE gid=?1 AND author=?2 AND hlc>?3 AND hlc<=?4 AND k=1),
+                    (SELECT COALESCE(SUM(length(env)),0) FROM group_log WHERE gid=?1 AND rcv>?5 AND author=?2 AND k=1)",
+            params![
+                gid,
+                &signer.0[..],
+                from.min(i64::MAX as u64) as i64,
+                to.min(i64::MAX as u64) as i64,
+                rcv_since_ms.min(i64::MAX as u64) as i64
+            ],
+            |r| Ok((r.get::<_, i64>(0)? as u64, r.get::<_, i64>(1)? as u64)),
+        )
+        .unwrap_or((0, 0))
+    }
+    /// Blank the stored envelopes of these ops of group `gid` (superseded pictures): the
+    /// rows stay as tombstones, never re-served nor re-taken.
+    pub fn group_log_blank(&self, gid: &[u8], ids: &[[u8; 16]]) -> Result<usize> {
+        let c = self.conn.lock();
+        let mut st = c.prepare_cached("UPDATE group_log SET env=x'' WHERE gid=?1 AND id=?2 AND length(env)>0")?;
+        let mut n = 0;
+        for id in ids {
+            n += st.execute(params![gid, &id[..]])?;
+        }
+        Ok(n)
     }
 
     // ---------- files ----------
@@ -1868,9 +1976,87 @@ impl Store {
     }
 }
 
+/// A 1-1 message as handed back to a friend restoring the account (node/recovery.rs).
+pub struct RecoveryRow {
+    pub id: Vec<u8>,
+    pub author: Vec<u8>,
+    pub hlc: i64,
+    pub kind: String,
+    pub body: String,
+    pub reply_to: Option<Vec<u8>>,
+    /// signed wire copy (`ChatMsg`, MessagePack), when this device received it itself
+    pub wire: Option<Vec<u8>>,
+}
+
+impl Store {
+    /// Keep the signed wire copy of a received 1-1 message (recovery from friends).
+    pub fn wire_put(&self, id: &[u8], conv: &str, wire: &[u8]) -> Result<()> {
+        self.conn.lock().execute("INSERT OR IGNORE INTO msg_wire(id,conv,wire) VALUES(?1,?2,?3)", params![id, conv, wire])?;
+        Ok(())
+    }
+    /// The newest small signed wire copy `author` wrote in `conv` (among the conversation's
+    /// last 2,000 live messages): the friendship proof a friend's device hands back with
+    /// `Ext DHT_KEY` (node/recovery.rs — a restored account only greets peers holding one).
+    pub fn wire_proof(&self, conv: &str, author: &[u8], max_len: usize) -> Option<Vec<u8>> {
+        let c = self.conn.lock();
+        let mut st = c
+            .prepare_cached(
+                "SELECT w.wire FROM (SELECT id,author,hlc FROM messages WHERE conv=?1 AND deleted=0 AND expires IS NULL ORDER BY hlc DESC LIMIT 2000) m
+                 JOIN msg_wire w ON w.id=m.id WHERE m.author=?2 AND length(w.wire)<=?3 ORDER BY m.hlc DESC LIMIT 1",
+            )
+            .ok()?;
+        st.query_row(params![conv, author, max_len as i64], |r| r.get(0)).ok()
+    }
+    /// Live (not deleted, not disappearing) messages of `conv` newer than `since_hlc`,
+    /// newest first, with their wire copies.
+    pub fn recovery_rows(&self, conv: &str, since_hlc: i64, before_hlc: i64, limit: usize) -> Vec<RecoveryRow> {
+        let c = self.conn.lock();
+        let Ok(mut st) = c.prepare_cached(
+            "SELECT m.id,m.author,m.hlc,m.kind,m.body,m.reply_to,w.wire FROM messages m LEFT JOIN msg_wire w ON w.id=m.id
+             WHERE m.conv=?1 AND m.hlc>?2 AND m.hlc<?3 AND m.deleted=0 AND m.expires IS NULL ORDER BY m.hlc DESC LIMIT ?4",
+        ) else {
+            return vec![];
+        };
+        st.query_map(params![conv, since_hlc, before_hlc, limit as i64], |r| {
+            Ok(RecoveryRow { id: r.get(0)?, author: r.get(1)?, hlc: r.get(2)?, kind: r.get(3)?, body: r.get(4)?, reply_to: r.get(5)?, wire: r.get(6)? })
+        })
+        .map(|it| it.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
+    }
+    /// Envelopes of `epoch` held for a missing key (read only, oldest first).
+    pub fn group_env_pending_peek(&self, gid: &[u8], epoch: u64, limit: usize) -> Vec<Vec<u8>> {
+        let c = self.conn.lock();
+        c.prepare_cached("SELECT env FROM group_env_pending WHERE gid=?1 AND epoch=?2 ORDER BY id LIMIT ?3")
+            .and_then(|mut st| st.query_map(params![gid, epoch as i64, limit as i64], |r| r.get(0)).map(|it| it.filter_map(|r| r.ok()).collect()))
+            .unwrap_or_default()
+    }
+    /// Wire copies whose message is gone (deleted, cleared, expired) are dropped too.
+    pub fn wire_gc(&self) -> usize {
+        self.conn.lock().execute("DELETE FROM msg_wire WHERE id NOT IN (SELECT id FROM messages WHERE deleted=0)", []).unwrap_or(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// "N views" opens the list of viewers with when they looked (one row per viewer).
+    #[test]
+    fn story_viewers_have_times() {
+        let s = Store::open_memory().unwrap();
+        let (me, a, b) = (PeerId([1; 32]), PeerId([2; 32]), PeerId([3; 32]));
+        let id = [9u8; 16];
+        s.story_put(&id, &me, crate::util::now_ms() as i64, "hi", &[], "aurora").unwrap();
+        s.story_view(&id, &a).unwrap();
+        s.story_view(&id, &b).unwrap();
+        s.story_view(&id, &a).unwrap(); // a second look is the same viewer
+        let v = s.story_viewers(&id);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[0].0, a.to_base32());
+        assert_eq!(v[1].0, b.to_base32());
+        assert!(v.iter().all(|(_, at)| *at > 0));
+        assert!(v[0].1 <= v[1].1, "oldest first");
+    }
     /// Perf review: 400k messages, hot queries before (old SQL / no index) and after.
     /// `cargo test -p lumora-core --release --lib -- --ignored bench_400k --nocapture`
     #[test]
@@ -2093,6 +2279,39 @@ mod tests {
         assert_eq!(stored as i64, MAX_STORIES_PER_AUTHOR);
         assert_eq!(s.story_count(&spammer), MAX_STORIES_PER_AUTHOR);
         assert!(put(5000, &friend, now), "other authors unaffected");
+    }
+
+    #[test]
+    fn my_story_archive_has_no_time_limit_but_a_count_cap() {
+        let s = Store::open_memory().unwrap();
+        let (me, friend) = (PeerId([1; 32]), PeerId([2; 32]));
+        let now = crate::util::now_ms() as i64;
+        let day = 86_400_000i64;
+        // three years of my stories (one every ~1.1 days) + a friend's old one
+        let n = STORY_ARCHIVE_MAX + 20;
+        for i in 0..n {
+            let id = (i as u32).to_be_bytes();
+            assert!(s.story_put(&id, &me, now - (n - i) * day - day / 10, "hi", &[], "").unwrap());
+            s.story_mark_mine(&id).unwrap();
+        }
+        s.story_put(b"friend-old", &friend, now - 2 * day, "x", &[], "").unwrap();
+        s.maintain().unwrap();
+        let arch = s.story_archive().unwrap();
+        assert_eq!(arch.len() as i64, STORY_ARCHIVE_MAX, "only the newest are kept");
+        // the oldest ones went (well over a year old), the newest stayed; nothing is active
+        assert_eq!(arch[0]["id"], hex::encode(((n - 1) as u32).to_be_bytes()));
+        assert_eq!(arch.last().unwrap()["id"], hex::encode(20u32.to_be_bytes()));
+        assert!(arch.iter().all(|x| x["active"] == false));
+        assert!(s.story_author(&0u32.to_be_bytes()).is_none());
+        assert!(s.story_author(b"friend-old").is_none(), "friends' stories still go after 24 h");
+        // under the cap, a story years old stays until I delete it
+        let s2 = Store::open_memory().unwrap();
+        s2.story_put(b"old", &me, now - 3 * 365 * day, "x", &[], "").unwrap();
+        s2.story_mark_mine(b"old").unwrap();
+        s2.maintain().unwrap();
+        assert_eq!(s2.story_archive().unwrap().len(), 1);
+        assert!(s2.story_delete(b"old").unwrap());
+        assert!(s2.story_archive().unwrap().is_empty());
     }
 
     #[test]

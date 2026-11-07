@@ -327,7 +327,7 @@ fn befriend(nodes: &[Arc<Node>]) {
         for b in nodes {
             if a.me != b.me {
                 a.store.upsert_contact(&b.me, Some("x"), Some(3)).unwrap();
-                a.record_peer_proto(&b.device, proto::PROTO_V3);
+                a.record_peer_proto(&b.device, proto::PROTO_VERSION);
             }
         }
     }
@@ -431,8 +431,9 @@ async fn rejected_ops_are_refused_not_published() {
     let ban = Signed::new(&os, gid, now + 5, Payload::Op(GroupOp::Ban { peer: spammer }));
     n.on_group_envelope(None, gid, group::seal_envelope(&k0, 0, &ban).unwrap(), false).await.unwrap();
     assert!(n.groups.read().get(&gid).unwrap().banned.contains(&spammer));
+    // (a plain member: only admins bring back someone an admin banned / removed)
     let e = n.group_add(gid, spammer).await.unwrap_err();
-    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.group_op_rejected"));
+    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.removed_admin_only"));
     assert!(n.store.outbox_page(&spammer, 0, 100).unwrap().is_empty(), "welcome/key sent to a banned peer");
     assert!(!n.groups.read().get(&gid).unwrap().is_member(&spammer));
     let e = n.group_add_bot(gid, spammer, true).await.unwrap_err();
@@ -564,13 +565,15 @@ async fn welcome_stays_small_and_meta_is_rate_limited() {
     let gid = gid_of(&v);
     let pic = data_encoding::BASE64.encode(&vec![7u8; 90 * 1024]);
     for _ in 0..60 {
-        n.group_meta(gid, Some(&pic), Some("mô tả")).await.unwrap();
+        n.group_meta(gid, Some(&pic), Some("mô tả"), None).await.unwrap();
     }
     let st = n.groups.read().get(&gid).cloned().unwrap();
     let w = rmp_serde::to_vec(&Welcome { gid, ops: st.compact_ops(), epoch: st.epoch, key: [0; 32] }).unwrap();
     assert!(w.len() < 200 * 1024, "welcome {} bytes", w.len());
     assert_eq!(GroupState::fold(gid, st.compact_ops()).unwrap().avatar, st.avatar);
-    // a plain member: one picture change per 10 minutes
+    // a plain member (allowed to by @everyone's manage_community): one change per 10 minutes
+    let everyone: Vec<String> = crate::community::perm::names(crate::community::perm::everyone_default(0) | crate::community::perm::MANAGE_COMMUNITY).into_iter().map(String::from).collect();
+    n.group_role_set(gid, Some("everyone".into()), String::new(), None, &everyone, None).await.unwrap();
     let k0 = n.store.group_key_get(&gid, 0).unwrap();
     let t = n.hlc.tick();
     for i in 0..5u64 {
@@ -770,6 +773,10 @@ async fn leaving_a_group_deletes_its_chat() {
     let gid = gid_of(&v);
     let conv = format!("g:{}", hex::encode(gid));
     assert!(n.conversations().unwrap().iter().any(|c| c.id == conv));
+    // the owner hands the group over before leaving (pending-v108 item 1)
+    let e = n.group_leave(gid).await.unwrap_err();
+    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.owner_must_transfer"));
+    n.group_transfer_owner(gid, bob).await.unwrap();
     let mut ev = n.subscribe();
     n.group_leave(gid).await.unwrap();
     let evs = drain(&mut ev);
@@ -867,5 +874,427 @@ async fn group_messages_carry_the_member_name() {
     n.store.insert_message(&[8; 16], &conv, &bob, n.hlc.tick(), "text", &json!({"text": "hi"}), 2, None, None).unwrap();
     let m = n.store.message(&[8; 16]).unwrap();
     assert_eq!(n.msg_json(&m)["author_name"], "Bình");
+    n.shutdown();
+}
+
+fn hlc_ms(ms: u64) -> u64 {
+    ms << 8
+}
+
+/// A group created by `o` (an identity, not a node) with `members`, installed on `nodes`
+/// as their Welcome would: (state, epoch-0 key).
+fn install_group(o: &Signer, members: Vec<PeerId>, kind: u8, created: u64, nodes: &[&Arc<Node>]) -> (GroupState, [u8; 32]) {
+    let (st, _) = group::create(o, created, "G", members, kind).unwrap();
+    let k0: [u8; 32] = crate::crypto::random_bytes();
+    for n in nodes {
+        n.store.group_key_put(&st.gid, 0, &k0).unwrap();
+        n.store.group_save(&st.gid, &rmp_serde::to_vec(&st).unwrap()).unwrap();
+        n.groups.write().insert(st.gid, st.clone());
+    }
+    (st, k0)
+}
+
+/// Op ids folded on `n`, without the rotations its members make on their own afterwards.
+fn folded_ids(n: &Node, gid: &Gid) -> Vec<[u8; 16]> {
+    let st = n.groups.read().get(gid).cloned().unwrap();
+    st.ops.iter().filter(|o| !matches!(o.payload, Payload::Op(GroupOp::Rekey { .. }))).map(|o| o.id).collect()
+}
+
+/// G1: the owner's Leave (lower hlc) and its Dissolve, received in both orders. Before the
+/// fix the member that got the Dissolve first dropped the late Leave, the other rejected
+/// the Dissolve (the owner had left): one had deleted the group, the other kept it with a
+/// new owner, forever. Also: a late op that does invalidate the Dissolve is folded in on a
+/// dissolved group (the group comes back), instead of being dropped.
+#[tokio::test(flavor = "multi_thread")]
+async fn dissolve_converges_whatever_arrives_first() {
+    let t1 = tempfile::tempdir().unwrap();
+    let t2 = tempfile::tempdir().unwrap();
+    let a = quiet_node(t1.path()).await;
+    let b = quiet_node(t2.path()).await;
+    let oid = Identity::generate();
+    let o = Signer::primary(&oid);
+    let now = crate::util::now_ms();
+    let op = |gid: Gid, key: &[u8; 32], hlc: u64, p: GroupOp| group::seal_envelope(key, 0, &Signed::new(&o, gid, hlc, Payload::Op(p))).unwrap();
+
+    // concurrent (Dissolve 1 s after the Leave): dissolved everywhere
+    let (st, k0) = install_group(&o, vec![a.me, b.me], 0, hlc_ms(now - 60_000), &[&a, &b]);
+    let gid = st.gid;
+    let leave = op(gid, &k0, hlc_ms(now - 2_000), GroupOp::Leave);
+    let dissolve = op(gid, &k0, hlc_ms(now - 1_000), GroupOp::Dissolve);
+    a.on_group_envelope(None, gid, dissolve.clone(), false).await.unwrap();
+    a.on_group_envelope(None, gid, leave.clone(), false).await.unwrap();
+    b.on_group_envelope(None, gid, leave, false).await.unwrap();
+    b.on_group_envelope(None, gid, dissolve, false).await.unwrap();
+    for n in [&a, &b] {
+        let g = n.groups.read().get(&gid).cloned().unwrap();
+        assert!(g.dissolved(), "members disagree on whether the group exists");
+        assert!(n.group_info(&gid).is_err() && n.group_members(&gid).is_empty());
+    }
+    assert_eq!(folded_ids(&a, &gid), folded_ids(&b, &gid));
+
+    // the Dissolve signed long after the owner left (from another of its devices): the
+    // Leave wins on every member — `a`, which dissolved first, folds the late Leave in too
+    let (st, k0) = install_group(&o, vec![a.me, b.me], 0, hlc_ms(now - 3 * 3_600_000), &[&a, &b]);
+    let gid = st.gid;
+    let leave = op(gid, &k0, hlc_ms(now - 2 * 3_600_000), GroupOp::Leave);
+    let dissolve = op(gid, &k0, hlc_ms(now - 1_000), GroupOp::Dissolve);
+    a.on_group_envelope(None, gid, dissolve.clone(), false).await.unwrap();
+    assert!(a.groups.read().get(&gid).unwrap().dissolved());
+    a.on_group_envelope(None, gid, leave.clone(), false).await.unwrap();
+    b.on_group_envelope(None, gid, leave, false).await.unwrap();
+    b.on_group_envelope(None, gid, dissolve, false).await.unwrap();
+    let ga = a.groups.read().get(&gid).cloned().unwrap();
+    let gb = b.groups.read().get(&gid).cloned().unwrap();
+    assert!(!ga.dissolved() && !gb.dissolved(), "the late Leave was dropped on the dissolved member");
+    assert_eq!((ga.owner, ga.members.clone()), (gb.owner, gb.members.clone()));
+    assert_eq!(folded_ids(&a, &gid), folded_ids(&b, &gid));
+    assert!(a.group_info(&gid).is_ok() && a.group_members(&gid).contains(&a.me));
+    a.shutdown();
+    b.shutdown();
+}
+
+/// G2 + G3: a dissolved public community is neither announced nor found in a search, and
+/// has no members any more for calls / file access.
+#[tokio::test(flavor = "multi_thread")]
+async fn dissolved_community_is_unlisted_and_memberless() {
+    let t1 = tempfile::tempdir().unwrap();
+    let n = quiet_node(t1.path()).await;
+    let bob = Identity::generate();
+    let v = n.create_group("Cộng đồng", vec![bob.peer_id()], 1).await.unwrap();
+    let gid = gid_of(&v);
+    n.group_visibility(gid, true, "phongtap").await.unwrap();
+    let g = n.groups.read().get(&gid).cloned().unwrap();
+    assert!(n.directory_listable(&g));
+    assert_eq!(n.search_groups("@phongtap").await.unwrap().len(), 1);
+    assert_eq!(n.group_members(&gid).len(), 2);
+    n.group_dissolve(gid).await.unwrap();
+    let g = n.groups.read().get(&gid).cloned().unwrap();
+    assert!(g.dissolved() && g.public, "the tombstone keeps its visibility");
+    assert!(!n.directory_listable(&g), "a dissolved community would be announced again");
+    assert!(n.search_groups("@phongtap").await.unwrap().is_empty(), "a dissolved community is offered in search");
+    assert!(n.group_members(&gid).is_empty(), "a dissolved group still has members for calls / files");
+    n.shutdown();
+}
+
+/// G4: (a) a plain member changing the cover every 10 minutes leaves only the effective
+/// cover stored (state and envelope log); (b) never-valid ops are neither stored nor held;
+/// (c) a member's stored op bytes per day are capped.
+#[tokio::test(flavor = "multi_thread")]
+async fn op_storage_is_bounded() {
+    let t1 = tempfile::tempdir().unwrap();
+    let n = quiet_node(t1.path()).await;
+    let bob = Identity::generate();
+    let bs = Signer::primary(&bob);
+    let now = crate::util::now_ms();
+    let base = now - 20 * 3_600_000;
+    // (made by someone else a day ago: the ops below are dated after it)
+    let o = Signer::primary(&Identity::generate());
+    let (st, k0) = install_group(&o, vec![n.me, bob.peer_id()], 0, hlc_ms(now - 22 * 3_600_000), &[&n]);
+    let gid = st.gid;
+    let env = |hlc: u64, p: GroupOp| {
+        let s = Signed::new(&bs, gid, hlc, Payload::Op(p));
+        (s.id, group::seal_envelope(&k0, 0, &s).unwrap())
+    };
+    let stored = |n: &Node| n.store.group_log_op_bytes(&gid, &bob.peer_id(), 0, u64::MAX, 0).0;
+    // members may change the group's pictures here (@everyone has manage_community)
+    let open = Signed::new(&o, gid, hlc_ms(now - 21 * 3_600_000), Payload::Op(GroupOp::RoleSet {
+        id: "everyone".into(), name: String::new(), color: String::new(),
+        perms: crate::community::perm::everyone_default(0) | crate::community::perm::MANAGE_COMMUNITY, position: None,
+    }));
+    n.on_group_envelope(None, gid, group::seal_envelope(&k0, 0, &open).unwrap(), false).await.unwrap();
+
+    // (a) 8 covers, 10 minutes apart: all applied, one kept
+    for i in 0..8u64 {
+        let (_, e) = env(hlc_ms(base + i * 11 * 60_000), GroupOp::Cover { cover: vec![i as u8; group::MAX_COVER] });
+        n.on_group_envelope(None, gid, e, false).await.unwrap();
+        assert_eq!(n.group_cover(&gid).unwrap()[0], i as u8, "cover {i} not applied");
+    }
+    let bytes = stored(&n);
+    // (the latest two keep their bytes: the newest may still lose a re-fold)
+    assert!(bytes < 3 * group::MAX_COVER as u64, "superseded covers still stored: {bytes} B");
+    let state = n.store.group_load(&gid).unwrap().len();
+    assert!(state < 3 * group::MAX_COVER, "superseded covers still in the group state: {state} B");
+    // a rate-limited cover (5 min after the last) is held, but its envelope isn't kept
+    let (id, e) = env(hlc_ms(base + 7 * 11 * 60_000 + 5 * 60_000), GroupOp::Cover { cover: vec![99; group::MAX_COVER] });
+    n.on_group_envelope(None, gid, e, false).await.unwrap();
+    assert_eq!(n.group_cover(&gid).unwrap()[0], 7);
+    assert!(n.store.group_held_get(&gid).iter().any(|h| h.id == id));
+    assert!(stored(&n) < 3 * group::MAX_COVER as u64);
+
+    // (b) never valid: neither stored nor held
+    let held_before = n.store.group_held_get(&gid).len();
+    let (id, e) = env(hlc_ms(base + 3 * 3_600_000), GroupOp::Cover { cover: vec![1; group::MAX_COVER + 1] });
+    n.on_group_envelope(None, gid, e, false).await.unwrap();
+    assert!(!n.store.group_log_has(&id), "an oversized cover was stored");
+    assert_eq!(n.store.group_held_get(&gid).len(), held_before, "an oversized cover was held");
+    // a plain member's cover in a community
+    let (st2, k2) = install_group(&o, vec![n.me, bob.peer_id()], 1, hlc_ms(now - 60_000), &[&n]);
+    let gid2 = st2.gid;
+    let s = Signed::new(&bs, gid2, hlc_ms(now), Payload::Op(GroupOp::Cover { cover: vec![1; 1000] }));
+    n.on_group_envelope(None, gid2, group::seal_envelope(&k2, 0, &s).unwrap(), false).await.unwrap();
+    // (since roles exist a later role could allow it: held like any refused op, not applied)
+    assert!(n.group_cover(&gid2).is_none());
+
+    // (c) the daily op quota: renames with huge names (the fold truncates the name, the
+    // envelope would be stored whole), 2 minutes apart
+    let mut taken = 0;
+    for i in 0..20u64 {
+        let (id, e) = env(hlc_ms(base + 4 * 3_600_000 + i * 120_000), GroupOp::Rename { name: "x".repeat(100_000) });
+        n.on_group_envelope(None, gid, e, false).await.unwrap();
+        taken += n.store.group_log_has(&id) as u64;
+    }
+    assert!(taken < 20, "no byte quota for stored ops");
+    assert!(stored(&n) <= super::OP_AUTHOR_DAY_BYTES + 120_000);
+    n.shutdown();
+}
+
+// ---------------------------------------------------------------- v1.0.8 security review
+
+/// A group created `days` ago by `owner` (a quiet node) with `members`, Community 2.0 rules,
+/// key k0 at epoch 0.
+fn old_v2_group(n: &Arc<Node>, days: u64, members: Vec<PeerId>, kind: u8) -> (Gid, [u8; 32]) {
+    let now = crate::util::now_ms();
+    let (st, _) = group::create_v2(&n.signer, (now - days * 86_400_000) << 8, "G", members, kind).unwrap();
+    let k0: [u8; 32] = crate::crypto::random_bytes();
+    n.store.group_key_put(&st.gid, 0, &k0).unwrap();
+    n.save_group(&st).unwrap();
+    (st.gid, k0)
+}
+
+/// A group message whose envelope time and message time differ.
+fn msg_two_times(who: &Identity, gid: Gid, key: &[u8; 32], s_hlc: u64, m_hlc: u64, text: &str) -> (Vec<u8>, [u8; 16]) {
+    let mut m = ChatMsg {
+        id: crate::crypto::random_bytes(),
+        author: who.peer_id(),
+        hlc: m_hlc,
+        body: Body::Text { text: text.into() },
+        reply_to: None,
+        ttl_ms: None,
+        meta: MsgMeta::default(),
+        sig: vec![],
+    };
+    m.sig = who.sign(&m.signing_bytes(&group_scope(&gid, ""))).to_vec();
+    let id = m.id;
+    let s = Signed::new(&Signer::primary(who), gid, s_hlc, Payload::Msg { channel: String::new(), msg: Box::new(m) });
+    (group::seal_envelope(key, 0, &s).unwrap(), id)
+}
+
+/// #2: a group message can't be dated apart from its envelope (the rules are judged at the
+/// envelope's time), nor backdated past a timeout by its author.
+#[tokio::test(flavor = "multi_thread")]
+async fn backdated_group_messages_dont_dodge_moderation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let (bob, carol) = (Identity::generate(), Identity::generate());
+    let (gid, k0) = old_v2_group(&n, 1, vec![bob.peer_id(), carol.peer_id()], 0);
+    let now = crate::util::now_ms();
+    // message time a day before its (current) envelope time: refused
+    let (e, id) = msg_two_times(&carol, gid, &k0, now << 8, (now - 86_400_000) << 8, "dated apart");
+    n.on_group_envelope(Some((carol.peer_id(), carol.peer_id())), gid, e, false).await.unwrap();
+    assert!(n.store.message(&id).is_none(), "a message dated apart from its envelope was taken");
+    // the usual few ms apart: fine
+    let (e, id) = msg_two_times(&carol, gid, &k0, now << 8, (now << 8) - 5, "ok");
+    n.on_group_envelope(Some((carol.peer_id(), carol.peer_id())), gid, e, false).await.unwrap();
+    assert!(n.store.message(&id).is_some());
+    // bob is timed out now; his posts dated 3 h back (before the timeout) are refused from
+    // him directly…
+    n.group_timeout(gid, bob.peer_id(), now + 3_600_000).await.unwrap();
+    let back = (now - 3 * 3_600_000) << 8;
+    let (e, id) = msg_two_times(&bob, gid, &k0, back, back, "backdated past my timeout");
+    n.on_group_envelope(Some((bob.peer_id(), bob.peer_id())), gid, e.clone(), false).await.unwrap();
+    assert!(n.store.message(&id).is_none(), "a timed-out member backdated a post past the timeout");
+    n.on_group_envelope(None, gid, e.clone(), false).await.unwrap();
+    assert!(n.store.message(&id).is_none(), "…through unattributed mail");
+    // …while history another member took (and serves now) is still taken
+    let (e2, id2) = msg_two_times(&bob, gid, &k0, back + 1, back + 1, "written back then");
+    n.on_group_envelope(Some((carol.peer_id(), carol.peer_id())), gid, e2, false).await.unwrap();
+    assert!(n.store.message(&id2).is_some(), "history served by a member was dropped");
+    n.shutdown();
+}
+
+/// #10: a private channel's messages are not kept in plaintext by members who can't see it.
+#[tokio::test(flavor = "multi_thread")]
+async fn private_channels_stay_out_of_other_members_apps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let own = Identity::generate();
+    let os = Signer::primary(&own);
+    let bob = Identity::generate();
+    let now = crate::util::now_ms();
+    // (after the RulesV2 lower bound: the ops below must sort after the switch)
+    let t0 = ((now - 86_400_000) << 8).max(group::V2_RULES_HLC + (1 << 16));
+    let (st, ops) = group::create_v2(&os, t0, "C", vec![n.me, bob.peer_id()], 1).unwrap();
+    let gid = st.gid;
+    let mut all = ops;
+    let op = |i: u64, o: GroupOp| Signed::new(&os, gid, t0 + (i << 16), Payload::Op(o));
+    all.push(op(10, GroupOp::Channel { name: "mods".into(), voice: false, remove: false }));
+    all.push(op(11, GroupOp::RoleSet { id: "r_mod".into(), name: "Mod".into(), color: String::new(), perms: 0, position: None }));
+    all.push(op(12, GroupOp::MemberRoles { peer: bob.peer_id(), roles: vec!["r_mod".into()] }));
+    all.push(op(13, GroupOp::ChannelUpdate {
+        name: "mods".into(), new_name: None, topic: None, category: None, position: None,
+        private: Some(true), allow_roles: Some(vec!["r_mod".into()]), announce: None,
+    }));
+    let st = GroupState::fold(gid, all).unwrap();
+    assert!(!st.can_see(&n.me, "mods") && st.can_see(&bob.peer_id(), "mods"));
+    let k0: [u8; 32] = crate::crypto::random_bytes();
+    n.store.group_key_put(&gid, 0, &k0).unwrap();
+    n.save_group(&st).unwrap();
+    let (e, id) = member_msg_in(&bob, gid, &k0, now << 8, "chỉ điều hành", "mods");
+    n.on_group_envelope(Some((bob.peer_id(), bob.peer_id())), gid, e, false).await.unwrap();
+    assert!(n.store.message(&id).is_none(), "a private channel's message reached a member who can't see it");
+    assert!(!n.store.group_convs(&st.conv_id()).iter().any(|c| c.ends_with(":mods") || c.contains("mods")), "its chat appeared");
+    let (e, id) = member_msg_in(&bob, gid, &k0, (now << 8) + 1, "mọi người", "general");
+    n.on_group_envelope(Some((bob.peer_id(), bob.peer_id())), gid, e, false).await.unwrap();
+    assert!(n.store.message(&id).is_some());
+    n.shutdown();
+}
+
+/// #B: a Community 2.0 group is never offered to an app that can't read it — the inviter is
+/// told to have them update instead.
+#[tokio::test(flavor = "multi_thread")]
+async fn old_apps_are_not_added_to_new_groups() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let x = Identity::generate();
+    n.store.upsert_contact(&x.peer_id(), Some("X"), Some(3)).unwrap();
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V3);
+    let e = n.create_group("G", vec![x.peer_id()], 0).await.unwrap_err();
+    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.group_peer_outdated"));
+    let v = n.create_group("G", vec![], 0).await.unwrap();
+    let gid = gid_of(&v);
+    assert_eq!(v["gid"], n.group_info(&gid).unwrap()["gid"]);
+    assert_eq!(n.group_info(&gid).unwrap()["rules_v2"], true, "new groups follow the new rules");
+    let e = n.group_add(gid, x.peer_id()).await.unwrap_err();
+    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.group_peer_outdated"));
+    assert!(!n.groups.read().get(&gid).unwrap().is_member(&x.peer_id()), "added anyway");
+    // updated: fine
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V4);
+    n.group_add(gid, x.peer_id()).await.unwrap();
+    n.shutdown();
+}
+
+/// #A: an old group switches to the new rules only by an admin's RulesV2, and only once
+/// every member's app reads them.
+#[tokio::test(flavor = "multi_thread")]
+async fn old_groups_upgrade_only_when_everyone_can() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let x = Identity::generate();
+    n.store.upsert_contact(&x.peer_id(), Some("X"), Some(3)).unwrap();
+    let (st, _) = group::create(&n.signer, n.hlc.tick(), "cũ", vec![x.peer_id()], 0).unwrap();
+    let gid = st.gid;
+    n.store.group_key_put(&gid, 0, &crate::crypto::random_bytes()).unwrap();
+    n.save_group(&st).unwrap();
+    assert_eq!(n.group_info(&gid).unwrap()["rules_v2"], false);
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V3);
+    let e = n.group_upgrade_rules(gid).await.unwrap_err();
+    assert_eq!(crate::i18n::find_user_err(&e).map(|u| u.key), Some("err.group_upgrade_blocked"));
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V4);
+    let v = n.group_upgrade_rules(gid).await.unwrap();
+    assert_eq!(v["rules_v2"], true);
+    n.shutdown();
+}
+
+/// Mixed-version gate (1.0.7 ↔ 1.0.8): in an old-rules group with a 1.0.7 member, an op
+/// kind that app can't decode (cover, dissolve) is refused instead of being dropped there
+/// silently (the members would disagree on the group); kinds it reads still go out.
+#[tokio::test(flavor = "multi_thread")]
+async fn old_groups_with_old_members_get_no_new_op_kinds() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let x = Identity::generate();
+    n.store.upsert_contact(&x.peer_id(), Some("X"), Some(3)).unwrap();
+    let (st, _) = group::create(&n.signer, n.hlc.tick(), "cũ", vec![x.peer_id()], 0).unwrap();
+    let gid = st.gid;
+    n.store.group_key_put(&gid, 0, &crate::crypto::random_bytes()).unwrap();
+    n.save_group(&st).unwrap();
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V3);
+    let outdated = |e: anyhow::Error| crate::i18n::find_user_err(&e).map(|u| u.key);
+    let jpg = data_encoding::BASE64.encode(&[0xff, 0xd8, 0xff, 1, 2, 3]);
+    assert_eq!(outdated(n.group_meta(gid, None, None, Some(&jpg)).await.unwrap_err()), Some("err.group_peer_outdated"));
+    assert_eq!(outdated(n.group_dissolve(gid).await.unwrap_err()), Some("err.group_peer_outdated"));
+    assert!(!n.groups.read().get(&gid).unwrap().dissolved(), "dissolved anyway");
+    // what 1.0.7 reads still works
+    n.group_rename(gid, "tên mới").await.unwrap();
+    n.group_meta(gid, None, Some("mô tả"), None).await.unwrap();
+    // once the member updated: allowed
+    n.record_peer_proto(&x.peer_id(), proto::PROTO_V4);
+    n.group_meta(gid, None, None, Some(&jpg)).await.unwrap();
+    n.group_dissolve(gid).await.unwrap();
+    n.shutdown();
+}
+
+/// Declining an invitation never joins: nothing stored, the inviter alone gets my Leave.
+#[tokio::test(flavor = "multi_thread")]
+async fn declining_an_invitation_never_joins() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let own = Identity::generate();
+    let os = Signer::primary(&own);
+    let (st, ops) = group::create_v2(&os, n.hlc.tick(), "Lạ", vec![n.me], 0).unwrap();
+    let key: [u8; 32] = crate::crypto::random_bytes();
+    let w = rmp_serde::to_vec(&Welcome { gid: st.gid, ops, epoch: 0, key }).unwrap();
+    n.welcome_body(own.peer_id(), own.peer_id(), w, false).await.unwrap();
+    assert_eq!(n.group_invites().len(), 1, "a stranger's group waits for an answer");
+    assert!(n.groups.read().get(&st.gid).is_none());
+    assert_eq!(n.group_invite_answer(st.gid, false).await.unwrap(), Value::Null);
+    assert!(n.groups.read().get(&st.gid).is_none(), "declining joined the group");
+    assert!(n.store.group_load(&st.gid).is_none());
+    assert!(n.group_invites().is_empty());
+    // my signed Leave waits for the inviter (and nobody else)
+    let leave = n
+        .store
+        .outbox_page(&own.peer_id(), 0, 100)
+        .unwrap()
+        .into_iter()
+        .filter_map(|(_, _, p)| match crate::proto::from_slice_capped::<PeerMsg>(&p).ok()? {
+            PeerMsg::Group { gid, env } => Some((gid, env)),
+            PeerMsg::Wrapped { inner, .. } => match *inner {
+                PeerMsg::Group { gid, env } => Some((gid, env)),
+                _ => None,
+            },
+            _ => None,
+        })
+        .find_map(|(gid, env)| group::open_envelope(&key, &gid, &env).ok());
+    let leave = leave.expect("no Leave for the inviter");
+    assert!(leave.author == n.me && matches!(leave.payload, Payload::Op(GroupOp::Leave)));
+    n.shutdown();
+}
+
+/// A bot's direct post: `@all` needs `mention_everyone`, a backdated post doesn't dodge a
+/// timeout, an undeclared channel is refused.
+#[tokio::test(flavor = "multi_thread")]
+async fn bot_posts_follow_the_group_rules() {
+    let tmp = tempfile::tempdir().unwrap();
+    let n = quiet_node(tmp.path()).await;
+    let bot = Identity::generate();
+    let (gid, _) = old_v2_group(&n, 1, vec![], 0);
+    n.group_add_bot(gid, bot.peer_id(), false).await.unwrap();
+    let now = crate::util::now_ms();
+    let post = |hlc: u64, channel: &str, all: bool| {
+        let mut m = ChatMsg {
+            id: crate::crypto::random_bytes(),
+            author: bot.peer_id(),
+            hlc,
+            body: Body::Text { text: "bot".into() },
+            reply_to: None,
+            ttl_ms: None,
+            meta: MsgMeta { mention_all: all, ..Default::default() },
+            sig: vec![],
+        };
+        m.sig = bot.sign(&m.signing_bytes(&group_scope(&gid, channel))).to_vec();
+        m
+    };
+    let m = post(now << 8, "", true);
+    n.on_bot_group_post(bot.peer_id(), gid, String::new(), m.clone()).unwrap();
+    let got = n.store.message(&m.id).expect("bot post");
+    assert_ne!(got.meta["mention_all"], true, "@all without mention_everyone");
+    let m = post(now << 8, "nowhere", false);
+    n.on_bot_group_post(bot.peer_id(), gid, "nowhere".into(), m.clone()).unwrap();
+    assert!(n.store.message(&m.id).is_none(), "undeclared channel");
+    n.group_timeout(gid, bot.peer_id(), now + 3_600_000).await.unwrap();
+    let m = post((now - 3 * 3_600_000) << 8, "", false);
+    n.on_bot_group_post(bot.peer_id(), gid, String::new(), m.clone()).unwrap();
+    assert!(n.store.message(&m.id).is_none(), "a timed-out bot backdated a post");
     n.shutdown();
 }

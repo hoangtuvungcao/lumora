@@ -22,22 +22,22 @@ About 5 minutes and:
 - **Lumora Bot Runner**: a small program that connects your bot code to Lumora. Get it on the [Download page](https://getlumora.pages.dev/download/#bot-runner).
 
 <!-- section: token -->
-## 1. Lấy token từ BotFather | 1. Get a token from BotFather
+## 1. Lấy token từ Xưởng Bot | 1. Get a token from Bot Studio
 
 <!-- vi -->
-1. Mở Lumora, tìm **@BotFather** và bắt đầu trò chuyện.
+1. Mở Lumora, mở **Xưởng Bot** (ghim đầu danh sách chat, hoặc Cài đặt → Bot của tôi).
 2. Gửi `/newbot`, đặt tên hiển thị (ví dụ *Cửa hàng Hoa Mai*).
 3. Chọn @tên kết thúc bằng `bot`, ví dụ `hoamai_bot`.
-4. BotFather gửi lại một **token** dạng `lumora_bot_…`. Chép token đó.
+4. Xưởng Bot gửi lại một **token** dạng `lumora_bot_…`. Chép token đó.
 
-Mỗi tài khoản tạo được tối đa 20 bot. Token là chìa khóa của bot: đừng gửi cho ai và đừng đưa lên mạng. Nếu lỡ lộ: gửi `/mybots` cho BotFather, chọn bot rồi bấm **Thu hồi mã** để nhận token mới (xem [Bảo mật](https://getlumora.pages.dev/developers/production/#security)).
+Mỗi tài khoản tạo được tối đa 20 bot. Token là chìa khoá của bot: đừng gửi cho ai và đừng đưa lên mạng. Nếu lỡ lộ: gửi `/mybots` trong Xưởng Bot, chọn bot rồi bấm **Thu hồi mã** để nhận token mới (xem [Bảo mật](https://getlumora.pages.dev/developers/production/#security)).
 <!-- en -->
-1. Open Lumora, find **@BotFather** and start a chat.
+1. Open Lumora and open **Bot Studio** (pinned at the top of the chat list, or Settings → My bots).
 2. Send `/newbot` and pick a display name (for example *Hoa Mai Shop*).
 3. Pick an @username ending in `bot`, for example `hoamai_bot`.
-4. BotFather replies with a **token** like `lumora_bot_…`. Copy it.
+4. Bot Studio replies with a **token** like `lumora_bot_…`. Copy it.
 
-Each account can create up to 20 bots. The token is your bot's key: never share it or put it online. If it leaks: send `/mybots` to BotFather, pick the bot and tap **Revoke token** to get a new one (see [Security](https://getlumora.pages.dev/developers/production/#security)).
+Each account can create up to 20 bots. The token is your bot's key: never share it or put it online. If it leaks: send `/mybots` in Bot Studio, pick the bot and tap **Revoke token** to get a new one (see [Security](https://getlumora.pages.dev/developers/production/#security)).
 
 <!-- section: install -->
 ## 2. Cài SDK | 2. Install the SDK

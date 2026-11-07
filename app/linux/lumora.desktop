@@ -1,8 +1,11 @@
 [Desktop Entry]
 Type=Application
 Name=Lumora
-GenericName=Private messenger & remote desktop
+Name[vi]=Lumora
+GenericName=Private messaging app & remote desktop
+GenericName[vi]=Ứng dụng nhắn tin riêng tư & điều khiển máy từ xa
 Comment=Serverless P2P chat, calls, file transfer and remote desktop
+Comment[vi]=Nhắn tin, gọi điện, gửi tệp và điều khiển máy từ xa trực tiếp giữa các thiết bị, không cần máy chủ
 Exec=lumora %u
 Icon=lumora
 Terminal=false

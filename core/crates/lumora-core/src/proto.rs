@@ -20,11 +20,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 /// New message kinds are only sent to peers known to speak the version that introduced
 /// them (older peers get a plain-text fallback or nothing), because older decoders reject
 /// them. Never add a field to an existing (array-encoded) wire struct: add an `Ext` kind.
-pub const PROTO_VERSION: u32 = 3;
+pub const PROTO_VERSION: u32 = 4;
 /// First protocol version that understands the v2 additions above.
 pub const PROTO_V2: u32 = 2;
 /// First protocol version that understands `PeerMsg::Ext`, DevSig and `STREAM_SYNC`.
 pub const PROTO_V3: u32 = 3;
+/// First protocol version that reads Community 2.0 groups (`GroupOp::RulesV2` and the op
+/// kinds after `Meta`): a Welcome holding them never goes to an older device.
+pub const PROTO_V4: u32 = 4;
 pub const MAX_CONTROL_FRAME: usize = 4 * 1024 * 1024;
 
 pub const STREAM_CONTROL: u8 = 1;
@@ -423,6 +426,10 @@ pub mod ext {
     /// A linked device gives the main device its acceptance signature (it agrees to be a
     /// device of this account) for the device list: `{proof}`. Own devices only.
     pub const DEVICE_ACCEPT: u16 = 0x05;
+    /// Main device → one of my devices that asked to be listed although it was signed out
+    /// (its revocation may have dropped off the list long ago): `{device, sig}`, signed by
+    /// the account key (`devices::revoked_notice_bytes`). The device signs itself out.
+    pub const DEVICE_REVOKED: u16 = 0x06;
     pub const LINK_HELLO: u16 = 0x10;
     pub const LINK_PAKE: u16 = 0x11;
     pub const LINK_CONFIRM: u16 = 0x12;
@@ -448,6 +455,12 @@ pub mod ext {
     pub const GROUP_REPORT_DONE: u16 = 0x33;
     /// The author took a story down: `{id}`; friends and the author's own devices drop it.
     pub const STORY_DELETE: u16 = 0x34;
+    /// A link's inviter turned an invite-link join down: `{gid, reason}` (revoked |
+    /// removed | denied), node/community.rs.
+    pub const GROUP_JOIN_DENIED: u16 = 0x35;
+    /// An admin's copy of a pending invite-link join request ("approve new members") for
+    /// the group's other admins with `invite`: `{gid, peer, name, at, drop}`, node/community.rs.
+    pub const GROUP_JOIN_REQUEST: u16 = 0x36;
     /// Legacy bridge (Phase 9): to the own primary only.
     pub const PROXY: u16 = 0x40;
     pub const REMOTE_CHALLENGE_V2: u16 = 0x50;
@@ -462,8 +475,18 @@ pub mod ext {
     pub const REMOTE_PRE_AUTH: u16 = 0x54;
     /// Host → viewer: `{session, ok, reason}`; `ok` = the viewer may now connect.
     pub const REMOTE_PRE_RESULT: u16 = 0x55;
+    /// Host → controller: what a lock / restart / log out request did on the host:
+    /// `{session, action, ok, code}` (`code` = message key when `ok` is false).
+    pub const REMOTE_ACTION_RESULT: u16 = 0x56;
     /// Own devices only: an incoming call was answered / declined on another of my devices.
     pub const CALL_ELSEWHERE: u16 = 0x60;
+    /// Community members: the sender's device is / is no longer in a voice room
+    /// (`{conv, here, since, muted}`, node/voice.rs); repeated as a heartbeat.
+    pub const VOICE_PRESENCE: u16 = 0x61;
+    /// Call participants: the sender started / stopped talking (`{call_id, on}`).
+    pub const CALL_SPEAKING: u16 = 0x62;
+    /// Plain group members a call doesn't ring: `{call_id, gid, video}` — a "Join" banner.
+    pub const CALL_AVAILABLE: u16 = 0x63;
     /// Friends and own devices: the key of the sender's friends-only DHT address record.
     pub const DHT_KEY: u16 = 0x78;
     /// "I switched to this connection because the one it replaces looked dead": the other
@@ -473,6 +496,15 @@ pub mod ext {
     /// lists), sent right before a call invite/answer and a remote-control request.
     /// A device that never sent one is an older build: H.264 only.
     pub const VIDEO_CAPS: u16 = 0x70;
+    /// Recovery from friends (node/recovery.rs). Restored account → a friend's device:
+    /// `{to, ts, sig}` signed by the account key ("I am this account, restored, now").
+    pub const RECOVER_HELLO: u16 = 0x90;
+    /// Friend → restored account: `{name, messages, groups, since, proof}`.
+    pub const RECOVER_OFFER: u16 = 0x91;
+    /// Restored account → friend, after the user accepted: `{to, ts, sig}`.
+    pub const RECOVER_ACCEPT: u16 = 0x92;
+    /// Friend → restored account: `{items, done}` (≤ 256 KB each).
+    pub const RECOVER_BATCH: u16 = 0x93;
 }
 
 /// Build an `Ext` message (body map-encoded so it stays forward compatible).

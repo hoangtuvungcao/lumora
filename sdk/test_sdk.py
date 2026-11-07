@@ -56,7 +56,7 @@ try:
         t0 = time.time()
         cmds = check(U, js_peer, "/start", "like", "Bạn đã bấm: like")
         print(f"JS SDK: /start → buttons → callback ({time.time()-t0:.1f}s), commands={cmds}")
-        # BotFather: the user creates a child bot in the app, a dev runs it with the token
+        # Bot Studio: the user creates a child bot in the app, a dev runs it with the token
         O = Node("Chủ bot", BIN, os.path.join(tmp, "owner"), ["--no-nostr"]) if os.makedirs(os.path.join(tmp, "owner")) is None else None
         try:
             made = O.call("bot_create", name="Shop Bot", username="shop_bot")
@@ -72,10 +72,10 @@ try:
             check(U, made["peer"], "/start", "buy", "Đã đặt hàng: buy")
             owner_seen = [c for c in U.call("contacts") if c["peer"] == made["peer"]][0]["bot"]["owner"]
             assert owner_seen == O.me["peer"], owner_seen
-            print(f"BotFather: child bot @shop_bot runs from its token; users see verified owner")
+            print(f"Bot Studio: child bot @shop_bot runs from its token; users see verified owner")
             again = O.call("bot_revoke", username="shop_bot")
             assert again["handle"] == made["handle"] and again["peer"] != made["peer"], "revoke must keep handle, change key"
-            print("BotFather: token revoked → new key, same @handle")
+            print("Bot Studio: token revoked → new key, same @handle")
         finally:
             O.stop()
         # bot process RSS (lumorad children)

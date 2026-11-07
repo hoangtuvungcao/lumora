@@ -87,8 +87,8 @@
 <h2 id="bot">Bot</h2>
 <p><code>new Bot(options?)</code></p>
 <p>A Lumora bot.</p>
-<p>Options: <code>name</code> (display name for a bot made without BotFather, for tests), <code>token</code>
-(BotFather token; default <code>$LUMORA_BOT_TOKEN</code>, never hard-code it in public code),
+<p>Options: <code>name</code> (display name for a bot made without Bot Studio, for tests), <code>token</code>
+(Bot Studio token; default <code>$LUMORA_BOT_TOKEN</code>, never hard-code it in public code),
 <code>dataDir</code> (identity, messages, storage and downloads; default <code>./lumora-bot</code>, one folder
 per bot, keep it private and back it up), <code>binary</code> (path to <code>lumorad</code>; default
 <code>$LUMORAD</code>, then <code>lumorad</code>), <code>about</code>, <code>lan</code> (also find users on the local network),
@@ -1547,7 +1547,7 @@ don't show it); <code>cmd</code> is the command that failed.</p>
 <h2 id="helpers">Helpers</h2>
 <h4 id="is-blocked-command"><code>isBlockedCommand(cmd)</code></h4>
 <p>True when <code>cmd</code> is a core command bots may not use (remote control, recovery phrase,
-backups, passwords, calls, BotFather management).</p>
+backups, passwords, calls, Bot Studio management).</p>
 <p><strong>Parameters</strong></p>
 <ul>
 <li><code>cmd</code> <code>string</code>: Command name.</li>
@@ -1678,6 +1678,8 @@ returned unchanged.</p>
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

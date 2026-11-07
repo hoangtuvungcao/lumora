@@ -79,7 +79,7 @@
   </section>
   <section class="section section--tight">
     <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#commands"><span class="l-vi">Lệnh</span><span class="l-en" lang="en">Commands</span></a></li><li><a href="#text"><span class="l-vi">Tin nhắn và bộ lọc</span><span class="l-en" lang="en">Messages and filters</span></a></li><li><a href="#buttons"><span class="l-vi">Nút bấm</span><span class="l-en" lang="en">Buttons</span></a></li><li><a href="#groups"><span class="l-vi">Nhóm và chế độ riêng tư</span><span class="l-en" lang="en">Groups and privacy mode</span></a></li><li><a href="#roles"><span class="l-vi">Quản trị viên và vai trò</span><span class="l-en" lang="en">Admins and roles</span></a></li><li><a href="#storage"><span class="l-vi">Lưu trữ</span><span class="l-en" lang="en">Storage</span></a></li><li><a href="#files"><span class="l-vi">Tệp và xem trước</span><span class="l-en" lang="en">Files and previews</span></a></li><li><a href="#checklists"><span class="l-vi">Danh sách việc</span><span class="l-en" lang="en">Checklists</span></a></li><li><a href="#reminders"><span class="l-vi">Nhắc hẹn</span><span class="l-en" lang="en">Reminders</span></a></li><li><a href="#more"><span class="l-vi">Các loại tin khác</span><span class="l-en" lang="en">More message types</span></a></li><li><a href="#broadcasts"><span class="l-vi">Gửi theo lịch và giới hạn tốc độ</span><span class="l-en" lang="en">Scheduled broadcasts and rate limits</span></a></li><li><a href="#errors"><span class="l-vi">Xử lý lỗi</span><span class="l-en" lang="en">Error handling</span></a></li><li><a href="#middleware"><span class="l-vi">Middleware và log</span><span class="l-en" lang="en">Middleware and logging</span></a></li><li><a href="#async"><span class="l-vi">Python bất đồng bộ (tùy chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></a></li></ul></nav>
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#commands"><span class="l-vi">Lệnh</span><span class="l-en" lang="en">Commands</span></a></li><li><a href="#text"><span class="l-vi">Tin nhắn và bộ lọc</span><span class="l-en" lang="en">Messages and filters</span></a></li><li><a href="#buttons"><span class="l-vi">Nút bấm</span><span class="l-en" lang="en">Buttons</span></a></li><li><a href="#groups"><span class="l-vi">Nhóm và chế độ riêng tư</span><span class="l-en" lang="en">Groups and privacy mode</span></a></li><li><a href="#roles"><span class="l-vi">Quản trị viên và vai trò</span><span class="l-en" lang="en">Admins and roles</span></a></li><li><a href="#storage"><span class="l-vi">Lưu trữ</span><span class="l-en" lang="en">Storage</span></a></li><li><a href="#files"><span class="l-vi">Tệp và xem trước</span><span class="l-en" lang="en">Files and previews</span></a></li><li><a href="#checklists"><span class="l-vi">Danh sách việc</span><span class="l-en" lang="en">Checklists</span></a></li><li><a href="#reminders"><span class="l-vi">Nhắc hẹn</span><span class="l-en" lang="en">Reminders</span></a></li><li><a href="#more"><span class="l-vi">Các loại tin khác</span><span class="l-en" lang="en">More message types</span></a></li><li><a href="#broadcasts"><span class="l-vi">Gửi theo lịch và giới hạn tốc độ</span><span class="l-en" lang="en">Scheduled broadcasts and rate limits</span></a></li><li><a href="#errors"><span class="l-vi">Xử lý lỗi</span><span class="l-en" lang="en">Error handling</span></a></li><li><a href="#middleware"><span class="l-vi">Middleware và log</span><span class="l-en" lang="en">Middleware and logging</span></a></li><li><a href="#async"><span class="l-vi">Python bất đồng bộ (tuỳ chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></a></li><li><a href="#http-api"><span class="l-vi">API HTTP cho bot</span><span class="l-en" lang="en">HTTP Bot API</span></a></li><li><a href="#http-ids"><span class="l-vi">Mã định danh, ghi chú và giới hạn</span><span class="l-en" lang="en">Ids, notes and limitations</span></a></li><li><a href="#http-examples"><span class="l-vi">Ví dụ HTTP: shell, GitHub, Python</span><span class="l-en" lang="en">HTTP examples: shell, GitHub, Python</span></a></li></ul></nav>
       <article class="prose prose--docs">
 <section class="doc-sec" id="commands"><h2><span class="l-vi">Lệnh</span><span class="l-en" lang="en">Commands</span></h2>
 <div class="l-vi"><p>Lệnh là tin bắt đầu bằng <code>/</code>. Mô tả của lệnh hiện trong menu lệnh của ứng dụng (gõ <code>/</code>) và trong <code>/help</code>, SDK tự tạo <code>/help</code> nếu bạn không viết. Phần chữ sau lệnh nằm trong <code>ctx.args</code>.</p>
@@ -186,7 +186,7 @@ bot.onCallback({ data: &quot;buy:*&quot; }, (ctx) =&gt; ctx.edit(`✅ Đã nhậ
 <td>có</td>
 </tr>
 <tr>
-<td>Sửa, xóa, ghim, thả cảm xúc trong nhóm</td>
+<td>Sửa, xoá, ghim, thả cảm xúc trong nhóm</td>
 <td>không</td>
 <td>có</td>
 </tr>
@@ -196,7 +196,7 @@ bot.onCallback({ data: &quot;buy:*&quot; }, (ctx) =&gt; ctx.edit(`✅ Đã nhậ
 <td>có</td>
 </tr>
 <tr>
-<td>Việc của quản trị viên (cấm, chế độ chậm, xóa tin)</td>
+<td>Việc của quản trị viên (cấm, chế độ chậm, xoá tin)</td>
 <td>không</td>
 <td>có, khi bot là quản trị viên</td>
 </tr>
@@ -277,10 +277,10 @@ bot.command(&quot;rules&quot;, &quot;Nội quy&quot;, (ctx) =&gt; ctx.reply(&quo
 <div class="l-vi"><p>Có hai loại quyền, đừng nhầm:</p>
 <ul>
 <li><strong>Quản trị viên của bot</strong> (<code>Bot(admins=[...])</code>): người điều hành bot, ghi bằng <code>@tên·mã</code> hoặc mã người dùng. Dùng được lệnh <code>admin_only=True</code> (lệnh này được ẩn khỏi menu) và mọi vai trò. Kiểm tra bằng <code>ctx.is_admin</code>.</li>
-<li><strong>Vai trò của bot</strong> (<code>bot.roles</code>): nhãn tùy ý như <code>"mod"</code>, <code>"vip"</code>, lưu trong bộ nhớ của bot. Dùng <code>role="mod"</code> trên lệnh hoặc <code>ctx.has_role("mod")</code>.</li>
+<li><strong>Vai trò của bot</strong> (<code>bot.roles</code>): nhãn tuỳ ý như <code>"mod"</code>, <code>"vip"</code>, lưu trong bộ nhớ của bot. Dùng <code>role="mod"</code> trên lệnh hoặc <code>ctx.has_role("mod")</code>.</li>
 <li><strong>Quản trị viên nhóm</strong>: quyền trong một nhóm cụ thể, kiểm tra bằng <code>ctx.is_group_admin</code> (JS: <code>await ctx.isGroupAdmin()</code>).</li>
 </ul>
-<p>Việc quản trị nhóm (<code>group_ban</code>, <code>group_remove</code>, <code>set_slow_mode</code>, <code>group_settings</code>, <code>group_purge_member</code>, xóa tin của người khác) chỉ làm được khi bot là quản trị viên nhóm và có quyền đọc mọi tin; nếu không sẽ có lỗi <code>err.admin_only</code> hoặc <code>err.group_syncing</code>.</p></div>
+<p>Việc quản trị nhóm (<code>group_ban</code>, <code>group_remove</code>, <code>set_slow_mode</code>, <code>group_settings</code>, <code>group_purge_member</code>, xoá tin của người khác) chỉ làm được khi bot là quản trị viên nhóm và có quyền đọc mọi tin; nếu không sẽ có lỗi <code>err.admin_only</code> hoặc <code>err.group_syncing</code>.</p></div>
 <div class="l-en" lang="en"><p>There are two kinds of permission; don't mix them up:</p>
 <ul>
 <li><strong>Bot admins</strong> (<code>Bot(admins=[...])</code>): the people who run the bot, given as <code>@name·tag</code> or user ids. They may use <code>admin_only=True</code> commands (hidden from the menu) and pass every role check. Check with <code>ctx.is_admin</code>.</li>
@@ -319,7 +319,7 @@ bot.command(&quot;slow&quot;, &quot;Bật chế độ chậm 30 giây&quot;, asy
 }, { chats: &quot;group&quot;, hidden: true });</code></pre></div></div>
 </section>
 <section class="doc-sec" id="storage"><h2><span class="l-vi">Lưu trữ</span><span class="l-en" lang="en">Storage</span></h2>
-<div class="l-vi"><p><code>bot.storage</code> là một bộ nhớ khóa → giá trị, tự lưu ra tệp <code>bot-storage.json</code> trong thư mục dữ liệu mỗi khi bạn gán một khóa. Giá trị phải chuyển được sang JSON (số, chữ, danh sách, đối tượng). Python và JavaScript dùng chung định dạng tệp.</p>
+<div class="l-vi"><p><code>bot.storage</code> là một bộ nhớ khoá → giá trị, tự lưu ra tệp <code>bot-storage.json</code> trong thư mục dữ liệu mỗi khi bạn gán một khoá. Giá trị phải chuyển được sang JSON (số, chữ, danh sách, đối tượng). Python và JavaScript dùng chung định dạng tệp.</p>
 <p>Nếu sửa một giá trị lồng bên trong (thêm vào danh sách), hãy dùng <code>update_key</code> (an toàn khi nhiều tin đến cùng lúc) hoặc gọi <code>save()</code> sau khi sửa. Cần nhiều dữ liệu hơn (hàng chục nghìn bản ghi)? Dùng cơ sở dữ liệu riêng như SQLite trong cùng thư mục.</p></div>
 <div class="l-en" lang="en"><p><code>bot.storage</code> is a key → value store saved to <code>bot-storage.json</code> in the data folder whenever you set a key. Values must be JSON-friendly (numbers, strings, lists, objects). Python and JavaScript share the same file format.</p>
 <p>When you change a nested value (append to a list), use <code>update_key</code> (safe when many messages arrive at once) or call <code>save()</code> afterwards. Need more (tens of thousands of records)? Use your own database such as SQLite in the same folder.</p></div>
@@ -400,7 +400,7 @@ bot.onChecklist(async (ctx) =&gt; {
 </section>
 <section class="doc-sec" id="reminders"><h2><span class="l-vi">Nhắc hẹn</span><span class="l-en" lang="en">Reminders</span></h2>
 <div class="l-vi"><p><code>send_reminder</code> gửi một lời nhắc; đến giờ, ứng dụng của mọi người trong cuộc trò chuyện báo nhắc và bot nhận <code>on_reminder_due</code>. Thời gian có thể là <code>datetime</code>, <code>timedelta</code> (từ bây giờ) hoặc mili-giây; JavaScript dùng <code>Date</code>, mili-giây hoặc <code>{ inMs }</code>. Thời gian phải ở tương lai (nếu không: lỗi <code>err.reminder_past</code>).</p>
-<p><code>ctx.reminder</code> có <code>title</code>, <code>note</code>, <code>at_ms</code>, <code>mine</code> (bot tạo) và <code>late</code> (bot đang tắt đúng giờ nhắc nên báo trễ). Bot phải đang chạy để nhận <code>on_reminder_due</code>; nhắc trễ quá 24 giờ bị bỏ qua. <code>reminder_cancel</code> hủy lời nhắc do bot tạo, <code>reminders()</code> liệt kê lời nhắc sắp tới.</p></div>
+<p><code>ctx.reminder</code> có <code>title</code>, <code>note</code>, <code>at_ms</code>, <code>mine</code> (bot tạo) và <code>late</code> (bot đang tắt đúng giờ nhắc nên báo trễ). Bot phải đang chạy để nhận <code>on_reminder_due</code>; nhắc trễ quá 24 giờ bị bỏ qua. <code>reminder_cancel</code> huỷ lời nhắc do bot tạo, <code>reminders()</code> liệt kê lời nhắc sắp tới.</p></div>
 <div class="l-en" lang="en"><p><code>send_reminder</code> sends a reminder; when it is due, everyone's app in the chat raises it and the bot gets <code>on_reminder_due</code>. The time can be a <code>datetime</code>, a <code>timedelta</code> (from now) or epoch milliseconds; JavaScript takes a <code>Date</code>, milliseconds or <code>{ inMs }</code>. It must be in the future (otherwise <code>err.reminder_past</code>).</p>
 <p><code>ctx.reminder</code> has <code>title</code>, <code>note</code>, <code>at_ms</code>, <code>mine</code> (the bot made it) and <code>late</code> (the bot was off at the due time and is catching up). The bot must be running to get <code>on_reminder_due</code>; reminders more than 24 hours late are skipped. <code>reminder_cancel</code> cancels one the bot made, <code>reminders()</code> lists upcoming ones.</p></div>
 <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-12-0" aria-controls="panel-12-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-12-1" aria-controls="panel-12-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-12-0" aria-labelledby="tab-12-0" class="tabs__panel"><pre class="code"><code data-lang="py">import datetime as dt
@@ -420,7 +420,7 @@ bot.onReminderDue((ctx) =&gt; {
 });</code></pre></div></div>
 </section>
 <section class="doc-sec" id="more"><h2><span class="l-vi">Các loại tin khác</span><span class="l-en" lang="en">More message types</span></h2>
-<div class="l-vi"><p>Mọi hàm gửi đều nhận <code>silent=True</code> (gửi không âm báo). Ngoài tin chữ, bot gửi được bình chọn, sticker, vị trí (cả vị trí trực tiếp), danh thiếp và tin nhắn thoại; bot cũng nhắc tên (<code>mentions=[peer]</code>), trả lời (<code>reply_to</code>), chuyển tiếp, sửa, xóa, ghim và thả cảm xúc.</p></div>
+<div class="l-vi"><p>Mọi hàm gửi đều nhận <code>silent=True</code> (gửi không âm báo). Ngoài tin chữ, bot gửi được bình chọn, sticker, vị trí (cả vị trí trực tiếp), danh thiếp và tin nhắn thoại; bot cũng nhắc tên (<code>mentions=[peer]</code>), trả lời (<code>reply_to</code>), chuyển tiếp, sửa, xoá, ghim và thả cảm xúc.</p></div>
 <div class="l-en" lang="en"><p>Every send accepts <code>silent=True</code> (no sound or notification). Besides text, bots can send polls, stickers, locations (including live location), contact cards and voice messages; they can also mention people (<code>mentions=[peer]</code>), reply (<code>reply_to</code>), forward, edit, delete, pin and react.</p></div>
 <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-13-0" aria-controls="panel-13-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-13-1" aria-controls="panel-13-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-13-0" aria-labelledby="tab-13-0" class="tabs__panel"><pre class="code"><code data-lang="py">m = bot.send(conv, &quot;Bảo trì lúc 22:00&quot;, silent=True)
 bot.pin_message(conv, m[&quot;id&quot;])
@@ -442,30 +442,30 @@ await bot.forwardMessage(m.id, otherConv);</code></pre></div></div>
 </section>
 <section class="doc-sec" id="broadcasts"><h2><span class="l-vi">Gửi theo lịch và giới hạn tốc độ</span><span class="l-en" lang="en">Scheduled broadcasts and rate limits</span></h2>
 <div class="l-vi"><p>Bot chỉ nhắn được cho người <strong>đã nhắn bot trước</strong> (danh sách <code>bot.users()</code>) và cho nhóm có bot. <code>broadcast</code> gửi cho tất cả người dùng; <code>every(giây)</code>, <code>daily("HH:MM")</code> và <code>after(giây)</code> chạy việc theo lịch (theo giờ máy chạy bot).</p>
-<p>SDK tự giãn tốc độ cho mọi tin gửi đi: tối đa 15 tin/giây tổng cộng, mỗi cuộc trò chuyện 5 tin liền rồi 1 tin/giây. Gửi cho 1.000 người mất khoảng 70 giây; hàm vẫn chạy trong khi bot tiếp tục trả lời tin khác. Dùng <code>silent=True</code> cho tin không gấp và tôn trọng người muốn hủy nhận tin.</p></div>
+<p>SDK tự giãn tốc độ cho mọi tin gửi đi: tối đa 15 tin/giây tổng cộng, mỗi cuộc trò chuyện 5 tin liền rồi 1 tin/giây. Gửi cho 1.000 người mất khoảng 70 giây; hàm vẫn chạy trong khi bot tiếp tục trả lời tin khác. Dùng <code>silent=True</code> cho tin không gấp và tôn trọng người muốn huỷ nhận tin.</p></div>
 <div class="l-en" lang="en"><p>Bots can only message people who <strong>messaged the bot first</strong> (<code>bot.users()</code>) and groups the bot is in. <code>broadcast</code> sends to every user; <code>every(seconds)</code>, <code>daily("HH:MM")</code> and <code>after(seconds)</code> run jobs on a schedule (in the local time of the computer running the bot).</p>
 <p>The SDK paces every outgoing message: at most 15 messages/s overall and, per chat, 5 in a row then 1/s. Sending to 1,000 users takes about 70 seconds while the bot keeps answering other chats. Use <code>silent=True</code> for anything that is not urgent and respect people who unsubscribe.</p></div>
 <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-14-0" aria-controls="panel-14-0" data-sync="py">Python</button><button type="button" role="tab" aria-selected="false" id="tab-14-1" aria-controls="panel-14-1" data-sync="js">JavaScript</button></div><div role="tabpanel" id="panel-14-0" aria-labelledby="tab-14-0" class="tabs__panel"><pre class="code"><code data-lang="py">@bot.command(&quot;subscribe&quot;, &quot;Nhận bản tin sáng&quot;)
 def subscribe(ctx):
     bot.storage.update_key(&quot;subs&quot;, lambda s: sorted(set(s or []) | {ctx.sender}), [])
-    ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để hủy.&quot;)
+    ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để huỷ.&quot;)
 
-@bot.command(&quot;unsubscribe&quot;, &quot;Hủy bản tin&quot;)
+@bot.command(&quot;unsubscribe&quot;, &quot;Huỷ bản tin&quot;)
 def unsubscribe(ctx):
     bot.storage.update_key(&quot;subs&quot;, lambda s: [p for p in (s or []) if p != ctx.sender], [])
-    ctx.reply(&quot;Đã hủy.&quot;)
+    ctx.reply(&quot;Đã huỷ.&quot;)
 
 @bot.daily(&quot;07:30&quot;)
 def morning():
     sent = bot.broadcast(&quot;☀️ Chào buổi sáng! Hôm nay giảm 10%.&quot;, users=bot.storage.get(&quot;subs&quot;, []), silent=True)
     bot.log.info(&quot;morning news sent to %d users&quot;, sent)</code></pre></div><div role="tabpanel" id="panel-14-1" aria-labelledby="tab-14-1" class="tabs__panel"><pre class="code"><code data-lang="js">bot.command(&quot;subscribe&quot;, &quot;Nhận bản tin sáng&quot;, (ctx) =&gt; {
   bot.storage.updateKey(&quot;subs&quot;, (s) =&gt; [...new Set([...(s || []), ctx.sender])], []);
-  return ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để hủy.&quot;);
+  return ctx.reply(&quot;Đã đăng ký. Gõ /unsubscribe để huỷ.&quot;);
 });
 
-bot.command(&quot;unsubscribe&quot;, &quot;Hủy bản tin&quot;, (ctx) =&gt; {
+bot.command(&quot;unsubscribe&quot;, &quot;Huỷ bản tin&quot;, (ctx) =&gt; {
   bot.storage.updateKey(&quot;subs&quot;, (s) =&gt; (s || []).filter((p) =&gt; p !== ctx.sender), []);
-  return ctx.reply(&quot;Đã hủy.&quot;);
+  return ctx.reply(&quot;Đã huỷ.&quot;);
 });
 
 bot.daily(&quot;07:30&quot;, async () =&gt; {
@@ -541,7 +541,7 @@ def guard(ctx, next):
   bot.log.debug(&quot;handled&quot;, { kind: ctx.kind, ms: Date.now() - started });
 });</code></pre></div></div>
 </section>
-<section class="doc-sec" id="async"><h2><span class="l-vi">Python bất đồng bộ (tùy chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></h2>
+<section class="doc-sec" id="async"><h2><span class="l-vi">Python bất đồng bộ (tuỳ chọn)</span><span class="l-en" lang="en">Async Python (optional)</span></h2>
 <div class="l-vi"><p>SDK Python chạy đồng bộ trên một nhóm luồng nhỏ, vừa đơn giản vừa đủ nhanh cho đa số bot. Nếu bạn quen <code>asyncio</code>, hàm xử lý có thể là <code>async def</code>; trong đó dùng <code>await bot.aio.send(...)</code>, <code>await ctx.aio.reply(...)</code> hoặc <code>await bot.acall(...)</code>.</p></div>
 <div class="l-en" lang="en"><p>The Python SDK is synchronous on a small thread pool: simple, and fast enough for most bots. If you prefer <code>asyncio</code>, handlers may be <code>async def</code>; inside them use <code>await bot.aio.send(...)</code>, <code>await ctx.aio.reply(...)</code> or <code>await bot.acall(...)</code>.</p></div>
 <pre class="code"><code data-lang="py">import aiohttp
@@ -552,6 +552,229 @@ async def weather(ctx):
         async with s.get(&quot;https://wttr.in/Hanoi?format=3&quot;) as r:
             text = await r.text()
     await ctx.aio.reply(text)</code></pre>
+</section>
+<section class="doc-sec" id="http-api"><h2><span class="l-vi">API HTTP cho bot</span><span class="l-en" lang="en">HTTP Bot API</span></h2>
+<div class="l-vi"><p>Không muốn dùng SDK? Lumora Bot Runner có sẵn một <strong>API HTTP cho bot</strong> theo kiểu Bot API quen thuộc (<code>/bot&lt;TOKEN&gt;/&lt;phương thức&gt;</code>, trả về JSON): ai từng viết bot chat qua HTTP sẽ thấy quen ngay, và các dịch vụ bên ngoài (GitHub, máy chủ, Google Sheets, cron…) có thể gửi tin vào chat, nhóm và kênh cộng đồng qua bot. Không có khái niệm "webhook" riêng: mọi thứ đều là <strong>bot bạn tạo trong Xưởng Bot</strong>, chạy bằng token của nó.</p>
+<p>Bật bằng <code>--http-api</code>. Mặc định chỉ nghe trên máy này (<code>127.0.0.1</code>); token đặt trong biến môi trường <code>LUMORA_BOT_TOKEN</code>:</p></div>
+<div class="l-en" lang="en"><p>Don't want an SDK? Lumora Bot Runner includes an <strong>HTTP Bot API</strong> in the familiar Bot API style (<code>/bot&lt;TOKEN&gt;/&lt;method&gt;</code>, JSON answers): if you've written a chat bot over HTTP before you'll feel at home, and outside services (GitHub, servers, Google Sheets, cron…) can post into chats, groups and community channels through a bot. There is no separate "webhook" concept: it's all <strong>the bot you made in Bot Studio</strong>, run with its token.</p>
+<p>Turn it on with <code>--http-api</code>. By default it only listens on this computer (<code>127.0.0.1</code>); the token goes in the <code>LUMORA_BOT_TOKEN</code> environment variable:</p></div>
+<div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-17-0" aria-controls="panel-17-0" data-sync="unix">Linux / macOS</button><button type="button" role="tab" aria-selected="false" id="tab-17-1" aria-controls="panel-17-1" data-sync="win">Windows</button></div><div role="tabpanel" id="panel-17-0" aria-labelledby="tab-17-0" class="tabs__panel"><pre class="code"><code data-lang="bash">export LUMORA_BOT_TOKEN=lumora_bot_...
+./lumora-bot-runner-linux-x86_64 --data ./hoamai-data --http-api 127.0.0.1:8081</code></pre></div><div role="tabpanel" id="panel-17-1" aria-labelledby="tab-17-1" class="tabs__panel"><pre class="code"><code data-lang="bat">set LUMORA_BOT_TOKEN=lumora_bot_...
+lumora-bot-runner-windows-x86_64.exe --data hoamai-data --http-api 127.0.0.1:8081</code></pre></div></div>
+<div class="l-vi"><p>Gọi <code>http://127.0.0.1:8081/bot&lt;TOKEN&gt;/&lt;phương thức&gt;</code> bằng GET hoặc POST; tham số đặt trong chuỗi truy vấn, form (<code>application/x-www-form-urlencoded</code>), JSON hoặc <code>multipart/form-data</code> (để tải tệp lên). Kết quả luôn là <code>{"ok": true, "result": …}</code> hoặc <code>{"ok": false, "error_code": 400, "description": "Bad Request: …"}</code>, mã HTTP trùng <code>error_code</code> (401 sai token, 404 không có phương thức, 409 xung đột). Chỉ token của chính bot đang chạy được chấp nhận.</p>
+<p>Có thể chạy cùng SDK: thêm <code>extra_args=["--http-api", "127.0.0.1:8081"]</code> (Python) hoặc <code>extraArgs: ["--http-api", "127.0.0.1:8081"]</code> (JavaScript) để mã bot và dịch vụ bên ngoài dùng chung một bot.</p>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Phương thức</th>
+<th>Ghi chú</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>getMe</code></td>
+<td><code>id</code> là mã người dùng của bot, <code>username</code>, <code>lumora_handle</code> (<code>@tên·mã</code>)</td>
+</tr>
+<tr>
+<td><code>sendMessage</code></td>
+<td><code>chat_id</code>, <code>text</code>, <code>parse_mode</code>, <code>reply_to_message_id</code> / <code>reply_parameters</code>, <code>disable_notification</code>, <code>reply_markup.inline_keyboard</code></td>
+</tr>
+<tr>
+<td><code>sendPhoto</code>, <code>sendDocument</code> (<code>sendVideo</code>, <code>sendAudio</code>, <code>sendAnimation</code>)</td>
+<td>tải lên bằng multipart, hoặc đường dẫn tuyệt đối trên máy chạy bot (<code>/srv/a.pdf</code>, <code>file:///srv/a.pdf</code>); <code>caption</code> thành tin chữ trả lời ngay dưới tệp</td>
+</tr>
+<tr>
+<td><code>editMessageText</code>, <code>deleteMessage</code>, <code>deleteMessages</code></td>
+<td>chỉ tin của chính bot (xoá: tin của người khác khi bot là quản trị viên nhóm)</td>
+</tr>
+<tr>
+<td><code>forwardMessage</code>, <code>pinChatMessage</code>, <code>unpinChatMessage</code>, <code>sendChatAction</code>, <code>sendPoll</code>, <code>sendLocation</code>, <code>getChat</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>getUpdates</code></td>
+<td>long polling: <code>offset</code>, <code>limit</code>, <code>timeout</code> (tối đa 50 giây), <code>allowed_updates</code></td>
+</tr>
+<tr>
+<td><code>setWebhook</code>, <code>deleteWebhook</code>, <code>getWebhookInfo</code></td>
+<td><code>url</code>, <code>secret_token</code>, <code>allowed_updates</code>, <code>drop_pending_updates</code></td>
+</tr>
+<tr>
+<td><code>answerCallbackQuery</code></td>
+<td>nhận và trả <code>true</code> (Lumora chưa hiện thông báo nhỏ khi bấm nút)</td>
+</tr>
+<tr>
+<td><code>setMyCommands</code>, <code>getMyCommands</code>, <code>deleteMyCommands</code></td>
+<td>menu lệnh của bot; <code>scope</code>: <code>default</code>, <code>all_private_chats</code>, <code>all_group_chats</code></td>
+</tr>
+<tr>
+<td><code>getFile</code></td>
+<td>tải tệp người dùng gửi về máy chạy bot, rồi lấy tại <code>/file/bot&lt;TOKEN&gt;/&lt;file_path&gt;</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Cập nhật</strong> (<code>Update</code>) gồm <code>message</code>, <code>edited_message</code> và <code>callback_query</code>. Chúng được giữ tối đa 24 giờ (1000 cập nhật) trong <code>bot_api.json</code> của thư mục dữ liệu, nên khởi động lại bot không làm mất. Nhận bằng <code>getUpdates</code> <strong>hoặc</strong> webhook, không dùng cả hai cùng lúc (khi đã đặt webhook, <code>getUpdates</code> trả lỗi 409).</p>
+<p><strong>Webhook:</strong> <code>setWebhook</code> cho Lumora Bot Runner gửi từng cập nhật (JSON, <code>POST</code>) tới URL của bạn, kèm tiêu đề <code>X-Lumora-Bot-Secret</code> nếu đặt <code>secret_token</code>. Trả mã 2xx là xong; lỗi hay quá 30 giây thì gửi lại sau 1, 2, 4… tối đa 60 giây, đúng thứ tự, cho tới khi được nhận. Câu trả lời của webhook cũng có thể là một lệnh gọi (<code>{"method": "sendMessage", "chat_id": …, "text": …}</code>).</p></div>
+<div class="l-en" lang="en"><p>Call <code>http://127.0.0.1:8081/bot&lt;TOKEN&gt;/&lt;method&gt;</code> with GET or POST; parameters go in the query string, a form (<code>application/x-www-form-urlencoded</code>), JSON or <code>multipart/form-data</code> (for uploads). Answers are always <code>{"ok": true, "result": …}</code> or <code>{"ok": false, "error_code": 400, "description": "Bad Request: …"}</code>, with the HTTP status equal to <code>error_code</code> (401 wrong token, 404 unknown method, 409 conflict). Only the running bot's own token is accepted.</p>
+<p>It works alongside an SDK too: add <code>extra_args=["--http-api", "127.0.0.1:8081"]</code> (Python) or <code>extraArgs: ["--http-api", "127.0.0.1:8081"]</code> (JavaScript) so your bot code and outside services share one bot.</p>
+<div class="table-wrap"><table class="table table--api">
+<thead>
+<tr>
+<th>Method</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>getMe</code></td>
+<td><code>id</code> is the bot's user id, plus <code>username</code> and <code>lumora_handle</code> (<code>@name·tag</code>)</td>
+</tr>
+<tr>
+<td><code>sendMessage</code></td>
+<td><code>chat_id</code>, <code>text</code>, <code>parse_mode</code>, <code>reply_to_message_id</code> / <code>reply_parameters</code>, <code>disable_notification</code>, <code>reply_markup.inline_keyboard</code></td>
+</tr>
+<tr>
+<td><code>sendPhoto</code>, <code>sendDocument</code> (<code>sendVideo</code>, <code>sendAudio</code>, <code>sendAnimation</code>)</td>
+<td>multipart upload, or an absolute path on the bot's computer (<code>/srv/a.pdf</code>, <code>file:///srv/a.pdf</code>); <code>caption</code> becomes a text message replying right under the file</td>
+</tr>
+<tr>
+<td><code>editMessageText</code>, <code>deleteMessage</code>, <code>deleteMessages</code></td>
+<td>the bot's own messages (delete: others' too when the bot is a group admin)</td>
+</tr>
+<tr>
+<td><code>forwardMessage</code>, <code>pinChatMessage</code>, <code>unpinChatMessage</code>, <code>sendChatAction</code>, <code>sendPoll</code>, <code>sendLocation</code>, <code>getChat</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>getUpdates</code></td>
+<td>long polling: <code>offset</code>, <code>limit</code>, <code>timeout</code> (up to 50 seconds), <code>allowed_updates</code></td>
+</tr>
+<tr>
+<td><code>setWebhook</code>, <code>deleteWebhook</code>, <code>getWebhookInfo</code></td>
+<td><code>url</code>, <code>secret_token</code>, <code>allowed_updates</code>, <code>drop_pending_updates</code></td>
+</tr>
+<tr>
+<td><code>answerCallbackQuery</code></td>
+<td>accepted, returns <code>true</code> (Lumora shows no toast on button presses yet)</td>
+</tr>
+<tr>
+<td><code>setMyCommands</code>, <code>getMyCommands</code>, <code>deleteMyCommands</code></td>
+<td>the bot's command menu; <code>scope</code>: <code>default</code>, <code>all_private_chats</code>, <code>all_group_chats</code></td>
+</tr>
+<tr>
+<td><code>getFile</code></td>
+<td>downloads a file a user sent to the bot's computer, then fetch it at <code>/file/bot&lt;TOKEN&gt;/&lt;file_path&gt;</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Updates</strong> are <code>message</code>, <code>edited_message</code> and <code>callback_query</code>. They are kept up to 24 hours (1000 updates) in <code>bot_api.json</code> in the data folder, so a restart loses nothing. Receive them with <code>getUpdates</code> <strong>or</strong> a webhook, never both (once a webhook is set, <code>getUpdates</code> answers 409).</p>
+<p><strong>Webhook:</strong> <code>setWebhook</code> makes Lumora Bot Runner POST each update (JSON) to your URL, with an <code>X-Lumora-Bot-Secret</code> header when you set <code>secret_token</code>. A 2xx answer means done; errors or no answer within 30 seconds are retried after 1, 2, 4… up to 60 seconds, in order, until accepted. The webhook's answer may itself be a method call (<code>{"method": "sendMessage", "chat_id": …, "text": …}</code>).</p></div>
+</section>
+<section class="doc-sec" id="http-ids"><h2><span class="l-vi">Mã định danh, ghi chú và giới hạn</span><span class="l-en" lang="en">Ids, notes and limitations</span></h2>
+<div class="l-vi"><p>Mã của Lumora là <strong>chuỗi</strong>, không phải số:</p>
+<ul>
+<li><code>chat_id</code> là mã cuộc trò chuyện: <code>d:&lt;mã người dùng&gt;</code> (chat riêng), <code>g:&lt;mã nhóm&gt;</code> (nhóm), <code>g:&lt;mã nhóm&gt;#&lt;kênh&gt;</code> (một kênh trong cộng đồng). Cũng nhận mã người dùng hoặc mã nhóm (32 ký tự hex) không có tiền tố. Cách lấy: từ <code>message.chat.id</code> của một cập nhật, hoặc <code>ctx.conv</code> trong SDK.</li>
+<li><code>message_id</code> là mã tin nhắn Lumora (32 ký tự hex); <code>from.id</code> là mã người dùng. <code>chat.type</code> là <code>private</code>, <code>group</code> (nhóm) hoặc <code>supergroup</code> (cộng đồng và kênh của nó, kèm <code>lumora_channel</code>).</li>
+<li><code>parse_mode</code>: Lumora hiển thị <code>**đậm**</code>, <code>_nghiêng_</code>, <code>~~gạch~~</code>, <code>`mã`</code>, khối <code>```</code> và <code>||ẩn||</code>. <code>MarkdownV2</code>, <code>Markdown</code> và <code>HTML</code> được đổi sang cách viết đó; gạch chân, trích dẫn và emoji tuỳ chỉnh thành chữ thường, liên kết có nhãn thành <code>nhãn (url)</code>. Không có <code>parse_mode</code> thì chữ giữ nguyên, nhưng ứng dụng Lumora vẫn hiển thị các dấu trên. Chưa hỗ trợ <code>entities</code>.</li>
+<li>Nút: chỉ <code>inline_keyboard</code> với <code>callback_data</code> hoặc <code>url</code> (tối đa 8×8, 64 ký tự). Bàn phím trả lời (<code>ReplyKeyboardMarkup</code>) bị bỏ qua; <code>editMessageText</code> không đổi nút.</li>
+<li>Tệp: không gửi được bằng URL; tệp đính kèm không có chú thích riêng (chú thích là tin trả lời ngay dưới, mã của nó ở <code>lumora_caption_message_id</code>). <code>getFile</code> tải tệp từ người gửi (qua mạng ngang hàng) nên có thể mất vài giây; ảnh thu nhỏ do Lumora tự tạo. Cập nhật có tệp kèm <code>photo</code>/<code>document</code>/<code>video</code>, <code>voice</code>, <code>location</code>, <code>contact</code>, <code>poll</code>, <code>sticker</code>; mọi loại khác (danh sách việc, nhắc hẹn…) có thêm <code>lumora: {kind, body}</code>.</li>
+<li>Không có: chế độ inline, thanh toán, <code>answerCallbackQuery</code> hiện thông báo, sự kiện thành viên (<code>chat_member</code>, <code>my_chat_member</code>), <code>channel_post</code>, tin của người khác bị xoá. Bot chỉ thấy tin nhóm theo chế độ riêng tư do quản trị viên nhóm chọn (xem <a href="#groups">Nhóm</a>).</li>
+<li>Webhook chấp nhận cả <code>http://</code> (cho dịch vụ trên cùng máy hay mạng nội bộ) và gửi lần lượt từng cập nhật (<code>max_connections</code> chỉ để tương thích); không có <code>certificate</code> / <code>ip_address</code>.</li>
+<li><code>getUpdates</code>: một yêu cầu mới làm yêu cầu cũ đang chờ kết thúc với lỗi 409 (mỗi lúc chỉ một nơi nhận).</li>
+</ul></div>
+<div class="l-en" lang="en"><p>Lumora ids are <strong>strings</strong>, not numbers:</p>
+<ul>
+<li><code>chat_id</code> is the conversation id: <code>d:&lt;user id&gt;</code> (direct chat), <code>g:&lt;group id&gt;</code> (group), <code>g:&lt;group id&gt;#&lt;channel&gt;</code> (a channel of a community). A bare user id or group id (32 hex characters) works too. Get it from an update's <code>message.chat.id</code>, or <code>ctx.conv</code> in the SDKs.</li>
+<li><code>message_id</code> is the Lumora message id (32 hex characters); <code>from.id</code> is the user id. <code>chat.type</code> is <code>private</code>, <code>group</code>, or <code>supergroup</code> (a community and its channels, with <code>lumora_channel</code>).</li>
+<li><code>parse_mode</code>: Lumora draws <code>**bold**</code>, <code>_italic_</code>, <code>~~strike~~</code>, <code>`code`</code>, <code>```</code> blocks and <code>||spoiler||</code>. <code>MarkdownV2</code>, <code>Markdown</code> and <code>HTML</code> are translated to that; underline, quotes and custom emoji become plain text, labelled links become <code>label (url)</code>. Without <code>parse_mode</code> text is sent as is, but the Lumora app still draws those marks. <code>entities</code> are not supported yet.</li>
+<li>Buttons: only <code>inline_keyboard</code> with <code>callback_data</code> or <code>url</code> (max 8×8, 64 characters). Reply keyboards (<code>ReplyKeyboardMarkup</code>) are ignored; <code>editMessageText</code> keeps the buttons.</li>
+<li>Files: no sending by URL; attachments have no caption of their own (the caption is a reply right under the file, its id in <code>lumora_caption_message_id</code>). <code>getFile</code> fetches the file from the sender (peer to peer), so it may take a few seconds; thumbnails are made by Lumora. Updates carry <code>photo</code>/<code>document</code>/<code>video</code>, <code>voice</code>, <code>location</code>, <code>contact</code>, <code>poll</code>, <code>sticker</code>; every other kind (checklists, reminders…) also has <code>lumora: {kind, body}</code>.</li>
+<li>Not available: inline mode, payments, toasts from <code>answerCallbackQuery</code>, member updates (<code>chat_member</code>, <code>my_chat_member</code>), <code>channel_post</code>, deletions by others. In groups the bot sees what the group's privacy mode allows (see <a href="#groups">Groups</a>).</li>
+<li>Webhooks accept <code>http://</code> too (for services on the same machine or LAN) and are sent one update at a time (<code>max_connections</code> is accepted for compatibility); there is no <code>certificate</code> / <code>ip_address</code>.</li>
+<li><code>getUpdates</code>: a new request ends an older waiting one with a 409 (one consumer at a time).</li>
+</ul></div>
+</section>
+<section class="doc-sec" id="http-examples"><h2><span class="l-vi">Ví dụ HTTP: shell, GitHub, Python</span><span class="l-en" lang="en">HTTP examples: shell, GitHub, Python</span></h2>
+<div class="l-vi"><p><strong>Gửi tin từ một script shell</strong> (cron, sao lưu xong, máy chủ báo lỗi…):</p></div>
+<div class="l-en" lang="en"><p><strong>Send a message from a shell script</strong> (cron, a finished backup, a server alert…):</p></div>
+<pre class="code"><code data-lang="bash">#!/bin/sh
+# notify.sh &quot;Sao lưu xong ✅&quot;
+API=&quot;http://127.0.0.1:8081/bot$LUMORA_BOT_TOKEN&quot;
+CHAT=&quot;g:3f9a1c0e8b7d4e2fa1b2c3d4e5f60718#alerts&quot;
+curl -sS &quot;$API/sendMessage&quot; \
+  --data-urlencode &quot;chat_id=$CHAT&quot; \
+  --data-urlencode &quot;text=*$(hostname)*: $1&quot; \
+  -d parse_mode=MarkdownV2
+
+# a file with a caption
+curl -sS &quot;$API/sendDocument&quot; -F chat_id=&quot;$CHAT&quot; -F document=@/var/log/backup.log -F caption=&quot;Nhật ký sao lưu&quot;</code></pre>
+<div class="l-vi"><p><strong>GitHub → bot → kênh cộng đồng.</strong> GitHub gửi webhook tới một chương trình nhỏ chạy cạnh bot; chương trình kiểm tra chữ ký <code>X-Hub-Signature-256</code> rồi gọi <code>sendMessage</code> vào kênh <code>#dev</code> của cộng đồng (thêm bot vào cộng đồng trước). Trong GitHub: <em>Settings → Webhooks → Add webhook</em>, URL là địa chỉ HTTPS trỏ tới cổng 9000 (qua proxy, xem <a href="https://getlumora.pages.dev/developers/production/#http-api-security">Vận hành</a>), <em>Content type</em> <code>application/json</code>, <em>Secret</em> giống <code>GITHUB_SECRET</code>. Chỉ cần thư viện chuẩn của Python:</p></div>
+<div class="l-en" lang="en"><p><strong>GitHub → bot → community channel.</strong> GitHub sends its webhook to a small program next to the bot; it checks the <code>X-Hub-Signature-256</code> signature and calls <code>sendMessage</code> into the community's <code>#dev</code> channel (add the bot to the community first). In GitHub: <em>Settings → Webhooks → Add webhook</em>, the URL is an HTTPS address that reaches port 9000 (through a proxy, see <a href="https://getlumora.pages.dev/developers/production/#http-api-security">Production</a>), <em>Content type</em> <code>application/json</code>, <em>Secret</em> equal to <code>GITHUB_SECRET</code>. Python's standard library is enough:</p></div>
+<pre class="code"><code data-lang="py">import hashlib, hmac, json, os, urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+API = &quot;http://127.0.0.1:8081/bot&quot; + os.environ[&quot;LUMORA_BOT_TOKEN&quot;]
+CHAT = &quot;g:3f9a1c0e8b7d4e2fa1b2c3d4e5f60718#dev&quot;      # community channel
+SECRET = os.environ[&quot;GITHUB_SECRET&quot;].encode()
+
+def send(text):
+    req = urllib.request.Request(API + &quot;/sendMessage&quot;, method=&quot;POST&quot;,
+                                 data=json.dumps({&quot;chat_id&quot;: CHAT, &quot;text&quot;: text, &quot;parse_mode&quot;: &quot;HTML&quot;}).encode(),
+                                 headers={&quot;Content-Type&quot;: &quot;application/json&quot;})
+    urllib.request.urlopen(req, timeout=10).read()
+
+class GitHub(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers[&quot;Content-Length&quot;]))
+        sig = &quot;sha256=&quot; + hmac.new(SECRET, body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, self.headers.get(&quot;X-Hub-Signature-256&quot;, &quot;&quot;)):
+            self.send_response(401); self.end_headers(); return
+        ev, p = self.headers.get(&quot;X-GitHub-Event&quot;), json.loads(body)
+        if ev == &quot;push&quot;:
+            lines = [f&quot;• &lt;code&gt;{c[&#x27;id&#x27;][:7]}&lt;/code&gt; {c[&#x27;message&#x27;].splitlines()[0]}&quot; for c in p[&quot;commits&quot;][:5]]
+            send(f&quot;&lt;b&gt;{p[&#x27;repository&#x27;][&#x27;full_name&#x27;]}&lt;/b&gt;: {len(p[&#x27;commits&#x27;])} commit\n&quot; + &quot;\n&quot;.join(lines))
+        elif ev == &quot;pull_request&quot; and p[&quot;action&quot;] in (&quot;opened&quot;, &quot;closed&quot;):
+            pr = p[&quot;pull_request&quot;]
+            send(f&quot;&lt;b&gt;PR #{pr[&#x27;number&#x27;]}&lt;/b&gt; {p[&#x27;action&#x27;]}: {pr[&#x27;title&#x27;]}\n{pr[&#x27;html_url&#x27;]}&quot;)
+        self.send_response(204); self.end_headers()
+
+HTTPServer((&quot;127.0.0.1&quot;, 9000), GitHub).serve_forever()</code></pre>
+<div class="l-vi"><p>Không cần máy chủ nhận? Trong GitHub Actions, một bước <code>curl</code> gọi thẳng <code>sendMessage</code> cũng được, nếu API của bot truy cập được qua HTTPS (token để trong <em>Secrets</em>).</p>
+<p><strong>Bot Python bằng <code>requests</code> và <code>getUpdates</code></strong> (không cần SDK, chỉ HTTP thuần):</p></div>
+<div class="l-en" lang="en"><p>No receiver at all? A GitHub Actions step can <code>curl</code> <code>sendMessage</code> directly, as long as the bot's API is reachable over HTTPS (keep the token in <em>Secrets</em>).</p>
+<p><strong>A Python bot with <code>requests</code> and <code>getUpdates</code></strong> (no SDK, plain HTTP):</p></div>
+<pre class="code"><code data-lang="py">import os, requests
+
+API = &quot;http://127.0.0.1:8081/bot&quot; + os.environ[&quot;LUMORA_BOT_TOKEN&quot;]
+
+def call(method, **params):
+    r = requests.post(f&quot;{API}/{method}&quot;, json=params, timeout=70).json()
+    if not r[&quot;ok&quot;]:
+        raise RuntimeError(r[&quot;description&quot;])
+    return r[&quot;result&quot;]
+
+call(&quot;setMyCommands&quot;, commands=[{&quot;command&quot;: &quot;start&quot;, &quot;description&quot;: &quot;Bắt đầu&quot;},
+                                {&quot;command&quot;: &quot;time&quot;, &quot;description&quot;: &quot;Giờ máy chủ&quot;}])
+offset = 0
+while True:
+    for u in call(&quot;getUpdates&quot;, offset=offset, timeout=50):
+        offset = u[&quot;update_id&quot;] + 1
+        if &quot;callback_query&quot; in u:
+            q = u[&quot;callback_query&quot;]
+            call(&quot;answerCallbackQuery&quot;, callback_query_id=q[&quot;id&quot;])
+            call(&quot;sendMessage&quot;, chat_id=q[&quot;message&quot;][&quot;chat&quot;][&quot;id&quot;], text=f&quot;Bạn chọn: {q[&#x27;data&#x27;]}&quot;)
+            continue
+        m = u.get(&quot;message&quot;)
+        if not m or &quot;text&quot; not in m:
+            continue
+        if m[&quot;text&quot;].startswith(&quot;/start&quot;):
+            call(&quot;sendMessage&quot;, chat_id=m[&quot;chat&quot;][&quot;id&quot;], text=f&quot;Chào **{m[&#x27;from&#x27;][&#x27;first_name&#x27;]}**!&quot;,
+                 reply_markup={&quot;inline_keyboard&quot;: [[{&quot;text&quot;: &quot;👍&quot;, &quot;callback_data&quot;: &quot;like&quot;},
+                                                    {&quot;text&quot;: &quot;👎&quot;, &quot;callback_data&quot;: &quot;dislike&quot;}]]})
+        elif m[&quot;text&quot;].startswith(&quot;/time&quot;):
+            import datetime
+            call(&quot;sendMessage&quot;, chat_id=m[&quot;chat&quot;][&quot;id&quot;], text=str(datetime.datetime.now()),
+                 reply_to_message_id=m[&quot;message_id&quot;])</code></pre>
 </section>
 
       </article>
@@ -578,6 +801,8 @@ async def weather(ctx):
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

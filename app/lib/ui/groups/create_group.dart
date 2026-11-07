@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
+import '../../state/community_defaults.dart';
 import '../../state/stores.dart';
 import '../chats/chat_view.dart';
 import '../theme.dart';
@@ -62,10 +63,16 @@ class _CreateGroupFormState extends State<CreateGroupForm> {
     try {
       final api = context.read<LumoraApi>();
       final spaces = context.read<SpacesStore>();
+      final defaults = context.read<CommunityDefaults>();
       final conv = _community
           ? await api.createCommunity(_name.text.trim(), _selected.toList())
           : await api.createGroup(_name.text.trim(), _selected.toList());
-      if (_community) await spaces.load();
+      if (_community) {
+        await spaces.load();
+        // "Default history retention for communities" (Settings › Privacy)
+        final space = conv.length > 2 ? spaces.byId(conv.substring(2)) : null;
+        await defaults.adopt(conv, channels: [for (final c in space?.channels ?? const <Channel>[]) c.conv]);
+      }
       if (mounted) Navigator.pop(context, conv);
     } catch (e) {
       if (mounted) toastError(context, e);

@@ -79,7 +79,7 @@
   </section>
   <section class="section section--tight">
     <div class="container api-layout">
-      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#limits"><span class="l-vi">Giới hạn</span><span class="l-en" lang="en">Limits</span></a></li><li><a href="#security"><span class="l-vi">Bảo mật</span><span class="l-en" lang="en">Security</span></a></li><li><a href="#deploy"><span class="l-vi">Chạy 24/7</span><span class="l-en" lang="en">Running 24/7</span></a></li><li><a href="#operations"><span class="l-vi">Cập nhật, sao lưu, theo dõi</span><span class="l-en" lang="en">Updates, backups, monitoring</span></a></li><li><a href="#troubleshooting"><span class="l-vi">Khắc phục sự cố</span><span class="l-en" lang="en">Troubleshooting</span></a></li><li><a href="#faq"><span class="l-vi">Câu hỏi thường gặp</span><span class="l-en" lang="en">FAQ</span></a></li></ul></nav>
+      <nav class="api-toc glass" aria-label="Table of contents"><p class="overline"><span class="l-vi">Trên trang này</span><span class="l-en" lang="en">On this page</span></p><ul><li><a href="#limits"><span class="l-vi">Giới hạn</span><span class="l-en" lang="en">Limits</span></a></li><li><a href="#security"><span class="l-vi">Bảo mật</span><span class="l-en" lang="en">Security</span></a></li><li><a href="#http-api-security"><span class="l-vi">Bảo mật API HTTP</span><span class="l-en" lang="en">HTTP API security</span></a></li><li><a href="#deploy"><span class="l-vi">Chạy 24/7</span><span class="l-en" lang="en">Running 24/7</span></a></li><li><a href="#operations"><span class="l-vi">Cập nhật, sao lưu, theo dõi</span><span class="l-en" lang="en">Updates, backups, monitoring</span></a></li><li><a href="#troubleshooting"><span class="l-vi">Khắc phục sự cố</span><span class="l-en" lang="en">Troubleshooting</span></a></li><li><a href="#faq"><span class="l-vi">Câu hỏi thường gặp</span><span class="l-en" lang="en">FAQ</span></a></li></ul></nav>
       <article class="prose prose--docs">
 <section class="doc-sec" id="limits"><h2><span class="l-vi">Giới hạn</span><span class="l-en" lang="en">Limits</span></h2>
 <div class="l-vi"><div class="table-wrap"><table class="table table--api">
@@ -235,18 +235,18 @@
 </section>
 <section class="doc-sec" id="security"><h2><span class="l-vi">Bảo mật</span><span class="l-en" lang="en">Security</span></h2>
 <div class="l-vi"><ul>
-<li><strong>Token là chìa khóa của bot.</strong> Ai có token là điều khiển được bot. Đặt token trong biến môi trường <code>LUMORA_BOT_TOKEN</code> hoặc tệp môi trường chỉ chủ máy đọc được (<code>chmod 600</code>); đừng đưa vào mã nguồn, ảnh chụp màn hình hay kho mã công khai. SDK chuyển token cho Lumora Bot Runner qua biến môi trường, không qua dòng lệnh.</li>
-<li><strong>Lỡ lộ token:</strong> trong Lumora, gửi <code>/mybots</code> cho BotFather, chọn bot, bấm <strong>Thu hồi mã</strong>. Token cũ ngừng hoạt động ngay; bot nhận khóa mới nên hãy chạy token mới với <strong>thư mục dữ liệu mới</strong>. @tên của bot giữ nguyên.</li>
+<li><strong>Token là chìa khoá của bot.</strong> Ai có token là điều khiển được bot. Đặt token trong biến môi trường <code>LUMORA_BOT_TOKEN</code> hoặc tệp môi trường chỉ chủ máy đọc được (<code>chmod 600</code>); đừng đưa vào mã nguồn, ảnh chụp màn hình hay kho mã công khai. SDK chuyển token cho Lumora Bot Runner qua biến môi trường, không qua dòng lệnh.</li>
+<li><strong>Lỡ lộ token:</strong> trong Lumora, gửi <code>/mybots</code> trong Xưởng Bot, chọn bot, bấm <strong>Thu hồi mã</strong>. Token cũ ngừng hoạt động ngay; bot nhận khoá mới nên hãy chạy token mới với <strong>thư mục dữ liệu mới</strong>. @tên của bot giữ nguyên.</li>
 <li><strong>Thư mục dữ liệu</strong> chứa danh tính, tin nhắn và <code>bot-storage.json</code> của bot. Chỉ cho tài khoản chạy bot đọc (<code>chmod 700</code>), sao lưu định kỳ, mỗi bot một thư mục và chỉ một tiến trình dùng nó.</li>
 <li><strong>Quản trị viên của bot:</strong> ghi đầy đủ <code>@tên·mã</code> (phần mã gắn với tài khoản nên không giả mạo được) hoặc mã người dùng.</li>
-<li><strong>Dữ liệu người dùng:</strong> tin nhắn được mã hóa đầu cuối giữa người dùng và bot, nhưng bot (và bạn) đọc được những gì gửi cho bot. Chỉ lưu thứ thật sự cần, không ghi nội dung tin nhắn vào log, cho người dùng cách hủy nhận tin.</li>
+<li><strong>Dữ liệu người dùng:</strong> tin nhắn được mã hoá đầu cuối giữa người dùng và bot, nhưng bot (và bạn) đọc được những gì gửi cho bot. Chỉ lưu thứ thật sự cần, không ghi nội dung tin nhắn vào log, cho người dùng cách huỷ nhận tin.</li>
 <li><strong>Đầu vào không tin cậy:</strong> kiểm tra <code>ctx.args</code>, cỡ tệp và loại tệp; không bao giờ chạy tệp người khác gửi.</li>
 <li><strong>Lệnh dành cho con người:</strong> điều khiển máy từ xa, cụm từ khôi phục, sao lưu, mật khẩu và cuộc gọi bị SDK chặn (<code>NotAllowedForBots</code>).</li>
 <li>Chạy bot bằng một tài khoản hệ thống riêng, không dùng quyền quản trị (root/Administrator).</li>
 </ul></div>
 <div class="l-en" lang="en"><ul>
 <li><strong>The token is your bot's key.</strong> Whoever has it controls the bot. Keep it in the <code>LUMORA_BOT_TOKEN</code> environment variable or in an environment file only the owner can read (<code>chmod 600</code>); never put it in source code, screenshots or public repositories. The SDK hands the token to Lumora Bot Runner through the environment, never on the command line.</li>
-<li><strong>If the token leaks:</strong> in Lumora, send <code>/mybots</code> to BotFather, pick the bot and tap <strong>Revoke token</strong>. The old token stops working at once; the bot gets a new key, so run the new token with a <strong>new data folder</strong>. The bot's @username stays the same.</li>
+<li><strong>If the token leaks:</strong> in Lumora, send <code>/mybots</code> in Bot Studio, pick the bot and tap <strong>Revoke token</strong>. The old token stops working at once; the bot gets a new key, so run the new token with a <strong>new data folder</strong>. The bot's @username stays the same.</li>
 <li><strong>The data folder</strong> holds the bot's identity, messages and <code>bot-storage.json</code>. Make it readable only by the account running the bot (<code>chmod 700</code>), back it up, and use one folder per bot with only one process at a time.</li>
 <li><strong>Bot admins:</strong> use the full <code>@name·tag</code> (the tag is bound to the account, so it can't be faked) or the user id.</li>
 <li><strong>User data:</strong> messages are end-to-end encrypted between users and the bot, but the bot (and you) can read what is sent to it. Keep only what you need, don't log message content, and let people unsubscribe.</li>
@@ -254,6 +254,30 @@
 <li><strong>Things only people may do:</strong> remote control, the recovery phrase, backups, passwords and calls are blocked by the SDK (<code>NotAllowedForBots</code>).</li>
 <li>Run the bot under its own system account, never as root/Administrator.</li>
 </ul></div>
+</section>
+<section class="doc-sec" id="http-api-security"><h2><span class="l-vi">Bảo mật API HTTP</span><span class="l-en" lang="en">HTTP API security</span></h2>
+<div class="l-vi"><p><a href="https://getlumora.pages.dev/developers/guides/#http-api">API HTTP cho bot</a> (<code>--http-api</code>) cho ai có token toàn quyền gửi tin thay bot, đọc tin gửi tới bot và đọc tệp trên máy chạy bot (gửi tệp bằng đường dẫn). Vì vậy:</p>
+<ul>
+<li><strong>Mặc định chỉ trên máy này.</strong> <code>--http-api 8081</code> hay <code>--http-api 127.0.0.1:8081</code> chỉ nghe ở <code>127.0.0.1</code>. Địa chỉ khác (<code>0.0.0.0:8081</code>, IP mạng LAN) bị từ chối trừ khi thêm <code>--http-api-public</code>.</li>
+<li><strong>⚠️ Mở ra Internet: luôn đặt sau HTTPS.</strong> API nói HTTP thường; token nằm trong đường dẫn nên ai nghe lén được là lấy được bot. Dùng proxy có TLS (Caddy, nginx) trên cùng máy, để bot vẫn nghe ở <code>127.0.0.1</code>, và <strong>tắt ghi log đường dẫn</strong> ở proxy (token nằm trong URL). Chỉ dùng <code>--http-api-public</code> khi không có cách nào khác, và chặn bằng tường lửa chỉ cho máy cần gọi.</li>
+<li><strong>Webhook:</strong> đặt <code>secret_token</code> và kiểm tra tiêu đề <code>X-Lumora-Bot-Secret</code> ở máy nhận; nên dùng URL <code>https://</code>.</li>
+<li><strong>Gửi tệp bằng đường dẫn</strong> đọc được mọi tệp mà tài khoản chạy bot đọc được: chạy bot bằng tài khoản hệ thống riêng (xem trên).</li>
+<li><code>bot_api.json</code> trong thư mục dữ liệu chứa cập nhật đang chờ và <code>secret_token</code> của webhook (quyền <code>600</code>); tệp tải lên nằm trong <code>bot_api_uploads/</code> và tự xoá sau 30 ngày.</li>
+<li>Lỡ lộ token: thu hồi trong Xưởng Bot như trên; token cũ hết hiệu lực với cả API HTTP.</li>
+</ul></div>
+<div class="l-en" lang="en"><p>The <a href="https://getlumora.pages.dev/developers/guides/#http-api">HTTP Bot API</a> (<code>--http-api</code>) gives whoever has the token full power to send as the bot, read what is sent to it, and read files on the bot's computer (sending files by path). So:</p>
+<ul>
+<li><strong>This computer only, by default.</strong> <code>--http-api 8081</code> or <code>--http-api 127.0.0.1:8081</code> listens on <code>127.0.0.1</code> only. Any other address (<code>0.0.0.0:8081</code>, a LAN IP) is refused unless you add <code>--http-api-public</code>.</li>
+<li><strong>⚠️ Exposed to the Internet: always behind HTTPS.</strong> The API speaks plain HTTP and the token is in the path, so anyone who can listen in gets the bot. Put a TLS proxy (Caddy, nginx) on the same machine, keep the bot on <code>127.0.0.1</code>, and <strong>turn off path logging</strong> in the proxy (the token is in the URL). Use <code>--http-api-public</code> only when there is no other way, with a firewall that lets in only the machines that need it.</li>
+<li><strong>Webhooks:</strong> set <code>secret_token</code> and check the <code>X-Lumora-Bot-Secret</code> header on the receiving side; prefer <code>https://</code> URLs.</li>
+<li><strong>Sending files by path</strong> can read any file the bot's account can read: run the bot under its own system account (see above).</li>
+<li><code>bot_api.json</code> in the data folder holds pending updates and the webhook's <code>secret_token</code> (mode <code>600</code>); uploads live in <code>bot_api_uploads/</code> and are deleted after 30 days.</li>
+<li>If the token leaks: revoke it in Bot Studio as above; the old token stops working for the HTTP API too.</li>
+</ul></div>
+<pre class="code"><code data-lang="ini"># Caddyfile: https://bot.example.com → Lumora Bot Runner on 127.0.0.1:8081 (no access log)
+bot.example.com {
+    reverse_proxy 127.0.0.1:8081
+}</code></pre>
 </section>
 <section class="doc-sec" id="deploy"><h2><span class="l-vi">Chạy 24/7</span><span class="l-en" lang="en">Running 24/7</span></h2>
 <div class="l-vi"><p>Bot chạy khi máy chạy bot đang bật: một máy ở nhà hay ở cửa hàng, hoặc một máy chủ ảo nhỏ nhất đều đủ. SDK tự khởi động lại Lumora Bot Runner nếu nó dừng bất ngờ, và tắt êm khi nhận SIGTERM hoặc Ctrl+C (chờ các hàm xử lý đang chạy xong, lưu dữ liệu rồi mới thoát).</p>
@@ -341,7 +365,7 @@ nssm start HoaMaiBot</code></pre>
 <tbody>
 <tr>
 <td><code>LUMORA_BOT_TOKEN</code></td>
-<td>Token từ BotFather / BotFather token</td>
+<td>Token từ Xưởng Bot / Bot Studio token (cũng dùng cho <code>--http-api</code> / also used by <code>--http-api</code>)</td>
 </tr>
 <tr>
 <td><code>LUMORAD</code></td>
@@ -391,7 +415,7 @@ nssm start HoaMaiBot</code></pre>
 </tr>
 <tr>
 <td><code>err.bad_bot_token</code></td>
-<td>Token chép thiếu hoặc đã bị thu hồi. Lấy lại trong BotFather (<code>/mybots</code> → Mã bí mật).</td>
+<td>Token chép thiếu hoặc đã bị thu hồi. Lấy lại trong Xưởng Bot (<code>/mybots</code> → Mã bí mật).</td>
 </tr>
 <tr>
 <td><code>err.bot_token_mismatch</code></td>
@@ -410,7 +434,7 @@ nssm start HoaMaiBot</code></pre>
 <td>Ở chế độ riêng tư bot chỉ thấy lệnh <code>/…</code>, tin nhắc @bot và tin trả lời bot. Thành viên vào nhóm sau khi bot được thêm cần chế độ "đọc mọi tin". Xem <a href="https://getlumora.pages.dev/developers/guides/#groups">Nhóm</a>.</td>
 </tr>
 <tr>
-<td><code>err.group_syncing</code> khi sửa, xóa, ghim hay quản trị trong nhóm</td>
+<td><code>err.group_syncing</code> khi sửa, xoá, ghim hay quản trị trong nhóm</td>
 <td>Bot đang ở chế độ riêng tư: các việc này cần quyền "đọc mọi tin" (và quyền quản trị viên cho việc quản trị).</td>
 </tr>
 <tr>
@@ -453,7 +477,7 @@ nssm start HoaMaiBot</code></pre>
 </tr>
 <tr>
 <td><code>err.bad_bot_token</code></td>
-<td>The token was copied incompletely or has been revoked. Get it again in BotFather (<code>/mybots</code> → Secret token).</td>
+<td>The token was copied incompletely or has been revoked. Get it again in Bot Studio (<code>/mybots</code> → Secret token).</td>
 </tr>
 <tr>
 <td><code>err.bot_token_mismatch</code></td>
@@ -541,6 +565,8 @@ nssm start HoaMaiBot</code></pre>
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

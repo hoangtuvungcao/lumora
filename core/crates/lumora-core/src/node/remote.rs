@@ -108,6 +108,19 @@ struct AuthV2 {
     sig: Vec<u8>,
 }
 
+/// Host → controller (`ext::REMOTE_ACTION_RESULT`): the outcome of a power action.
+#[derive(Serialize, Deserialize, Debug)]
+struct ActionResult {
+    session: [u8; 16],
+    #[serde(default)]
+    action: String,
+    #[serde(default)]
+    ok: bool,
+    /// message key (`err.…`) when it failed
+    #[serde(default)]
+    code: String,
+}
+
 // ---------------------------------------------------------------- IP privacy: pre-auth
 //
 // A viewer that is not a friend first proves the password over sealed signaling mail
@@ -195,6 +208,19 @@ enum Verdict {
 /// Execute a power action on this machine (host side).
 fn power_action(action: &str) -> Result<()> {
     use std::process::Command;
+    // Tests never lock / restart / log out the machine they run on: unit tests always
+    // simulate; debug builds simulate when `LUMORA_TEST_POWER` is set (`fail=a,b` makes
+    // those actions fail). Release builds ignore the variable.
+    let sim = if cfg!(test) { Some(String::new()) } else if cfg!(debug_assertions) { std::env::var("LUMORA_TEST_POWER").ok() } else { None };
+    if let Some(v) = sim {
+        tracing::info!("power action {action:?} simulated (test hook)");
+        if !matches!(action, "lock" | "restart" | "logout") {
+            return Err(anyhow!("unsupported"));
+        }
+        let fails = v.strip_prefix("fail=").is_some_and(|l| l.split(',').any(|a| a.trim() == action));
+        anyhow::ensure!(!fails, "simulated failure");
+        return Ok(());
+    }
     let ok = |c: &mut Command| -> Result<()> {
         let st = c.status()?;
         anyhow::ensure!(st.success(), "command failed: {st}");
@@ -311,6 +337,10 @@ pub struct Call {
     pub media_started: AtomicBool,
     /// Everyone we rang (caller side) — they must hear about a hang-up before answering.
     pub invited: Mutex<Vec<PeerId>>,
+    /// A community voice room (node/voice.rs): never rings, goes on while empty.
+    pub room: bool,
+    /// Devices talking right now (`Ext CALL_SPEAKING`; this device too).
+    pub speaking: Mutex<Vec<PeerId>>,
 }
 
 pub struct RemoteState {
@@ -335,6 +365,9 @@ pub struct RemoteState {
     pub frames: Mutex<HashMap<u32, FrameSlot>>,
     next_stream: AtomicU32,
     pub calls: Mutex<HashMap<[u8; 16], Arc<Call>>>,
+    /// Caller side: devices offered a group call as a "Join" banner (not rung). They hear
+    /// the hang-up, but never keep the call "ringing" (`Call::invited` = rung devices).
+    pub(crate) call_banners: Mutex<HashMap<[u8; 16], Vec<PeerId>>>,
     #[cfg(feature = "media")]
     pub(crate) media: super::media_pipe::MediaState,
     #[cfg(feature = "media")]
@@ -363,6 +396,7 @@ impl RemoteState {
             frames: Mutex::new(HashMap::new()),
             next_stream: AtomicU32::new(1),
             calls: Mutex::new(HashMap::new()),
+            call_banners: Mutex::new(HashMap::new()),
             #[cfg(feature = "media")]
             media: Default::default(),
             #[cfg(feature = "media")]
@@ -609,7 +643,8 @@ impl RemoteState {
                 p.retain(|x| x != peer);
                 (p.len() != n, p.is_empty())
             };
-            if empty {
+            c.speaking.lock().retain(|x| x != peer);
+            if empty && !c.room {
                 node.end_call(&c.id, false);
             } else if was_in {
                 node.call_peer_left(&c, peer);
@@ -693,6 +728,21 @@ impl RemoteState {
                 };
                 let _ = pc.ctl.try_send(proto::ext(proto::ext::REMOTE_AUTH_V2, &AuthV2 { session: m.session, proof: p.to_vec(), sig }));
                 node.emit("remote_state", json!({"session": hex::encode(m.session), "peer": pc.account.to_base32(), "state": "waiting", "role": "viewer"}));
+            }
+            proto::ext::REMOTE_ACTION_RESULT => {
+                let m: ActionResult = proto::ext_body(body)?;
+                let Some(s) = self.sessions.lock().get(&m.session).cloned() else { return Ok(()) };
+                if s.peer != pc.peer || s.role != Role::Viewer || !matches!(m.action.as_str(), "lock" | "restart" | "logout") {
+                    return Ok(());
+                }
+                let mut ev = json!({"session": hex::encode(m.session), "peer": pc.account.to_base32(), "action": m.action, "ok": m.ok});
+                if !m.ok {
+                    // only known message keys reach the UI
+                    let code = if m.code == "err.power_not_allowed" { "err.power_not_allowed" } else { "err.power_failed" };
+                    ev["code"] = json!(code);
+                    ev["error"] = json!(crate::i18n::tr(code));
+                }
+                node.emit("remote_action_result", ev);
             }
             _ => {}
         }
@@ -780,11 +830,22 @@ impl RemoteState {
                             _ => Err(anyhow!("unknown action")),
                         };
                         let mut ev = json!({"session": hex::encode(session), "action": action, "ok": r.is_ok()});
+                        let mut code = String::new();
                         if let Err(e) = r {
                             let e = crate::i18n::or_user(e, "err.power_failed");
                             for (k, v) in crate::i18n::error_fields(&e) {
                                 ev[k] = v;
                             }
+                            code = ev["code"].as_str().unwrap_or("err.power_failed").to_string();
+                            if code == "internal" {
+                                code = "err.power_failed".into();
+                            }
+                        }
+                        // tell the controller how it went (before a restart / log out
+                        // takes this computer down, if it gets that far)
+                        if pc.proto.load(Ordering::Relaxed) >= proto::PROTO_V3 {
+                            let ok = ev["ok"].as_bool().unwrap_or(false);
+                            let _ = pc.ctl.try_send(proto::ext(proto::ext::REMOTE_ACTION_RESULT, &ActionResult { session, action: action.clone(), ok, code }));
                         }
                         node.emit("remote_action", ev);
                     }
@@ -904,8 +965,22 @@ impl RemoteState {
                     if !node.group_members(&g).contains(&acct) {
                         return Ok(());
                     }
+                    // offered to me as a "Join" banner: the invite behind it is only for
+                    // builds that don't know banners
+                    if node.banner_call_from(&call_id, &from) {
+                        return Ok(());
+                    }
                 }
                 if node.store.is_blocked(&acct) {
+                    return Ok(());
+                }
+                // "who can call me": a call that may not ring here never does (strangers are
+                // also rate limited); a group call becomes a "Join" banner instead
+                if !node.call_allowed_from(&acct) {
+                    tracing::info!("call from {acct:?} not rung here (who can call me)");
+                    if let Some(g) = group {
+                        node.note_available_call(call_id, g, video, from);
+                    }
                     return Ok(());
                 }
                 let conv = match group {
@@ -946,6 +1021,8 @@ impl RemoteState {
                     incoming_from: Some(from),
                     media_started: AtomicBool::new(false),
                     invited: Mutex::new(vec![]),
+                    room: false,
+                    speaking: Mutex::new(vec![]),
                 });
                 self.calls.lock().insert(call_id, c.clone());
                 node.emit_call(&c);
@@ -968,10 +1045,19 @@ impl RemoteState {
                 }
                 // the callee's other devices that are still ringing: the first answer wins,
                 // and a decline on one device is the account's answer
+                // a decline from a device only offered the "Join" banner (an older build
+                // rings on the invite behind it) is that member's answer, never the call's end
+                let banner_only = !c.invited.lock().contains(&from) && self.call_banners.lock().get(&call_id).is_some_and(|b| b.contains(&from));
                 let others: Vec<PeerId> = {
                     let mut inv = c.invited.lock();
-                    let o: Vec<PeerId> = inv.iter().filter(|d| **d != from && node.account_of(d) == acct).copied().collect();
+                    let mut o: Vec<PeerId> = inv.iter().filter(|d| **d != from && node.account_of(d) == acct).copied().collect();
                     inv.retain(|d| !o.contains(d) && (accept || *d != from));
+                    // (older builds ring on a banner's invite: their siblings stop too)
+                    if let Some(b) = self.call_banners.lock().get_mut(&call_id) {
+                        let ob: Vec<PeerId> = b.iter().filter(|d| **d != from && node.account_of(d) == acct && !o.contains(d)).copied().collect();
+                        b.retain(|d| !ob.contains(d) && *d != from);
+                        o.extend(ob);
+                    }
                     o
                 };
                 if !others.is_empty() {
@@ -1006,14 +1092,16 @@ impl RemoteState {
                     if !empty {
                         node.call_peer_left(&c, &from);
                     }
-                    // others still ringing (group call): keep going
+                    // others still ringing (group call): keep going — rung devices only, a
+                    // "Join" banner never keeps a call ringing
                     let ringing = c.invited.lock().iter().any(|d| node.account_of(d) != acct);
-                    if empty && !(ringing && *c.state.lock() == "ringing") {
+                    if empty && !banner_only && !(ringing && *c.state.lock() == "ringing") {
                         node.end_call(&call_id, false);
                     }
                 }
             }
             PeerMsg::CallEnd { call_id } => {
+                node.available_call_ended(&call_id, &from);
                 let Some(c) = self.calls.lock().get(&call_id).cloned() else { return Ok(()) };
                 if !call_may_join(node, &c, &from, &acct) {
                     return Ok(());
@@ -1024,7 +1112,9 @@ impl RemoteState {
                     p.retain(|x| *x != from);
                     (p.len() != n, p.is_empty())
                 };
-                if empty {
+                c.speaking.lock().retain(|x| *x != from);
+                // a voice room goes on with nobody else in it
+                if empty && !c.room {
                     node.end_call(&call_id, false);
                 } else if was_in {
                     node.call_peer_left(&c, &from);
@@ -1056,8 +1146,15 @@ impl RemoteState {
 
 /// May device `from` (account `acct`) join or answer call `c`? Only a device we
 /// rang, one already in the call, or — for a group call — a member of that group.
-fn call_may_join(node: &Node, c: &Call, from: &PeerId, acct: &PeerId) -> bool {
-    if c.peers.lock().contains(from) || c.invited.lock().contains(from) {
+/// Never for a voice room.
+pub(super) fn call_may_join(node: &Node, c: &Call, from: &PeerId, acct: &PeerId) -> bool {
+    // a voice room is joined through presence only (`room_add_peer`, for a device with a
+    // live presence entry): an invite / answer naming its id must never put a device in
+    // `peers` — it would get everyone's audio without showing up in the room
+    if c.room {
+        return false;
+    }
+    if c.peers.lock().contains(from) || c.invited.lock().contains(from) || node.remote.call_banners.lock().get(&c.id).is_some_and(|b| b.contains(from)) {
         return true;
     }
     if node.store.is_blocked(acct) {
@@ -1303,17 +1400,41 @@ impl Node {
             "participants": peers, "mic": c.mic.load(Ordering::Relaxed), "cam": c.cam.load(Ordering::Relaxed),
             "screen": c.screen.load(Ordering::Relaxed), "duration_s": c.answered.lock().map(|t| t.elapsed().as_secs()).unwrap_or(0),
             "from": c.incoming_from.map(|p| self.account_of(&p).to_base32()),
+            "room": c.room,
+            // (this device as the account, like the app's own tile)
+            "speaking": c.speaking.lock().iter().map(|d| if *d == self.device { self.me.to_base32() } else { d.to_base32() }).collect::<Vec<_>>(),
         })
     }
 
     pub async fn call_start(self: &Arc<Self>, conv: &str, video: bool) -> Result<Value> {
+        self.call_start_ex(conv, video, None).await
+    }
+
+    /// `ring`: in a group, the members whose devices ring (None: everyone); the others get
+    /// a "Join" banner (`Ext CALL_AVAILABLE`). Nobody rung: the call is open at once.
+    pub(crate) async fn call_start_ex(self: &Arc<Self>, conv: &str, video: bool, ring: Option<Vec<PeerId>>) -> Result<Value> {
+        // a community voice channel is a drop-in room: joined, never rung
+        if self.voice_channel(conv).is_some() {
+            return self.voice_join(conv).await;
+        }
         anyhow::ensure!(self.remote.calls.lock().is_empty(), crate::i18n::user_err("err.in_other_call"));
         let call_id: [u8; 16] = crate::crypto::random_bytes();
+        let mut offered: Vec<PeerId> = vec![];
         let (targets, group) = match parse_conv(conv)? {
             ConvRef::Direct(p) => (vec![p], None),
-            ConvRef::Group(g, _) => (self.group_members(&g).into_iter().filter(|m| *m != self.me).collect(), Some(g)),
+            ConvRef::Group(g, _) => {
+                let all: Vec<PeerId> = self.group_members(&g).into_iter().filter(|m| *m != self.me).collect();
+                match &ring {
+                    Some(r) => {
+                        offered = all.iter().filter(|m| !r.contains(m)).copied().collect();
+                        (all.into_iter().filter(|m| r.contains(m)).collect(), Some(g))
+                    }
+                    None => (all, Some(g)),
+                }
+            }
             ConvRef::Saved => bail!(crate::i18n::user_err("err.cannot_call_saved")),
         };
+        let open_now = group.is_some() && targets.is_empty();
         let c = Arc::new(Call {
             id: call_id,
             conv: conv.to_string(),
@@ -1324,12 +1445,17 @@ impl Node {
             cam: AtomicBool::new(video),
             screen: AtomicBool::new(false),
             started: Instant::now(),
-            answered: Mutex::new(None),
+            answered: Mutex::new(open_now.then(Instant::now)),
             stop: Arc::new(AtomicBool::new(false)),
             incoming_from: None,
             media_started: AtomicBool::new(false),
             invited: Mutex::new(vec![]),
+            room: false,
+            speaking: Mutex::new(vec![]),
         });
+        if open_now {
+            *c.state.lock() = "active".into();
+        }
         // every device of every callee rings (the first to answer wins); never my own devices
         let mut rung: Vec<(PeerId, PeerId)> = vec![];
         for t in targets.into_iter().take(24) {
@@ -1342,6 +1468,17 @@ impl Node {
         *c.invited.lock() = rung.iter().map(|(_, d)| *d).collect();
         self.remote.calls.lock().insert(call_id, c.clone());
         self.emit_call(&c);
+        if let Some(g) = group {
+            // members not rung: a "Join" banner (they hear the hang-up like the rung ones,
+            // but are not "invited": only rung devices keep the call ringing)
+            let devs = self.offer_group_call(call_id, g, video, offered);
+            let mut b = self.remote.call_banners.lock();
+            let calls = self.remote.calls.lock();
+            b.retain(|id, _| calls.contains_key(id));
+            if !devs.is_empty() {
+                b.insert(call_id, devs);
+            }
+        }
         let mut woken: Vec<PeerId> = vec![];
         for (t, dev) in rung {
             let me = self.clone();
@@ -1354,7 +1491,13 @@ impl Node {
                 let mut tries = 0;
                 loop {
                     let sent = async {
-                        let pc = me.connect(dev).await?;
+                        // IP privacy: in a (public) group, a member who may not learn my
+                        // addresses is rung only over a live connection, never dialed
+                        let pc = match me.peer(&dev) {
+                            Some(pc) => pc,
+                            None if group.is_some() && !me.may_reveal_addrs(&dev) => bail!("not dialing a stranger for a group call"),
+                            None => me.connect(dev).await?,
+                        };
                         #[cfg(feature = "media")]
                         super::media_pipe::send_caps(&me, &pc); // codec choice needs no extra round trip
                         pc.ctl.send(PeerMsg::CallInvite { call_id, video, group }).await.map_err(|_| anyhow!("connection lost"))
@@ -1461,7 +1604,8 @@ impl Node {
             }
         }
         let mut notify: Vec<PeerId> = c.peers.lock().clone();
-        for p in c.invited.lock().iter() {
+        let banners = self.remote.call_banners.lock().remove(call_id).unwrap_or_default();
+        for p in c.invited.lock().iter().chain(banners.iter()) {
             if !notify.contains(p) {
                 notify.push(*p);
             }
@@ -1471,6 +1615,10 @@ impl Node {
         }
         *c.state.lock() = "ended".into();
         self.emit_call(&c);
+        if c.room {
+            self.voice_left(&c);
+            return;
+        }
         // call log entry in the conversation: the talk time from the moment it was picked
         // up; never picked up (cancelled, declined, unanswered) → a missed call, 0 s
         let answered = *c.answered.lock();
@@ -1506,6 +1654,9 @@ impl Node {
         let c = self.remote.calls.lock().get(call_id).cloned().ok_or_else(|| crate::i18n::user_err("err.call_ended"))?;
         if let Some(m) = mic {
             c.mic.store(m, Ordering::SeqCst);
+            if !m {
+                self.set_speaking(&c, self.device, false);
+            }
         }
         if let Some(v) = cam {
             let was = c.cam.swap(v, Ordering::SeqCst);
@@ -1533,6 +1684,9 @@ impl Node {
             );
         }
         self.emit_call(&c);
+        if c.room && mic.is_some() {
+            self.voice_muted(&c);
+        }
         Ok(())
     }
 }
@@ -1972,7 +2126,7 @@ mod pre_auth_tests {
 /// 1:1 calls whose only other side is `from` (see the `CallInvite` handler: that
 /// device ringing again means it left them).
 fn stale_calls_with(calls: &HashMap<[u8; 16], Arc<Call>>, from: &PeerId) -> Vec<[u8; 16]> {
-    calls.values().filter(|c| *c.peers.lock() == [*from]).map(|c| c.id).collect()
+    calls.values().filter(|c| !c.room && *c.peers.lock() == [*from]).map(|c| c.id).collect()
 }
 
 #[cfg(test)]

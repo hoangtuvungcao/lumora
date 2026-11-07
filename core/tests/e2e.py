@@ -144,6 +144,11 @@ def step(name):
     def deco(fn):
         def run(*a, **k):
             t = time.time()
+            # E2E_SKIP="remote control,burst": leave out scenarios whose name contains one
+            skip = [x.strip() for x in os.environ.get("E2E_SKIP", "").split(",") if x.strip()]
+            if any(x in name for x in skip):
+                print(f"  ⏭  {name} (skipped)", flush=True)
+                return
             try:
                 fn(*a, **k)
                 RESULTS.append((name, True, time.time() - t, ""))
@@ -173,6 +178,12 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="lumora-e2e-")
     os.environ["E2E_TMP"] = tmp
+    # voice-room presence expires after 15 s here (45 s by default) so the crash step is quick
+    os.environ.setdefault("LUMORA_VOICE_TTL_MS", "15000")
+    # remote lock / restart / log out are simulated on the host (debug-build hook): this
+    # machine is never really locked, restarted or logged out; log out is made to fail
+    os.environ["LUMORA_TEST_POWER"] = "fail=logout"
+    os.environ.setdefault("LUMORA_TEST_CAMERA", "1")  # never open a real webcam
     extra = ["--no-nostr"]
     if a.relay:
         extra += ["--relay", a.relay, "--relay-delay", "0" if a.relay_only else "1500"]
@@ -311,11 +322,45 @@ def main():
             wait_until(full, 30, "full image downloaded")
         _()
 
+        @step("mobile data: a 3 MB photo downloads by itself, a 3 MB file waits for a tap; roaming: photos wait too")
+        def _():
+            ad = A.call("settings_get")["auto_download"]
+            assert ad["cell"]["photo"] == 5 << 20 and ad["cell"]["file"] == 0 and ad["cell"]["video"] == 0, ad
+            assert ad["wifi"]["file_group"] == 10 << 20 and ad["roaming"]["photo"] == 1 << 20, ad
+            assert A.call("set_network_hint", metered=True)["metered"]
+            try:
+                assert A.call("settings_get")["metered"]
+                doc = os.path.join(dirs["bob"], "so-tay-3mb.pdf")
+                open(doc, "wb").write(b"%PDF-1.4 " + os.urandom(3 << 20))
+                pic = os.path.join(dirs["bob"], "anh-3mb.jpg")
+                open(pic, "wb").write(b"\xff\xd8\xff\xe0" + os.urandom(3 << 20))
+                fd = B.call("send_file", conv=conv_ab, path=doc)["id"]
+                fp = B.call("send_file", conv=conv_ab, path=pic)["id"]
+                state = lambda fid: next((x["state"] for x in A.call("files") if x["id"] == fid), None)
+                wait_until(lambda: state(fp) == 2, 60, "3 MB photo auto-downloaded on mobile data")
+                assert state(fd) == 0, f"3 MB file downloaded on mobile data (state {state(fd)})"
+                # a tap still downloads it
+                A.call("accept_file", file_id=fd)
+                wait_until(lambda: state(fd) == 2, 60, "file downloaded after a tap")
+                # roaming (or a metered Wi-Fi): the same 3 MB photo is above the 1 MB limit
+                r = A.call("set_network_hint", network="roaming")
+                assert r["network"] == "roaming" and r["metered"], r
+                pic2 = os.path.join(dirs["bob"], "anh-3mb-2.jpg")
+                open(pic2, "wb").write(b"\xff\xd8\xff\xe0" + os.urandom(3 << 20))
+                fr = B.call("send_file", conv=conv_ab, path=pic2)["id"]
+                wait_until(lambda: state(fr) is not None, 30, "roaming photo offered")
+                time.sleep(2)
+                assert state(fr) == 0, f"3 MB photo downloaded while roaming (state {state(fr)})"
+            finally:
+                A.call("set_network_hint", network="wifi")
+            assert not A.call("settings_get")["metered"] and A.call("settings_get")["network"] == "wifi"
+        _()
+
         @step("file previews before download: .py snippet, .pdf first page, binary .txt refused")
         def _():
             import base64
             # Alice only downloads on demand, so everything below is seen *before* the download
-            A.call("set_storage_policy", auto_direct=0)
+            A.call("settings_set", auto_download={"wifi": {"file": 0}})
             try:
                 py = os.path.join(dirs["bob"], "xu_ly_anh.py")
                 code = "".join(f"def buoc_{i}(anh):\n    return anh  # bước {i} ✓\n\n" for i in range(400))
@@ -354,7 +399,7 @@ def main():
                 e = A.wait_event(lambda e: e["event"] == "message" and isinstance(e.get("body"), dict) and e["body"].get("file_id") == fw["id"], what="forwarded pdf")
                 assert e["body"]["preview"]["pages"] == 12 and base64.b64decode(e["body"]["thumb"]) == jpg
             finally:
-                A.call("set_storage_policy", auto_direct=25 << 20)
+                A.call("settings_set", auto_download={"wifi": {"file": 25 << 20, "file_group": 10 << 20}})
         _()
 
         @step("group: create, invite, chat, gossip, remove + key rotation")
@@ -422,6 +467,92 @@ def main():
             assert any(x["id"] == sv["id"] for x in A.call("messages", conv="s:me"))
         _()
 
+        @step("message rules: forward names, author-only 1-1 delete, 48 h edits, timers")
+        def _():
+            def msg(node, conv, mid):
+                xs = [x for x in node.call("messages", conv=conv) if x["id"] == mid]
+                return xs[0] if xs else None
+
+            def fence(sender, receiver, conv_s, conv_r):
+                # a later message from the same sender: everything before it was handled
+                f = sender.call("send_text", conv=conv_s, text="·")
+                wait_until(lambda: msg(receiver, conv_r, f["id"]) is not None, 15, "fence message")
+
+            # forwarding credits the author's own public name, never my nickname for them
+            A.call("rename_contact", peer=pb, alias="Bạn thân bí mật")
+            assert [c for c in A.call("contacts") if c["peer"] == pb][0].get("alias") == "Bạn thân bí mật"
+            src = B.call("send_text", conv=conv_ab, text="tin gốc của Bob")
+            wait_until(lambda: msg(A, f"d:{pb}", src["id"]) is not None, 15, "Bob's text")
+            fw = A.call("forward_message", msg_id=src["id"], to_conv=f"d:{pc}")
+            wait_until(lambda: msg(C, f"d:{pa}", fw["id"]) is not None, 15, "forwarded to Carol")
+            got = msg(C, f"d:{pa}", fw["id"])
+            assert got["meta"]["forwarded_from"] == "Bob", got["meta"]
+            assert "bí mật" not in json.dumps(got, ensure_ascii=False)
+            hid = A.call("forward_message", msg_id=src["id"], to_conv=f"d:{pc}", hide_sender=True)
+            wait_until(lambda: msg(C, f"d:{pa}", hid["id"]) is not None, 15, "hidden-sender forward")
+            got = msg(C, f"d:{pa}", hid["id"])
+            assert not (got.get("meta") or {}).get("forwarded_from"), got
+            A.call("rename_contact", peer=pb, alias="")
+
+            # 1-1: only the author deletes for both — Bob can't delete Alice's message
+            am = A.call("send_text", conv=f"d:{pb}", text="tin của Alice, Bob không xoá được")
+            wait_until(lambda: msg(B, conv_ab, am["id"]) is not None, 15, "Alice's msg at Bob")
+            try:
+                B.call("delete_message", conv=conv_ab, msg_id=am["id"], for_everyone=True)
+                raise AssertionError("Bob deleted Alice's message for both")
+            except RuntimeError as e:
+                assert "delete_not_yours" in str(e) or "chỉ có thể xoá" in str(e) or "own messages" in str(e), e
+            # an older / modified app sends the delete anyway: Alice ignores it
+            B.call("debug_action_unchecked", conv=conv_ab, msg_id=am["id"], kind="delete")
+            fence(B, A, conv_ab, f"d:{pb}")
+            assert not msg(A, f"d:{pb}", am["id"])["deleted"], "Alice's message deleted by Bob"
+            # "delete for me" still works on any message
+            B.call("delete_message", conv=conv_ab, msg_id=am["id"], for_everyone=False)
+            assert msg(B, conv_ab, am["id"]) is None
+
+            # edits: 48 h after the message's own signed time, no more
+            A.call("debug_backdate_next", ago_ms=47 * 3_600_000)
+            ok = A.call("send_text", conv=f"d:{pb}", text="47 giờ trước")
+            A.call("debug_backdate_next", ago_ms=49 * 3_600_000)
+            old = A.call("send_text", conv=f"d:{pb}", text="49 giờ trước")
+            assert old["hlc"] < ok["hlc"]
+            wait_until(lambda: msg(B, conv_ab, old["id"]) is not None and msg(B, conv_ab, ok["id"]) is not None, 15, "backdated msgs")
+            A.call("edit_message", conv=f"d:{pb}", msg_id=ok["id"], text="sửa kịp")
+            wait_until(lambda: msg(B, conv_ab, ok["id"])["body"].get("text") == "sửa kịp", 15, "edit within 48 h")
+            try:
+                A.call("edit_message", conv=f"d:{pb}", msg_id=old["id"], text="sửa muộn")
+                raise AssertionError("edit after 48 h accepted on send")
+            except RuntimeError as e:
+                assert "edit_too_late" in str(e) or "48" in str(e), e
+            A.call("debug_action_unchecked", conv=f"d:{pb}", msg_id=old["id"], kind="edit", text="sửa muộn")
+            fence(A, B, f"d:{pb}", conv_ab)
+            got = msg(B, conv_ab, old["id"])
+            assert got["body"].get("text") == "49 giờ trước" and not got["edited"], got
+
+            # self-destructing messages can't be forwarded
+            t = B.call("send_text", conv=conv_ab, text="tự huỷ sau 1 phút", ttl_ms=60_000)
+            wait_until(lambda: msg(A, f"d:{pb}", t["id"]) is not None, 15, "ttl msg")
+            for who, mid in ((A, t["id"]), (B, t["id"])):
+                try:
+                    who.call("forward_message", msg_id=mid, to_conv="s:me")
+                    raise AssertionError("forwarded a self-destructing message")
+                except RuntimeError as e:
+                    assert "cannot_forward_ttl" in str(e) or "tự huỷ" in str(e) or "Self-destructing" in str(e), e
+
+            # groups: a message removed by an admin says so (deleted_by ≠ author)
+            g = [g for g in A.call("groups")][0]
+            gm = B.call("send_text", conv=g["conv"], text="tin Bob trong nhóm")
+            wait_until(lambda: msg(A, g["conv"], gm["id"]) is not None, 20, "group msg at Alice")
+            A.call("delete_message", conv=g["conv"], msg_id=gm["id"])
+            wait_until(lambda: msg(B, g["conv"], gm["id"])["deleted"], 20, "admin removal reaches Bob")
+            assert msg(B, g["conv"], gm["id"]).get("deleted_by") == pa
+            own = B.call("send_text", conv=g["conv"], text="Bob tự thu hồi")
+            wait_until(lambda: msg(A, g["conv"], own["id"]) is not None, 20, "Bob's 2nd group msg")
+            B.call("delete_message", conv=g["conv"], msg_id=own["id"])
+            wait_until(lambda: msg(A, g["conv"], own["id"])["deleted"], 20, "author recall reaches Alice")
+            assert msg(A, g["conv"], own["id"]).get("deleted_by") == pb
+        _()
+
         @step("location (static + live), contact card, voice message, stories")
         def _():
             loc = A.call("send_location", conv=f"d:{pb}", lat=10.7769, lon=106.7009, accuracy_m=12, label="Hồ Chí Minh", live_minutes=15)
@@ -442,7 +573,7 @@ def main():
             B.wait_event(lambda e: e["event"] == "story" and e["id"] == st["id"], what="story")
             assert any(x["id"] == st["id"] for x in B.call("stories"))
             B.call("story_seen", story_id=st["id"])
-            wait_until(lambda: pb in A.call("story_viewers", story_id=st["id"]), 10, "story view")
+            wait_until(lambda: pb in [v["peer"] for v in A.call("story_viewers", story_id=st["id"])], 10, "story view")
             # photo story: a big phone photo is shrunk to a JPEG and reaches the friend with its picture
             import struct, zlib
             w, h = 2400, 1600
@@ -470,6 +601,48 @@ def main():
             assert not any(x["id"] == ps["id"] for x in B.call("stories"))
         _()
 
+        @step("Khoảnh khắc audience: hidden friend left out, close-friends-only reaches only close friends")
+        def _():
+            def has(N, sid): return any(x["id"] == sid for x in N.call("stories"))
+            def post(**kw): return A.call("post_story", bg="ocean", **kw)
+            def arrives(N, sid, what): N.wait_event(lambda e: e["event"] == "story" and e["id"] == sid, what=what)
+            try:
+                # Carol is hidden: only Bob gets it
+                A.call("settings_set", story_hidden=[pc, pa, "rác"])
+                assert A.call("settings_get")["story_hidden"] == [pc], "own id / junk kept in the hidden list"
+                h = post(text="Chỉ Bob thấy")
+                assert h["recipients"] == 1, h
+                arrives(B, h["id"], "story at Bob (not hidden)")
+                # close friends = Carol, nobody hidden: only Carol gets the close-friends one
+                A.call("settings_set", story_hidden=[], story_close=[pc])
+                c = post(text="Bạn thân thôi", audience="close")
+                assert c["recipients"] == 1, c
+                arrives(C, c["id"], "close-friends story at Carol")
+                # a story to all friends afterwards reaches both: the earlier ones were never
+                # sent to the left-out friend (per-pair order), so they can't still be on the way
+                f = post(text="Mọi người")
+                assert f["recipients"] == 2, f
+                arrives(B, f["id"], "story to all at Bob")
+                arrives(C, f["id"], "story to all at Carol")
+                assert not has(C, h["id"]), "hidden friend got the story"
+                assert not has(B, c["id"]), "non-close friend got the close-friends story"
+                assert has(B, h["id"]) and has(C, c["id"])
+                # the hidden list wins over the close list
+                A.call("settings_set", story_hidden=[pc])
+                assert post(text="Không ai", audience="close")["recipients"] == 0
+                try:
+                    post(text="x", audience="public")
+                    raise AssertionError("unknown audience accepted")
+                except RuntimeError:
+                    pass
+                for x in [h, c, f]:
+                    A.call("story_delete", story_id=x["id"])
+            finally:
+                A.call("settings_set", story_hidden=[], story_close=[])
+            g = A.call("settings_get")
+            assert g["story_hidden"] == [] and g["story_close"] == [], g
+        _()
+
         @step("calls: caller hangs up while ringing → callee stops ringing; ask-to-control reaches friend")
         def _():
             c = A.call("call_start", conv=f"d:{pb}", video=False)
@@ -480,6 +653,39 @@ def main():
             e = A.wait_event(lambda e: e["event"] == "remote_request" and e.get("ask"), 15, what="ask-to-control request")
             A.call("remote_respond", session=e["session"], accept=False)
             B.wait_event(lambda e: e["event"] == "remote_state" and e.get("session") == r["session"] and e["state"] == "denied", 10, what="denied")
+        _()
+
+        @step("remote control: lock / restart / log out results reach the controller (simulated host)")
+        def _():
+            # the host captures its screen once the session is accepted: only ever a nested
+            # X server (DISPLAY=:77 LUMORA_CAPTURE=x11), never the real desktop
+            if os.environ.get("LUMORA_CAPTURE") != "x11" or not os.environ.get("DISPLAY") or os.environ.get("DISPLAY") in (":0", ":1"):
+                raise AssertionError("needs a nested X server: run with DISPLAY=:77 LUMORA_CAPTURE=x11")
+            A.call("remote_allow_power", allow=False)
+            r = B.call("remote_connect", target=pa, password="", view_only=False)
+            sess = r["session"]
+            e = A.wait_event(lambda e: e["event"] == "remote_request" and e.get("ask") and e.get("session") == sess, 15, what="ask-to-control request")
+            A.call("remote_respond", session=sess, accept=True, control=True)
+            B.wait_event(lambda e: e["event"] == "remote_state" and e.get("session") == sess and e["state"] == "active", 20, what="viewer active")
+
+            def act(action):
+                B.call("remote_power", session=sess, action=action)
+                res = B.wait_event(lambda e: e["event"] == "remote_action_result" and e.get("session") == sess and e.get("action") == action, 15, what=f"{action} result at the controller")
+                host = A.wait_event(lambda e: e["event"] == "remote_action" and e.get("session") == sess and e.get("action") == action, 15, what=f"{action} on the host")
+                assert res["ok"] == host["ok"], (res, host)
+                assert res["peer"] == pa, res
+                return res
+            try:
+                assert act("lock")["ok"]
+                res = act("restart")
+                assert not res["ok"] and res["code"] == "err.power_not_allowed", res
+                A.call("remote_allow_power", allow=True)
+                assert act("restart")["ok"]
+                res = act("logout")  # the test hook makes it fail
+                assert not res["ok"] and res["code"] == "err.power_failed", res
+            finally:
+                A.call("remote_allow_power", allow=False)
+                B.call("remote_end", session=sess)
         _()
 
         @step("add friend by 9-digit ID without internet directory (LAN)")
@@ -515,7 +721,7 @@ def main():
         @step("delete for me / for both, clear history for both")
         def _():
             m1 = A.call("send_text", conv=f"d:{pb}", text="xóa chỉ mình tôi")
-            m2 = B.call("send_text", conv=conv_ab, text="tin của Bob, Alice xóa cho cả hai")
+            m2 = A.call("send_text", conv=f"d:{pb}", text="tin của Alice, Alice thu hồi cho cả hai")
             wait_until(lambda: any(x["id"] == m1["id"] for x in B.call("messages", conv=conv_ab)), 10, "m1")
             wait_until(lambda: any(x["id"] == m2["id"] for x in A.call("messages", conv=f"d:{pb}")), 10, "m2")
             A.call("delete_message", conv=f"d:{pb}", msg_id=m1["id"], for_everyone=False)
@@ -523,7 +729,8 @@ def main():
             time.sleep(0.5)
             assert any(x["id"] == m1["id"] and not x["deleted"] for x in B.call("messages", conv=conv_ab)), "delete-for-me leaked"
             A.call("delete_message", conv=f"d:{pb}", msg_id=m2["id"], for_everyone=True)
-            wait_until(lambda: [x for x in B.call("messages", conv=conv_ab) if x["id"] == m2["id"]][0]["deleted"], 10, "other's msg deleted for both")
+            wait_until(lambda: [x for x in B.call("messages", conv=conv_ab) if x["id"] == m2["id"]][0]["deleted"], 10, "own msg recalled for both")
+            assert [x for x in B.call("messages", conv=conv_ab) if x["id"] == m2["id"]][0].get("deleted_by") == pa
             A.call("clear_history", conv=f"d:{pb}", for_everyone=True)
             wait_until(lambda: len(B.call("messages", conv=conv_ab)) == 0, 10, "history cleared on both")
             assert len(A.call("messages", conv=f"d:{pb}")) == 0
@@ -561,13 +768,32 @@ def main():
             wait_until(lambda: all(x["deleted"] for x in B.call("messages", conv=conv) if x["author"] == pb and x["kind"] != "system"), 10, "purge on Bob")
         _()
 
-        @step("invite link: removed member rejoins via signed link")
+        @step("invite link: a member an admin removed can't rejoin by link; the admin adds her back")
         def _():
             g = A.call("groups")[0]
             link = A.call("create_invite", gid=g["gid"], hours=1)["link"]
             info = C.call("inspect_invite", link=link)
             assert info["valid"] and not info["already_member"], info
             C.call("join_invite", link=link)
+            ev = C.wait_event(lambda e: e["event"] == "group_join_denied" and e.get("gid") == g["gid"], 20, what="Carol: join denied")
+            assert ev["reason"] == "removed" and ev["code"] == "err.removed_admin_only", ev
+            assert C.call("group_info", gid=g["gid"])["my_role"] == "none", "removed member rejoined by link"
+            # members don't add people by default (invite is the admins')…
+            try:
+                B.call("group_add", gid=g["gid"], peer=pc)
+                raise AssertionError("a plain member added someone without `invite`")
+            except RuntimeError as e:
+                assert "admin_only_add" in str(e), e
+            # …and even with `invite`, only admins bring back someone an admin removed
+            inv = A.call("group_role_set", gid=g["gid"], name="Mời", color="#22C55E", perms=["invite"])["id"]
+            A.call("group_member_roles", gid=g["gid"], peer=pb, roles=[inv])
+            wait_until(lambda: "invite" in B.call("group_info", gid=g["gid"])["my_perms"], 20, "Bob may invite")
+            try:
+                B.call("group_add", gid=g["gid"], peer=pc)
+                raise AssertionError("a member re-added someone an admin removed")
+            except RuntimeError as e:
+                assert "removed_admin_only" in str(e), e
+            A.call("group_add", gid=g["gid"], peer=pc)
             wait_until(lambda: C.call("group_info", gid=g["gid"])["my_role"] == "member", 20, "Carol back in group")
             # banned members can NOT come back through the link
             A.call("group_ban", gid=g["gid"], peer=pc, ban=True)
@@ -799,6 +1025,46 @@ def main():
                 D.stop()
         _()
 
+        @step("delete account on the main device: downloads wiped, a fresh identity on restart")
+        def _():
+            nd = os.path.join(tmp, "delete-account")
+            os.makedirs(nd)
+            dl = os.path.join(nd, "downloads")
+            D = Node("DeleteMe", a.bin, nd, extra + ["--port", "0", "--passphrase", "mk-xoa", "--downloads", dl])
+            try:
+                old = D.me["peer"]
+                D.call("add_contact", target=pa)
+                A.wait_event(lambda e: e["event"] == "friend_request" and e["peer"] == old, what="delete-me req")
+                A.call("accept_contact", peer=old)
+                wait_until(lambda: any(c["peer"] == pa and c["status"] == 3 for c in D.call("contacts")), 20, "friends")
+                src = os.path.join(dirs["alice"], "se-bi-xoa.bin")
+                open(src, "wb").write(os.urandom(200_000))
+                f = A.call("send_file", conv=f"d:{old}", path=src)
+
+                def got():
+                    xs = [x for x in D.call("files") if x["id"] == f["id"] and x["state"] == 2]
+                    return xs and xs[0]
+                r = wait_until(got, 30, "file downloaded on the device to delete")
+                assert os.path.exists(r["path"]) and os.path.abspath(r["path"]).startswith(os.path.abspath(dl)), r["path"]
+                try:
+                    D.call("device_logout", primary_ok=True, passphrase="sai", wipe=True)
+                    raise AssertionError("deleted without the account password")
+                except RuntimeError as e:
+                    assert "err.wrong_passphrase" in str(e), e
+                assert os.path.exists(r["path"]), "a wrong password deleted files"
+                D.call("device_logout", primary_ok=True, passphrase="mk-xoa", wipe=True)
+                D.wait_event(lambda e: e["event"] == "device_revoked" and e.get("by_self") and e.get("wipe"), 10, what="deleted")
+                assert not os.path.exists(r["path"]), "downloaded file kept after deleting the account"
+                D.stop(); D.start()
+                assert not os.path.exists(dl), "downloads folder survived deleting the account"
+                assert D.me["peer"] != old, "account still on this device after deleting it"
+                assert D.call("contacts") == [] and D.call("files") == [], "old data visible after deleting the account"
+                assert not [p for p in os.listdir(tmp) if p.startswith("delete-account.signed-out-")], "data kept aside instead of deleted"
+            finally:
+                D.stop()
+            A.call("remove_contact", peer=old)  # later steps count Alice's contacts
+        _()
+
         @step("a deleted chat comes back to the list when either side writes again")
         def _():
             A.call("send_text", conv=f"d:{pb}", text="trước khi xoá")
@@ -986,6 +1252,356 @@ def main():
             finally:
                 for N in extra_nodes:
                     N.stop()
+        _()
+
+        @step("community: listed while I'm in it; leaving or being removed takes it off the list")
+        def _():
+            g = A.call("create_group", name="Cộng đồng e2e", members=[pb, pc], kind=1)
+            gid = g["gid"]
+            B.wait_event(lambda e: e["event"] == "group" and e.get("gid") == gid, 20, what="community at Bob")
+            assert any(x["id"] == gid for x in A.call("spaces")) and any(x["id"] == gid for x in B.call("spaces"))
+            B.call("group_leave", gid=gid)
+            assert not any(x["id"] == gid for x in B.call("spaces")), "left community still listed"
+            wait_until(lambda: not any(x["id"] == gid for x in C.call("spaces")) or any(x["id"] == gid for x in C.call("spaces")), 5, "carol")
+            A.call("group_remove", gid=gid, peer=pc)
+            wait_until(lambda: not any(x["id"] == gid for x in C.call("spaces")), 20, "removed member's list")
+            assert any(x["id"] == gid for x in A.call("spaces")), "owner still has it"
+            # cover (banner) + delete for everyone, on a second community with Bob and Carol
+            import base64
+            g2 = A.call("create_group", name="Cộng đồng có bìa", members=[pb, pc], kind=1)
+            gid2, conv2 = g2["gid"], g2["conv"]
+            for N in (B, C):
+                wait_until(lambda N=N: any(x["id"] == gid2 for x in N.call("spaces")), 30, f"second community at {N.name}")
+            cover = base64.b64encode(b"\xff\xd8\xff\xe0" + os.urandom(200_000)).decode()
+            try:
+                A.call("group_meta", gid=gid2, cover=base64.b64encode(os.urandom(300 * 1024 + 1)).decode())
+                raise AssertionError("a cover over 300 KB was accepted")
+            except RuntimeError as e:
+                assert "image_too_large" in str(e), e
+            A.call("group_meta", gid=gid2, cover=cover)
+            assert A.call("group_cover", gid=gid2)["cover"] == cover
+            for N in (B, C):
+                wait_until(lambda N=N: N.call("group_cover", gid=gid2)["cover"] == cover, 40, f"{N.name} sees the cover")
+            sp = next(x for x in B.call("spaces") if x["id"] == gid2)
+            assert sp["has_cover"] and sp["cover_rev"] and sp["my_role"] == "member", sp
+            gi = B.call("group_info", gid=gid2)
+            assert gi["has_cover"] and gi["cover_rev"] == sp["cover_rev"]
+            try:
+                B.call("group_meta", gid=gid2, cover="")
+                raise AssertionError("a plain member changed the community cover")
+            except RuntimeError as e:
+                assert "admin_only" in str(e), e
+            try:
+                B.call("group_dissolve", gid=gid2)
+                raise AssertionError("a member dissolved the community")
+            except RuntimeError as e:
+                assert "owner_only" in str(e), e
+            m = B.call("send_text", conv=conv2, text="trước khi xoá")
+            wait_until(lambda: any(x["id"] == m["id"] for x in C.call("messages", conv=conv2)), 30, "Carol reads Bob")
+            # Carol is offline while the owner deletes it
+            C.stop()
+            A.call("group_dissolve", gid=gid2)
+            def gone(N):
+                return not any(x["id"] == gid2 for x in N.call("spaces")) \
+                    and not any(x["gid"] == gid2 for x in N.call("groups")) \
+                    and not any(c["id"].startswith(conv2) for c in N.call("conversations"))
+            assert gone(A), "owner still lists the deleted community"
+            ev = B.wait_event(lambda e: e["event"] == "group_removed" and e.get("gid") == gid2, 30, what="Bob: group_removed")
+            assert ev.get("dissolved") is True and ev.get("left") is False and ev.get("name") == "Cộng đồng có bìa", ev
+            wait_until(lambda: gone(B), 20, "Bob's lists without the deleted community")
+            assert B.call("group_cover", gid=gid2)["cover"] is None
+            try:
+                B.call("send_text", conv=conv2, text="sau khi xoá")
+                raise AssertionError("posted to a deleted community")
+            except RuntimeError:
+                pass
+            # Carol comes back: the normal catch-up brings the Dissolve
+            C.start()
+            wait_until(lambda: gone(C), 60, "Carol (offline during the delete) drops it after restarting")
+            C.wait_event(lambda e: e["event"] == "group_removed" and e.get("gid") == gid2 and e.get("dissolved") is True, 10, what="Carol: group_removed")
+            # and it stays gone after another restart (nothing brings it back)
+            C.stop(); C.start()
+            time.sleep(2)
+            assert gone(C) and gone(B), "deleted community came back"
+        _()
+
+        @step("community 2.0: roles, timeout, private + renamed channels, ownership, revoked links, join approval")
+        def _():
+            g = A.call("create_group", name="Cộng đồng 2.0", members=[pb], kind=1)
+            gid, conv = g["gid"], g["conv"]
+            wait_until(lambda: any(x["gid"] == gid for x in B.call("groups")), 30, "Bob in community 2.0")
+            info = A.call("group_info", gid=gid)
+            assert [r["id"] for r in info["roles"]][0] == "admin" and info["roles"][-1]["id"] == "everyone", info["roles"]
+            assert "manage_community" in info["my_perms"]
+            bi = B.call("group_info", gid=gid)
+            # (invite links are the admins' by default)
+            assert sorted(bi["my_perms"]) == sorted(["view_channel", "send_messages", "send_media", "connect_voice"]), bi["my_perms"]
+            # a role with pin, given to Bob
+            rid = A.call("group_role_set", gid=gid, name="Ghim", color="#22C55E", perms=["pin"])["id"]
+            A.call("group_member_roles", gid=gid, peer=pb, roles=[rid])
+            wait_until(lambda: "pin" in B.call("group_info", gid=gid)["my_perms"], 20, "Bob gets the role")
+            try:
+                B.call("group_role_set", gid=gid, name="Tự phong", color="#000000", perms=["ban"])
+                raise AssertionError("a member made a role")
+            except RuntimeError as e:
+                assert "no_permission" in str(e), e
+            # private channel: Bob doesn't see it; renamed channel keeps its conversation
+            A.call("group_channel", gid=gid, name="ban-dieu-hanh", category="THÔNG TIN", topic="riêng")
+            A.call("group_channel_update", gid=gid, name="ban-dieu-hanh", private=True, allow_roles=[])
+            gen = next(c for c in A.call("group_info", gid=gid)["channels"] if c["id"] == "general")
+            A.call("group_channel_update", gid=gid, name=gen["name"], new_name="Sảnh chính", topic="nói chuyện")
+            def bob_channels():
+                return {c["id"]: c for c in B.call("group_info", gid=gid)["channels"]}
+            wait_until(lambda: bob_channels().get("general", {}).get("name") == "sảnh-chính" and "ban-dieu-hanh" not in bob_channels(), 20, "Bob's channel list")
+            assert bob_channels()["general"]["conv"] == gen["conv"], "a rename changed the conversation"
+            sp = next(x for x in B.call("spaces") if x["id"] == gid)
+            assert not any(c["id"] == "ban-dieu-hanh" for c in sp["channels"]) and any(c.get("topic") == "nói chuyện" for c in sp["channels"]), sp
+            m = B.call("send_text", conv=gen["conv"], text="vẫn kênh cũ")
+            wait_until(lambda: any(x["id"] == m["id"] for x in A.call("messages", conv=gen["conv"])), 20, "post in renamed channel")
+            # timeout: Bob can't post until it is lifted
+            A.call("group_timeout", gid=gid, peer=pb, until_ms=int(time.time() * 1000) + 600_000)
+            wait_until(lambda: next(x for x in B.call("group_info", gid=gid)["members"] if x["peer"] == pb)["timeout_until"] > 0, 20, "timeout reaches Bob")
+            try:
+                B.call("send_text", conv=gen["conv"], text="đang bị cấm")
+                raise AssertionError("timed-out member posted")
+            except RuntimeError as e:
+                assert "timed_out" in str(e), e
+            A.call("group_timeout", gid=gid, peer=pb, until_ms=0)
+            wait_until(lambda: next(x for x in B.call("group_info", gid=gid)["members"] if x["peer"] == pb)["timeout_until"] == 0, 20, "timeout lifted")
+            # info changes need manage_community; @all needs mention_everyone
+            try:
+                B.call("group_rename", gid=gid, name="đổi tên")
+                raise AssertionError("member renamed the community")
+            except RuntimeError as e:
+                assert "admin_only" in str(e), e
+            try:
+                B.call("send_message", conv=gen["conv"], text="@all chú ý", mention_all=True)
+                raise AssertionError("member used @all")
+            except RuntimeError as e:
+                assert "no_permission" in str(e), e
+            # revoked link → refused; approval mode → request, deny, approve
+            l1 = A.call("create_invite", gid=gid, hours=1)
+            assert l1["id"] and any(x["id"] == l1["id"] for x in A.call("group_invite_links", gid=gid))
+            A.call("group_revoke_invite", gid=gid, id=l1["id"])
+            assert not any(x["id"] == l1["id"] for x in A.call("group_invite_links", gid=gid))
+            C.call("join_invite", link=l1["link"])
+            ev = C.wait_event(lambda e: e["event"] == "group_join_denied" and e.get("gid") == gid, 20, what="revoked link")
+            assert ev["reason"] == "revoked", ev
+            A.call("group_settings", gid=gid, approve_joins=True)
+            l2 = A.call("create_invite", gid=gid, hours=1)
+            C.call("join_invite", link=l2["link"])
+            wait_until(lambda: any(r["peer"] == pc for r in A.call("group_info", gid=gid)["join_requests"]), 20, "join request")
+            A.call("group_join_deny", gid=gid, peer=pc)
+            C.wait_event(lambda e: e["event"] == "group_join_denied" and e.get("gid") == gid and e["reason"] == "denied", 20, what="denied")
+            C.call("join_invite", link=l2["link"])
+            wait_until(lambda: any(r["peer"] == pc for r in A.call("group_info", gid=gid)["join_requests"]), 20, "join request again")
+            A.call("group_add", gid=gid, peer=pc)
+            wait_until(lambda: C.call("group_info", gid=gid)["my_role"] == "member", 30, "approved join")
+            assert not A.call("group_info", gid=gid)["join_requests"]
+            # ownership: the owner can't just leave; hands over first
+            try:
+                A.call("group_leave", gid=gid)
+                raise AssertionError("owner left without a successor")
+            except RuntimeError as e:
+                assert "owner_must_transfer" in str(e), e
+            A.call("group_transfer_owner", gid=gid, peer=pb)
+            wait_until(lambda: B.call("group_info", gid=gid)["my_role"] == "owner", 20, "Bob owns it")
+            assert A.call("group_info", gid=gid)["my_role"] == "admin"
+            wait_until(lambda: any((x.get("body") or {}).get("code") == "sys.owner_changed" for x in C.call("messages", conv=conv)), 20, "owner-changed notice")
+            A.call("group_leave", gid=gid)
+        _()
+
+        @step("privacy: invitations wait for an answer, calls that may not ring don't, plain group calls ring only the picked")
+        def _():
+            # Carol: nobody adds me directly
+            C.call("settings_set", who_can_add="nobody", who_can_call="nobody")
+            st = C.call("settings_get")
+            assert st["who_can_add"] == "nobody" and st["who_can_call"] == "nobody" and st["who_sees_online"] == "friends", st
+            g = A.call("create_group", name="Lời mời chờ", members=[pc])
+            ev = C.wait_event(lambda e: e["event"] == "group_invite" and e.get("gid") == g["gid"], 20, what="invitation")
+            assert ev["name"] == "Lời mời chờ" and ev["by"] == pa, ev
+            assert not any(x["gid"] == g["gid"] for x in C.call("groups")), "joined without being asked"
+            assert any(i["gid"] == g["gid"] for i in C.call("group_invites"))
+            r = C.call("group_invite_answer", gid=g["gid"], accept=True)
+            assert r["conv"] == g["conv"], r
+            wait_until(lambda: C.call("group_info", gid=g["gid"])["my_role"] == "member", 20, "accepted")
+            assert not C.call("group_invites")
+            g2 = A.call("create_group", name="Không tham gia", members=[pc])
+            C.wait_event(lambda e: e["event"] == "group_invite" and e.get("gid") == g2["gid"], 20, what="2nd invitation")
+            C.call("group_invite_answer", gid=g2["gid"], accept=False)
+            wait_until(lambda: not any(m["peer"] == pc for m in A.call("group_info", gid=g2["gid"])["members"]), 30, "declined → out")
+            # who can call me: nobody → Alice's call never rings (and leaves no call line)
+            def call_lines(N, conv):
+                try:
+                    return [m for m in N.call("messages", conv=conv) if m["kind"] == "call"]
+                except Exception:
+                    return []  # (no such chat)
+            k_ac = len(call_lines(C, f"d:{pa}"))
+            cid = A.call("call_start", conv=f"d:{pc}")["call_id"]
+            time.sleep(4)
+            try:
+                C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "incoming", 1, what="no ring")
+                raise AssertionError("a call rang although nobody may call")
+            except TimeoutError:
+                pass
+            A.call("call_end", call_id=cid)
+            wait_until(lambda: len(call_lines(A, f"d:{pc}")) >= 1, 20, "Alice logs her own call")
+            C.call("settings_set", who_can_add="friends", who_can_call="friends")
+            # a friend's unanswered call is still logged at Carol ("friends" may call)
+            cid = A.call("call_start", conv=f"d:{pc}")["call_id"]
+            C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "incoming", 20, what="friend rings")
+            A.call("call_end", call_id=cid)
+            wait_until(lambda: len(call_lines(C, f"d:{pa}")) == k_ac + 1, 30, "friend's missed call logged once (the blocked one left none)")
+            # plain group call ringing nobody: Bob and Carol get a "Join" banner, Bob joins
+            gg = A.call("create_group", name="Gọi nhóm", members=[pb, pc])
+            for N in (B, C):
+                wait_until(lambda N=N: any(x["gid"] == gg["gid"] for x in N.call("groups")), 30, f"{N.name} in call group")
+            # a stranger (Bob: a fellow member, not a friend) calling Carol: no ring, and after
+            # the call ends no trace at Carol — no chat with him, no "missed call" line
+            assert not any(c["id"] == f"d:{pb}" for c in C.call("conversations")), "Carol had a chat with Bob already"
+            cid = B.call("call_start", conv=f"d:{pc}")["call_id"]
+            time.sleep(4)
+            try:
+                C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "incoming", 1, what="no ring")
+                raise AssertionError("a stranger's call rang although only friends may call")
+            except TimeoutError:
+                pass
+            B.call("call_end", call_id=cid)
+            wait_until(lambda: len(call_lines(B, f"d:{pc}")) >= 1, 20, "Bob logs his own call")
+            time.sleep(6)
+            assert not any(c["id"] == f"d:{pb}" for c in C.call("conversations")), "the blocked stranger's call made a chat"
+            assert not call_lines(C, f"d:{pb}"), "the blocked stranger's call left a missed-call line"
+            cid = A.call("call_start", conv=gg["conv"], ring=[])["call_id"]
+            for N in (B, C):
+                N.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "available", 20, what=f"{N.name}: available")
+            B.call("call_answer", call_id=cid, accept=True)
+            A.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and len(e.get("participants") or []) >= 1, 20, what="Bob joined the call")
+            A.call("call_end", call_id=cid)
+            C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "ended", 20, what="Carol: banner gone")
+            # ring list [Bob]: Carol gets only the banner (the plain invite behind it, for
+            # older builds, never rings her); Bob declines → the call ends at once, the
+            # banner member does not keep it "ringing" until the 45 s timeout
+            cid = A.call("call_start", conv=gg["conv"], ring=[pb])["call_id"]
+            C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "available", 20, what="Carol: banner (ring list)")
+            B.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "incoming", 20, what="Bob rung")
+            t0 = time.time()
+            B.call("call_answer", call_id=cid, accept=False)
+            A.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "ended", 15, what="call ends once every rung member declined")
+            assert time.time() - t0 < 15, "kept ringing for the banner member"
+            C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "ended", 20, what="Carol: banner gone (declined)")
+            try:
+                C.wait_event(lambda e: e["event"] == "call" and e.get("call_id") == cid and e.get("state") == "incoming", 1, what="no ring")
+                raise AssertionError("the banner member was rung")
+            except TimeoutError:
+                pass
+        _()
+
+        @step("voice channel = drop-in room: nobody rung, presence reaches every member, media between participants, crash expires")
+        def _():
+            g = A.call("create_group", name="Phòng thoại e2e", members=[pb, pc], kind=1)
+            gid = g["gid"]
+            for N in (B, C):
+                wait_until(lambda N=N: any(x["id"] == gid for x in N.call("spaces")), 30, f"community at {N.name}")
+            sp = next(x for x in A.call("spaces") if x["id"] == gid)
+            vconv = next(c["conv"] for c in sp["channels"] if c["voice"])
+            dev = {N.name: N.call("me")["device"] for N in (A, B)}
+
+            def parts(N):
+                sp = next(x for x in N.call("spaces") if x["id"] == gid)
+                return next(c["participants"] for c in sp["channels"] if c["conv"] == vconv)
+
+            def voice_ev(N, pred, what, t=20):
+                return N.wait_event(lambda e: e["event"] == "voice" and e.get("conv") == vconv and pred(e), t, what)
+
+            def call_ev(N, pred, what, t=20):
+                return N.wait_event(lambda e: e["event"] == "call" and e.get("conv") == vconv and pred(e), t, what)
+
+            def flush(*ns):
+                for N in ns:
+                    while True:
+                        try:
+                            N.events.get_nowait()
+                        except queue.Empty:
+                            break
+
+            def never_rung(N):
+                try:
+                    e = N.wait_event(lambda e: e["event"] == "call" and str(e.get("conv", "")).startswith(f"g:{gid}"), 1, "call")
+                    raise AssertionError(f"{N.name} got a call event for the room: {e}")
+                except TimeoutError:
+                    pass
+
+            # A joins: a silent room — B and C see A there (event + spaces), nobody rings
+            flush(A, B, C)
+            r = A.call("voice_join", conv=vconv)
+            st = call_ev(A, lambda e: e["state"] == "active", "A's room call")
+            assert st["room"] is True and st["participants"] == [], st
+            for N in (B, C):
+                voice_ev(N, lambda e: e["participants"] == [pa], f"{N.name}: voice event with A")
+                assert parts(N) == [pa], (N.name, parts(N))
+            assert parts(A) == [pa]
+            never_rung(B)
+            never_rung(C)
+            # B joins: A and B are in one media session (same room call, each other's device)
+            flush(A, B)
+            rb = B.call("voice_join", conv=vconv)
+            assert rb["call_id"] == r["call_id"], (r, rb)
+            call_ev(A, lambda e: e["state"] == "active" and dev["Bob"] in [p["peer"] for p in e["participants"]], "A: B joins the media")
+            call_ev(B, lambda e: e["state"] == "active" and dev["Alice"] in [p["peer"] for p in e["participants"]], "B: media with A")
+            for N in (A, B, C):
+                wait_until(lambda N=N: parts(N) == [pa, pb], 20, f"{N.name} sees A and B")
+            assert A.call("voice_state", conv=vconv)["joined"] is True
+            never_rung(C)
+            # mute is part of the presence everyone sees
+            A.call("call_set", call_id=r["call_id"], mic=False)
+            wait_until(lambda: C.call("voice_state", conv=vconv)["muted"] == [pa], 15, "C: A muted")
+            A.call("call_set", call_id=r["call_id"], mic=True)
+            wait_until(lambda: C.call("voice_state", conv=vconv)["muted"] == [], 15, "C: A unmuted")
+            # B leaves: presence updates everywhere, A's room goes on
+            flush(A, B)
+            B.call("voice_leave", conv=vconv)
+            call_ev(B, lambda e: e["state"] == "ended", "B's room call ended")
+            call_ev(A, lambda e: e["state"] == "active" and e["participants"] == [], "A: B left the media")
+            for N in (A, B, C):
+                wait_until(lambda N=N: parts(N) == [pa], 20, f"{N.name} sees only A")
+            # A crashes (no goodbye): its presence expires for B and C
+            ttl = int(os.environ["LUMORA_VOICE_TTL_MS"]) / 1000
+            flush(B, C)
+            A.p.kill()
+            A.p.wait()
+            t0 = time.time()
+            for N in (B, C):
+                wait_until(lambda N=N: parts(N) == [], ttl + 15, f"{N.name}: A's presence expires")
+            print(f"     presence expired {time.time() - t0:.1f}s after the crash (ttl {ttl:.0f}s)")
+            voice_ev(B, lambda e: e["participants"] == [], "B: voice event, room empty", 5)
+            A.start()
+            assert parts(A) == [], "a restarted node is in no room"
+        _()
+
+        @step("group seen-by survives a restart: B reads, A restarts, A still knows B's read mark")
+        def _():
+            g = A.call("create_group", name="Nhóm đã xem", members=[pb, pc])
+            gid, conv = g["gid"], g["conv"]
+            for N in (B, C):
+                wait_until(lambda N=N: any(x["gid"] == gid for x in N.call("groups")), 30, f"{N.name} joined")
+            m = A.call("send_text", conv=conv, text="ai đọc rồi thì báo nhé")
+            for N in (B, C):
+                wait_until(lambda N=N: any(x["id"] == m["id"] for x in N.call("messages", conv=conv)), 20, f"{N.name} got it")
+            hlc = [x for x in A.call("messages", conv=conv) if x["id"] == m["id"]][0]["hlc"]
+            B.call("mark_read", conv=conv)
+            A.wait_event(lambda e: e["event"] == "group_read" and e["conv"] == conv and e["peer"] == pb and e["upto"] >= hlc, 20, what="B's receipt")
+            reads = A.call("group_reads", conv=conv)
+            assert reads.get(pb, 0) >= hlc and pc not in reads and pa not in reads, reads
+            A.stop()
+            A.start()
+            reads = A.call("group_reads", conv=conv)
+            assert reads.get(pb, 0) >= hlc, f"read mark lost on restart: {reads}"
+            assert pc not in reads, reads
+            assert pb in A.call("seen_by", msg_id=m["id"]) and pc not in A.call("seen_by", msg_id=m["id"])
+            # C reads later: added next to B's kept mark
+            C.call("mark_read", conv=conv)
+            wait_until(lambda: A.call("group_reads", conv=conv).get(pc, 0) >= hlc, 20, "C's mark")
+            assert A.call("group_reads", conv=conv).get(pb, 0) >= hlc
         _()
 
         @step("data at rest is encrypted (no plaintext in DB files)")

@@ -88,7 +88,7 @@ object Background {
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null))
 
     /** true: a settings screen opened (the answer comes back via [status] on resume). */
-    @SuppressLint("BatteryLife") // a P2P messenger without push: allowed by Play policy
+    @SuppressLint("BatteryLife") // a P2P messaging app without push: allowed by Play policy
     fun requestIgnoreBattery(ctx: Context): Boolean {
         if (ignoringBattery(ctx)) return true
         return launch(ctx, Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}"))) ||

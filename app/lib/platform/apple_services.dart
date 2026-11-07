@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../core/api.dart';
+import '../l10n/strings.dart';
 
 /// iPhone/iPad integration (no-op on every other platform):
 ///
@@ -193,8 +194,7 @@ class AppleServices with WidgetsBindingObserver {
   @visibleForTesting
   Future<List<Map<String, Object>>> reminderItems() async {
     final out = <Map<String, Object>>[];
-    final vi = language != 'en';
-    final word = vi ? 'Nhắc hẹn' : 'Reminder';
+    final s = language == 'en' ? S.en : S.vn;
     void add(Map d, int at) {
       final id = d['msg_id']?.toString() ?? '';
       if (id.isEmpty || at <= 0) return;
@@ -206,8 +206,8 @@ class AppleServices with WidgetsBindingObserver {
         'id': id,
         'at_ms': at,
         'conv': conv,
-        'title': private ? 'Lumora' : (title.isEmpty ? word : '$word: $title'),
-        'body': private ? (vi ? 'Bạn có một nhắc hẹn' : 'You have a reminder') : (note.isNotEmpty ? note : (vi ? 'Đến giờ hẹn rồi' : "It's time")),
+        'title': private ? 'Lumora' : (title.isEmpty ? s('nf_reminder') : s('nf_reminder_named', {'title': title})),
+        'body': private ? s('nf_hidden_reminder') : (note.isNotEmpty ? note : s('nf_reminder_due')),
       });
     }
 

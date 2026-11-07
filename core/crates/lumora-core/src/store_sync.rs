@@ -25,6 +25,25 @@ pub const K_GKEY: u8 = 7;
 pub const K_SPACK: u8 = 8;
 /// a sticker image — key: hash
 pub const K_SBLOB: u8 = 9;
+/// a group member's read mark ("seen by") — key: [`gread_key`]
+pub const K_GREAD: u8 = 10;
+/// one of my own Khoảnh khắc (the archive follows me to my devices) — key: story id
+pub const K_STORY: u8 = 11;
+
+/// Sync key of a member's read mark in a group chat: member (32 bytes) + conv id.
+pub fn gread_key(conv: &str, peer: &PeerId) -> Vec<u8> {
+    let mut k = peer.0.to_vec();
+    k.extend_from_slice(conv.as_bytes());
+    k
+}
+
+fn gread_split(key: &[u8]) -> Option<(String, PeerId)> {
+    if key.len() <= 32 {
+        return None;
+    }
+    let conv = std::str::from_utf8(&key[32..]).ok()?.to_string();
+    Some((conv, PeerId(key[..32].try_into().ok()?)))
+}
 
 /// Settings that follow the user to every device. Never `net.*`, `olm.*`, `remote.*`,
 /// `bot.*`, `account.*`, `device.*`, `link.*`, `push.*`, `uisecret:*` (device-local).
@@ -33,7 +52,7 @@ pub fn kv_synced(k: &str) -> bool {
     const PREFIXES: &[&str] = &["profile.", "privacy.", "wallpaper.", "mute_until.", "retention."];
     // `botfather.bots`: the bots this account manages (tokens stay inside the account's own,
     // end-to-end encrypted device links) — a bot made on one device shows up on the others
-    k == "ui.lang" || k == "storage.policy" || k == "nostr.events" || k == "botfather.bots" || PREFIXES.iter().any(|p| k.starts_with(p))
+    k == "ui.lang" || k == "storage.policy" || k == "storage.auto_download" || k == "nostr.events" || k == "botfather.bots" || PREFIXES.iter().any(|p| k.starts_with(p))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -173,6 +192,13 @@ pub enum SyncItem {
         deleted: bool,
         rev: i64,
     },
+    /// A group member's read mark ("seen by" survives restarts and reaches my other
+    /// devices): marks only move forward. (Older builds skip this kind.)
+    GroupRead { conv: String, peer: ByteBuf, upto: i64 },
+    /// One of my own Khoảnh khắc (my devices keep the same archive), or its tombstone
+    /// (`deleted`: taken down; never comes back). Never sent to anyone but my own devices.
+    /// (Older builds skip this kind.)
+    Story { id: ByteBuf, created: i64, text: String, image: ByteBuf, bg: String, deleted: bool },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -210,6 +236,10 @@ pub enum Imported {
     /// a sticker pack (or a sticker image) changed
     Stickers,
     Group { gid: Vec<u8> },
+    /// a group member's read mark moved forward
+    GroupRead { conv: String, peer: PeerId, upto: i64 },
+    /// one of my Khoảnh khắc reached this device from another of mine / was taken down there
+    Story { id: Vec<u8>, deleted: bool },
     /// stored silently (group log rows, files, stickers…)
     Stored,
 }
@@ -648,6 +678,12 @@ impl Store {
     }
 
     /// Nothing worth keeping yet (a device may only be linked into an account when fresh).
+    /// No friends and no groups (an account just restored with the recovery phrase).
+    pub fn no_account_state(&self) -> bool {
+        let c = self.conn.lock();
+        c.query_row("SELECT (SELECT count(*) FROM contacts WHERE status=3) + (SELECT count(*) FROM groups)", [], |r| r.get::<_, i64>(0)).map(|n| n == 0).unwrap_or(false)
+    }
+
     pub fn is_fresh(&self) -> bool {
         let c = self.conn.lock();
         let n: i64 = c
@@ -772,6 +808,22 @@ impl Store {
                 (exists || rev > 0).then(|| vec![rev.max(0) as u64])
             }
             K_SBLOB => c.query_row("SELECT 1 FROM sticker_blobs WHERE hash=?1", params![key], |_| Ok(vec![])).optional().ok().flatten(),
+            K_GREAD => {
+                let (conv, peer) = gread_split(key)?;
+                c.query_row("SELECT upto FROM group_reads WHERE conv=?1 AND peer=?2", params![conv, &peer.0[..]], |r| r.get::<_, i64>(0))
+                    .optional()
+                    .ok()
+                    .flatten()
+                    .map(|u| vec![u.max(0) as u64])
+            }
+            // 1 = in my archive, 2 = taken down (the tombstone wins)
+            K_STORY => {
+                if Self::story_gone_on(&c, key) {
+                    Some(vec![2])
+                } else {
+                    c.query_row("SELECT 1 FROM stories WHERE id=?1 AND mine=1", params![key], |_| Ok(vec![1])).optional().ok().flatten()
+                }
+            }
             _ => None,
         }
     }
@@ -868,12 +920,35 @@ impl Store {
                     }
                 })
             }
+            K_STORY => {
+                if Self::story_gone_on(&c, key) {
+                    return Some(SyncItem::Story { id: ByteBuf::from(key.to_vec()), created: 0, text: String::new(), image: ByteBuf::new(), bg: String::new(), deleted: true });
+                }
+                c.query_row("SELECT created, text, image, bg FROM stories WHERE id=?1 AND mine=1", params![key], |r| {
+                    Ok(SyncItem::Story {
+                        id: ByteBuf::from(key.to_vec()),
+                        created: r.get(0)?,
+                        text: r.get(1)?,
+                        image: ByteBuf::from(r.get::<_, Option<Vec<u8>>>(2)?.unwrap_or_default()),
+                        bg: r.get(3)?,
+                        deleted: false,
+                    })
+                })
+                .optional()
+                .ok()
+                .flatten()
+            }
             K_SBLOB => c
                 .query_row("SELECT mime, data FROM sticker_blobs WHERE hash=?1", params![key], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Vec<u8>>(1)?)))
                 .optional()
                 .ok()
                 .flatten()
                 .map(|(mime, data)| SyncItem::StickerBlob { hash: ByteBuf::from(key.to_vec()), mime, data: ByteBuf::from(data) }),
+            K_GREAD => {
+                let (conv, peer) = gread_split(key)?;
+                let upto: i64 = c.query_row("SELECT upto FROM group_reads WHERE conv=?1 AND peer=?2", params![conv, &peer.0[..]], |r| r.get(0)).optional().ok().flatten()?;
+                Some(SyncItem::GroupRead { conv, peer: ByteBuf::from(peer.0.to_vec()), upto })
+            }
             _ => None,
         }
     }
@@ -1070,7 +1145,54 @@ impl Store {
                 self.track(c, K_SPACK, id.as_bytes());
                 Imported::Stickers
             }
+            SyncItem::GroupRead { conv, peer, upto } => {
+                let Some(peer) = pid(&peer[..]) else { return Ok(Imported::Nothing) };
+                if !conv.starts_with("g:") || conv.len() > 128 || *upto <= 0 {
+                    return Ok(Imported::Nothing);
+                }
+                let upto = (*upto).min(crate::util::clamp_hlc_now().min(i64::MAX as u64) as i64);
+                if self.group_read_set_on(c, conv, &peer, upto)? {
+                    Imported::GroupRead { conv: conv.clone(), peer, upto }
+                } else {
+                    Imported::Nothing
+                }
+            }
+            SyncItem::Story { id, created, text, image, bg, deleted } => {
+                if id.len() != 16 || Self::story_gone_on(c, id) {
+                    return Ok(Imported::Nothing);
+                }
+                if *deleted {
+                    Self::story_bury_on(c, id)?;
+                    c.execute("DELETE FROM story_views WHERE id=?1", params![&id[..]])?;
+                    c.execute("DELETE FROM stories WHERE id=?1", params![&id[..]])?;
+                    self.track(c, K_STORY, id);
+                    return Ok(Imported::Story { id: id.to_vec(), deleted: true });
+                }
+                if image.len() > 600 * 1024 || text.chars().count() > 700 || bg.len() > 40 {
+                    return Ok(Imported::Nothing);
+                }
+                let created = (*created).clamp(0, crate::util::now_ms() as i64);
+                let img = if image.is_empty() { None } else { Some(&image[..]) };
+                let n = c.execute(
+                    "INSERT OR IGNORE INTO stories(id,author,created,text,image,bg,seen,mine) VALUES(?1,?2,?3,?4,?5,?6,1,1)",
+                    params![&id[..], &me.0[..], created, text, img, bg],
+                )?;
+                if n == 0 {
+                    return Ok(Imported::Nothing);
+                }
+                self.track(c, K_STORY, id);
+                Imported::Story { id: id.to_vec(), deleted: false }
+            }
         })
+    }
+
+    /// A Khoảnh khắc I took down (on any of my devices): remembered so a copy still on its
+    /// way from another device never brings it back.
+    pub(super) fn story_gone_on(c: &Connection, id: &[u8]) -> bool {
+        Self::lww_get(c, &format!("sdel:{}", hex::encode(id))).is_some()
+    }
+    pub(super) fn story_bury_on(c: &Connection, id: &[u8]) -> rusqlite::Result<usize> {
+        Self::lww_set(c, &format!("sdel:{}", hex::encode(id)), crate::util::now_ms() as i64)
     }
 
     fn import_msg(&self, c: &Connection, m: &MsgRow, me: &PeerId, live: bool) -> Result<Imported> {
@@ -1127,8 +1249,11 @@ impl Store {
                 let local_ed = Self::lww_get(c, &ed_key).unwrap_or(0);
                 let (local_body, local_reactions): (String, String) =
                     c.query_row("SELECT body, reactions FROM messages WHERE id=?1", params![&m.id[..]], |r| Ok((r.get(0)?, r.get(1)?)))?;
-                let take_body = if m.edit_hlc != 0 || local_ed != 0 {
-                    (Self::edit_rank(m.edit_hlc, &m.body), &m.body) > (Self::edit_rank(local_ed, &local_body), &local_body)
+                // (a sibling's edit time is clamped like any received hlc: a far-future stamp
+                // must not win every later edit for good)
+                let their_ed = m.edit_hlc.clamp(0, crate::util::clamp_hlc_now().min(i64::MAX as u64) as i64);
+                let take_body = if their_ed != 0 || local_ed != 0 {
+                    (Self::edit_rank(their_ed, &m.body), &m.body) > (Self::edit_rank(local_ed, &local_body), &local_body)
                 } else {
                     m.rev > rev
                 };
@@ -1137,8 +1262,8 @@ impl Store {
                         "UPDATE messages SET body=CASE WHEN deleted=1 THEN body ELSE ?2 END, edited=MAX(edited,?3) WHERE id=?1",
                         params![&m.id[..], m.body, m.edited as i64],
                     )?;
-                    if m.edit_hlc > local_ed {
-                        Self::lww_set(c, &ed_key, m.edit_hlc)?;
+                    if their_ed > local_ed {
+                        Self::lww_set(c, &ed_key, their_ed)?;
                     }
                     changed = true;
                 }
@@ -1340,6 +1465,18 @@ impl Store {
         grab("SELECT id, name, created FROM sticker_packs", &|r| Ok(SyncItem::StickerPack { id: r.get(0)?, name: r.get(1)?, created: r.get(2)? }));
         grab("SELECT hash, pack, mime, emoji, animated FROM stickers", &|r| {
             Ok(SyncItem::Sticker { hash: ByteBuf::from(r.get::<_, Vec<u8>>(0)?), pack: r.get(1)?, mime: r.get(2)?, emoji: r.get(3)?, animated: r.get::<_, i64>(4)? != 0 })
+        });
+        grab("SELECT conv, peer, upto FROM group_reads", &|r| Ok(SyncItem::GroupRead { conv: r.get(0)?, peer: ByteBuf::from(r.get::<_, Vec<u8>>(1)?), upto: r.get(2)? }));
+        // my Khoảnh khắc archive (my own only: friends' stories are never passed on)
+        grab("SELECT id, created, text, image, bg FROM stories WHERE mine=1 ORDER BY created DESC LIMIT 200", &|r| {
+            Ok(SyncItem::Story {
+                id: ByteBuf::from(r.get::<_, Vec<u8>>(0)?),
+                created: r.get(1)?,
+                text: r.get(2)?,
+                image: ByteBuf::from(r.get::<_, Option<Vec<u8>>>(3)?.unwrap_or_default()),
+                bg: r.get(4)?,
+                deleted: false,
+            })
         });
         grab("SELECT b.hash, b.mime, b.data FROM sticker_blobs b WHERE b.hash IN (SELECT hash FROM stickers)", &|r| {
             Ok(SyncItem::StickerBlob { hash: ByteBuf::from(r.get::<_, Vec<u8>>(0)?), mime: r.get(1)?, data: ByteBuf::from(r.get::<_, Vec<u8>>(2)?) })
@@ -1784,6 +1921,36 @@ mod tests {
 
     /// Regression (matrix race): the same message edited on two of my devices at once —
     /// my devices settled on one text, the friend (arrival order) on the other.
+    /// E1: a sibling's far-future edit time is clamped on import: a genuine later edit
+    /// still wins afterwards.
+    #[test]
+    fn imported_edit_time_is_clamped() {
+        let me = PeerId([1; 32]);
+        let d = sibs(2);
+        for s in &d {
+            msg(s, 5, "d:f", &me, 10 << 8);
+        }
+        let future = ((crate::util::now_ms() + 365 * 86_400_000) << 8) as i64;
+        let it = {
+            let mut m = match d[0].sync_export(K_MSG, &[5; 16]).unwrap() {
+                SyncItem::Msg(m) => m,
+                _ => unreachable!(),
+            };
+            m.body = serde_json::json!({"text": "from the future"}).to_string();
+            m.edit_hlc = future;
+            m.edited = true;
+            SyncItem::Msg(m)
+        };
+        d[1].sync_import(&it, &me, true).unwrap();
+        assert_eq!(d[1].message(&[5; 16]).unwrap().body["text"], "from the future");
+        let kept = Store::lww_get(&d[1].conn.lock(), &format!("ed:{}", hex::encode([5u8; 16]))).unwrap();
+        assert!(kept < future && kept as u64 <= crate::util::clamp_hlc_now(), "{kept}");
+        // a real edit made a moment later (beyond the clock-skew window) replaces it
+        let later = crate::util::clamp_hlc_now() + (1 << 8);
+        assert!(d[1].edit_message(&[5; 16], &me, &serde_json::json!({"text": "now"}), later).unwrap());
+        assert_eq!(d[1].message(&[5; 16]).unwrap().body["text"], "now");
+    }
+
     #[test]
     fn crossing_edits_settle_on_the_latest_signed_one() {
         let me = PeerId([1; 32]);
@@ -1836,6 +2003,124 @@ mod tests {
             assert_eq!(s.message(&[5; 16]).unwrap().body["text"], winner);
         }
         assert_eq!(d[0].sync_digest(K_MSG, &[5; 16]).unwrap()[3], d[1].sync_digest(K_MSG, &[5; 16]).unwrap()[3]);
+    }
+
+    /// Group "seen by": every member's read mark is kept (survives a restart), only moves
+    /// forward, and reaches my other devices (live and in the bootstrap).
+    #[test]
+    fn group_read_marks_persist_and_sync() {
+        let me = PeerId([1; 32]);
+        let (b, c) = (PeerId([2; 32]), PeerId([3; 32]));
+        let conv = "g:00112233445566778899aabbccddeeff";
+        let d = sibs(3);
+        assert!(d[0].group_read_set(conv, &b, 500).unwrap());
+        assert!(!d[0].group_read_set(conv, &b, 400).unwrap(), "older mark changes nothing");
+        assert!(!d[0].group_read_set(conv, &b, 500).unwrap(), "same mark changes nothing");
+        assert!(d[0].group_read_set(conv, &c, 300).unwrap());
+        let mut got = d[0].group_reads(conv);
+        got.sort();
+        assert_eq!(got, vec![(b, 500), (c, 300)]);
+        assert!(d[0].group_reads("g:other").is_empty());
+        assert_eq!(d[0].group_seen_by(conv, 400), vec![b.to_base32()]);
+        // to a sibling: live
+        let imp = push(&d[0], &d[1], &me);
+        assert!(imp.contains(&Imported::GroupRead { conv: conv.into(), peer: b, upto: 500 }), "{imp:?}");
+        let mut got1 = d[1].group_reads(conv);
+        got1.sort();
+        assert_eq!(got1, got);
+        // the sibling heard a newer mark first: it wins both ways, an older one never goes back
+        assert!(d[1].group_read_set(conv, &b, 900).unwrap());
+        push(&d[1], &d[0], &me);
+        assert!(d[0].group_reads(conv).contains(&(b, 900)));
+        assert!(push(&d[0], &d[1], &me).iter().all(|i| *i == Imported::Nothing));
+        // a sibling's bogus items are ignored
+        for it in [
+            SyncItem::GroupRead { conv: "d:x".into(), peer: ByteBuf::from(vec![2; 32]), upto: 5 },
+            SyncItem::GroupRead { conv: conv.into(), peer: ByteBuf::from(vec![2; 3]), upto: 5 },
+        ] {
+            assert_eq!(d[2].sync_import(&it, &me, true).unwrap(), Imported::Nothing);
+        }
+        // a new device gets them with the bootstrap; the item survives encoding
+        let items: Vec<SyncItem> = d[0].bootstrap_items().into_iter().filter(|i| matches!(i, SyncItem::GroupRead { .. })).collect();
+        assert_eq!(items.len(), 2);
+        for it in &items {
+            d[2].sync_import(&SyncItem::decode(&it.encode()).unwrap(), &me, false).unwrap();
+        }
+        assert!(d[2].group_reads(conv).contains(&(b, 900)));
+    }
+
+    /// My Khoảnh khắc archive is the same on all my devices (live, catch-up and bootstrap);
+    /// a story taken down on one device never comes back from another; friends' stories
+    /// are never passed between my devices.
+    #[test]
+    fn my_story_archive_syncs_and_deletions_stick() {
+        let me = PeerId([1; 32]);
+        let friend = PeerId([2; 32]);
+        let d = sibs(3);
+        let day = 86_400_000i64;
+        let old = crate::util::now_ms() as i64 - 3 * day; // expired: only in the archive
+        assert!(d[0].story_put(&[7; 16], &me, old, "Đà Lạt", b"\xff\xd8img", "aurora").unwrap());
+        d[0].story_mark_mine(&[7; 16]).unwrap();
+        assert!(d[0].story_put(&[8; 16], &me, old + 1, "biển", &[], "ocean").unwrap());
+        d[0].story_mark_mine(&[8; 16]).unwrap();
+        assert!(d[0].story_put(&[9; 16], &friend, crate::util::now_ms() as i64, "bạn", &[], "").unwrap());
+        let got = push(&d[0], &d[1], &me);
+        assert!(got.contains(&Imported::Story { id: vec![7; 16], deleted: false }), "{got:?}");
+        let ids = |s: &Store| s.story_archive().unwrap().iter().map(|x| x["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(ids(&d[1]), vec![hex::encode([8u8; 16]), hex::encode([7u8; 16])]);
+        assert_eq!(d[1].story_image(&[7; 16]).unwrap(), b"\xff\xd8img");
+        assert!(d[1].story_author(&[9; 16]).is_none(), "a friend's story went to my other device");
+        assert!(d[1].stories().unwrap().is_empty(), "expired archive shown as active");
+        // taken down on device 1: tombstone reaches device 0, and device 2's bootstrap copy
+        // (made before) can't bring it back anywhere
+        let boot: Vec<SyncItem> = d[0].bootstrap_items().into_iter().filter(|i| matches!(i, SyncItem::Story { .. })).collect();
+        assert_eq!(boot.len(), 2);
+        assert!(d[1].story_delete(&[7; 16]).unwrap());
+        let got = push(&d[1], &d[0], &me);
+        assert!(got.contains(&Imported::Story { id: vec![7; 16], deleted: true }), "{got:?}");
+        assert_eq!(ids(&d[0]), vec![hex::encode([8u8; 16])]);
+        for it in &boot {
+            d[2].sync_import(&SyncItem::decode(&it.encode()).unwrap(), &me, false).unwrap();
+        }
+        assert_eq!(ids(&d[2]).len(), 2, "bootstrap");
+        push(&d[1], &d[2], &me);
+        assert_eq!(ids(&d[2]), vec![hex::encode([8u8; 16])], "tombstone wins over the bootstrap copy");
+        for it in &boot {
+            assert_eq!(d[0].sync_import(it, &me, true).unwrap(), Imported::Nothing);
+        }
+        assert_eq!(ids(&d[0]), vec![hex::encode([8u8; 16])], "deleted story came back");
+        // bogus items are ignored
+        let bad = SyncItem::Story { id: ByteBuf::from(vec![1; 3]), created: 0, text: "x".into(), image: ByteBuf::new(), bg: String::new(), deleted: false };
+        assert_eq!(d[0].sync_import(&bad, &me, true).unwrap(), Imported::Nothing);
+    }
+
+    /// Regression (1.0.8 review): a story pruned by the archive limit on one device stays
+    /// gone — a sibling still holding it can't sync it back, and the sibling drops it too.
+    #[test]
+    fn pruned_archive_stories_stay_gone() {
+        let me = PeerId([1; 32]);
+        let d = sibs(2);
+        let t0 = crate::util::now_ms() as i64 - 30 * 86_400_000;
+        let id = |n: i64| -> [u8; 16] {
+            let mut k = [0u8; 16];
+            k[..8].copy_from_slice(&n.to_be_bytes());
+            k
+        };
+        for n in 0..=crate::store::STORY_ARCHIVE_MAX {
+            for s in d.iter() {
+                assert!(s.story_put(&id(n), &me, t0 + n, "", &[], "").unwrap());
+                s.story_mark_mine(&id(n)).unwrap();
+            }
+        }
+        d[0].maintain().unwrap();
+        assert!(d[0].story_image(&id(0)).is_none() && d[0].story_gone(&id(0)), "oldest pruned with a tombstone");
+        // the sibling (not pruned yet) offers it back: not re-imported; the tombstone reaches it
+        push(&d[1], &d[0], &me);
+        assert!(d[0].story_author(&id(0)).is_none(), "pruned story came back");
+        push(&d[0], &d[1], &me);
+        assert!(d[1].story_author(&id(0)).is_none() && d[1].story_gone(&id(0)));
+        assert_eq!(d[1].story_archive().unwrap().len() as i64, crate::store::STORY_ARCHIVE_MAX);
+        assert_eq!(d[0].sync_digest(K_STORY, &id(0)), d[1].sync_digest(K_STORY, &id(0)), "settled");
     }
 
     #[test]

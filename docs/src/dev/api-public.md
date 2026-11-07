@@ -121,7 +121,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 ### Stories (24 h)
 | cmd | args | data |
 |---|---|---|
-| `post_story` | `text?, image_path?, bg?: "aurora"` | story |
+| `post_story` | `text?, image_path?, bg?: "aurora", audience?: "friends" \| "close"` | `{id, recipients}` (friends on `story_hidden` never get it; `close` = only `story_close`) |
 | `stories` | – | `[story]` |
 | `story_image` | `story_id` | `{image}` (base64) |
 | `story_seen` / `story_viewers` | `story_id` | – / viewers |
@@ -135,7 +135,8 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 | `group_add` / `group_remove` | `gid, peer` | – |
 | `group_set_role` | `gid, peer, role: "admin"\|"member"` | – |
 | `group_rename` | `gid, name` | – |
-| `group_meta` / `group_avatar` | `gid, avatar?, description?` / `gid` | – / `{avatar}` |
+| `group_meta` / `group_avatar` / `group_cover` | `gid, avatar?, description?, cover?` (cover: JPEG ≤ 300 KB base64, `""` removes; communities: admins only) / `gid` / `gid` | – / `{avatar}` / `{cover}` |
+| `group_dissolve` | `gid` (owner only) | – ; every member then gets `conversation_removed` + `group_removed {dissolved: true, name, kind}` |
 | `group_channel` | `gid, name, voice?, remove?` | – |
 | `group_settings` | `gid, slow_mode_s?, admins_only?` (announcement channel) | – |
 | `group_ban` | `gid, peer, ban?: true` | – |
@@ -156,7 +157,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 | `pause_file` / `cancel_file` | `file_id` | – |
 | `files` | – | `[File]` |
 | `storage_stats` | – | usage stats (`media_bytes`, `db_bytes`, `by_conv`, `policy`, …) |
-| `storage_policy` / `set_storage_policy` | – / `max_cache?, media_days?, auto_direct?, auto_group?, community_days?` | policy |
+| `storage_policy` / `set_storage_policy` | – / `max_cache?, media_days?, community_days?, auto_download?: {wifi?, cell?: {photo?, video?, voice?, file?, file_group?}}` (bytes; 0 = off, 2^50 = always; `auto_direct` / `auto_group` are legacy and no longer decide) | policy |
 | `clear_media` | `conv?: "*"` | result |
 | `maintain` | – | runs storage cleanup |
 
@@ -164,7 +165,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 | cmd | args | data |
 |---|---|---|
 | `settings_get` | – | `{read_receipts, typing, p2p_only, downloads_dir, …}` |
-| `settings_set` | `read_receipts?, typing?, p2p_only?, downloads_dir?` | – (`p2p_only`: never use a bridge; does **not** hide your IP) |
+| `settings_set` | `read_receipts?, typing?, p2p_only?, downloads_dir?, auto_download?, story_hidden?: [id], story_close?: [id]` | – (`p2p_only`: never use a bridge; does **not** hide your IP) |
 
 ### Calls
 | cmd | args | data |

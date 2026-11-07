@@ -23,16 +23,40 @@ Future<String?> pickConversation(BuildContext context, {required String title, S
   );
 }
 
+/// What "Forward" picked: the chat, and whether to leave out who wrote it.
+class ForwardPick {
+  const ForwardPick(this.conv, {this.hideSender = false});
+  final String conv;
+
+  /// "Ẩn tên người gửi": the copy carries no "Forwarded from …".
+  final bool hideSender;
+}
+
+/// "Forward" chat picker with the "Hide sender name" option.
+Future<ForwardPick?> pickForwardTarget(BuildContext context, {required String title, String? exclude}) {
+  final body = _ConvPicker(title: title, exclude: exclude, forwardOptions: true);
+  if (isDesktop(context)) {
+    return showDialog<ForwardPick>(context: context, builder: (_) => Dialog(child: SizedBox(width: 420, height: 600, child: body)));
+  }
+  return showModalBottomSheet<ForwardPick>(
+    context: context,
+    isScrollControlled: true,
+    builder: (c) => SizedBox(height: MediaQuery.sizeOf(c).height * 0.8, child: body),
+  );
+}
+
 class _ConvPicker extends StatefulWidget {
-  const _ConvPicker({required this.title, this.exclude});
+  const _ConvPicker({required this.title, this.exclude, this.forwardOptions = false});
   final String title;
   final String? exclude;
+  final bool forwardOptions;
   @override
   State<_ConvPicker> createState() => _ConvPickerState();
 }
 
 class _ConvPickerState extends State<_ConvPicker> {
   String _q = '';
+  bool _hideSender = false;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +83,16 @@ class _ConvPickerState extends State<_ConvPicker> {
           decoration: InputDecoration(hintText: s('search_chats'), prefixIcon: const Icon(AppIcons.search, size: 20)),
         ),
       ),
+      if (widget.forwardOptions)
+        SwitchListTile(
+          key: const ValueKey('fwd_hide_sender'),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+          secondary: const Icon(AppIcons.hide),
+          title: Text(s('fwd_hide_sender')),
+          subtitle: Text(s('fwd_hide_sender_hint'), style: context.tt.bodySmall),
+          value: _hideSender,
+          onChanged: (v) => setState(() => _hideSender = v),
+        ),
       Expanded(
         child: ListView.builder(
           itemCount: list.length,
@@ -70,7 +104,7 @@ class _ConvPickerState extends State<_ConvPicker> {
                   ? const SavedAvatar(size: 40)
                   : (c.peer != null ? PeerAvatar(peer: c.peer!, fallbackName: c.title, size: 40) : GroupAvatar(gid: c.gid ?? c.id, name: c.title, size: 40)),
               title: Text(c.isSaved ? s('saved_messages') : c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () => Navigator.pop(context, c.id),
+              onTap: () => widget.forwardOptions ? Navigator.pop(context, ForwardPick(c.id, hideSender: _hideSender)) : Navigator.pop(context, c.id),
             );
           },
         ),

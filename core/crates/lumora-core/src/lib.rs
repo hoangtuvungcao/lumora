@@ -1,6 +1,7 @@
 //! Lumora core: identity, crypto, encrypted storage, P2P transport and app protocol.
 pub mod api;
 pub mod bip39;
+pub mod community;
 pub mod crypto;
 pub mod devices;
 pub mod file_preview;

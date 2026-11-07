@@ -21,7 +21,7 @@ Message _msg(String kind, String body, {bool mine = true}) => Message.fromJson({
       'mine': mine,
       'kind': kind,
       'body': body,
-      'ts': 1,
+      'ts': DateTime.now().millisecondsSinceEpoch,
     });
 
 Uint8List _jpegWithGps({int orientation = 6}) {

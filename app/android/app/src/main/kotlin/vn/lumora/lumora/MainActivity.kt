@@ -100,6 +100,18 @@ open class MainActivity : FlutterActivity() {
         /** The Activity attached to the engine (MainActivity or a bubble), if any. Main thread. */
         private var attached: MainActivity? = null
 
+        /** Chat bubbles between onResume and onPause (expanded). Main thread. */
+        private val resumedBubbles = mutableSetOf<MainActivity>()
+
+        /** The main window while it is visible (onStart..onStop). Main thread. */
+        private var startedMain: MainActivity? = null
+
+        /** Dart has drawn a frame in some window of this process (it is past its cold start). */
+        @Volatile internal var uiEverShown = false
+
+        /** Lumora's main window has input focus (the user is in it, not in a bubble). */
+        internal fun mainHasFocus(): Boolean = startedMain?.hasWindowFocus() == true
+
         /** Dart listens on `lumora/links` now: the links that came before it. Main thread. */
         fun takeQueuedLinks(): ArrayList<String> {
             linksReady = true
@@ -148,12 +160,32 @@ open class MainActivity : FlutterActivity() {
 
     override fun shouldDestroyEngineWithHost(): Boolean = false
 
+    // ------------------------------------------------- engine hand-over
+    //
+    // One engine, one FlutterView at a time: the main window and chat bubbles
+    // ([BubbleActivity]) take it from each other. FlutterActivity attaches in
+    // onCreate and evicts whoever had it (its view goes blank and its later
+    // lifecycle calls are ignored by Flutter); an evicted window gets it back
+    // with [recreate].
+    //
+    // Who gets it does NOT depend on onTopResumedActivityChanged alone: OEM
+    // bubble / floating-window implementations (Xiaomi HyperOS) don't always
+    // make the expanded bubble the top-resumed activity, or keep it visible but
+    // paused. The rule:
+    //  - a bubble takes the engine whenever it is shown (onStart/onResume),
+    //    gets focus or becomes top-resumed;
+    //  - the main window takes it back when it gets focus or becomes
+    //    top-resumed while no bubble is in front, and when the bubble that had
+    //    it goes away (onStop) while the main window is visible.
+
     /**
      * Another Activity (a chat bubble, or Lumora itself after a bubble) took
-     * the engine: this one shows nothing until it attaches again, which
-     * [recreate] does the next time it is in front.
+     * the engine: this one shows nothing until it attaches again ([claimEngine]).
      */
     private var evicted = false
+
+    /** A chat bubble's window (false: Lumora's main window). */
+    protected open val isBubbleWindow: Boolean get() = false
 
     override fun detachFromFlutterEngine() {
         evicted = true
@@ -161,11 +193,62 @@ open class MainActivity : FlutterActivity() {
         super.detachFromFlutterEngine()
     }
 
+    /** Takes the engine back if another window took it (re-creating this one attaches it). */
+    protected fun claimEngine(why: String) {
+        if (!evicted || isFinishing || isDestroyed || isChangingConfigurations) return
+        android.util.Log.i("MainActivity", "${javaClass.simpleName}: taking the Flutter view back ($why)")
+        evicted = false
+        recreate()
+    }
+
+    /** The main window may take the engine back: no chat bubble is in front of it. */
+    private fun mainMayClaim() = resumedBubbles.none { !it.isFinishing }
+
+    /** This window has lost the engine to another one. */
+    protected val isEvicted: Boolean get() = evicted
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        uiEverShown = true
+    }
+
     override fun onTopResumedActivityChanged(isTopResumedActivity: Boolean) {
         super.onTopResumedActivityChanged(isTopResumedActivity)
-        if (isTopResumedActivity && evicted && !isFinishing) {
-            evicted = false
-            recreate()
+        if (!isTopResumedActivity || !evicted) return
+        if (isBubbleWindow) claimEngine("top resumed")
+        // after the other window's onPause (same frame) — a collapsing bubble pauses after this
+        else window.decorView.post { if (mainMayClaim()) claimEngine("top resumed") }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!hasFocus || !evicted) return
+        if (isBubbleWindow) claimEngine("focus")
+        // the user is in the main window: a bubble keeps the engine only while it has focus itself
+        else window.decorView.post { if (hasWindowFocus() && resumedBubbles.none { it.hasWindowFocus() }) claimEngine("focus") }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (!isBubbleWindow) startedMain = this
+        if (isBubbleWindow && evicted) {
+            claimEngine("shown")
+        } else if (attached === this) {
+            // Visible: let Dart draw even if this window is never resumed (OEM
+            // multi-window / floating windows keep visible windows paused).
+            // Flutter itself only says "resumed" in onResume; until then Dart may
+            // still be "paused"/"detached" (frames off) from the window that had
+            // the engine, and nothing would ever be drawn here.
+            flutterEngine?.lifecycleChannel?.appIsInactive()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (startedMain === this) startedMain = null
+        // A bubble collapsed / closed: give the engine back to the main window if it is on screen.
+        if (isBubbleWindow && attached === this && !isChangingConfigurations) {
+            startedMain?.let { m -> m.window.decorView.post { if (m.mainMayClaim()) m.claimEngine("bubble hidden") } }
         }
     }
 
@@ -222,6 +305,16 @@ open class MainActivity : FlutterActivity() {
         } catch (_: Throwable) {
             // PiP disabled for Lumora by the user / device: nothing to do
         }
+    }
+
+    /** Tells Dart (AndroidBridge.pip) when the main window enters / leaves picture-in-picture. */
+    private fun sendPip(on: Boolean) {
+        LumoraEngine.channel()?.invokeMethod("pip", mapOf("on" to on))
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (pipCapable) sendPip(isInPictureInPictureMode)
     }
 
     override fun onUserLeaveHint() {
@@ -511,6 +604,8 @@ open class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         resumed = this
+        if (isBubbleWindow) resumedBubbles.add(this)
+        else if (evicted) window.decorView.post { if (mainMayClaim()) claimEngine("resumed") }
         // A screen-share request waiting for Lumora to be in front.
         launchConsent()
         // The service could not start from the background, or stopped after
@@ -520,6 +615,7 @@ open class MainActivity : FlutterActivity() {
 
     override fun onPause() {
         if (resumed === this) resumed = null
+        resumedBubbles.remove(this)
         super.onPause()
     }
 
@@ -529,7 +625,11 @@ open class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        // closed while in picture-in-picture (its window swiped away): Dart must not stay in PiP mode
+        if (pipCapable && isInPictureInPictureMode) sendPip(false)
         if (resumed === this) resumed = null
+        resumedBubbles.remove(this)
+        if (startedMain === this) startedMain = null
         if (attached === this) attached = null
         if (overLock === this) overLock = null
         super.onDestroy()

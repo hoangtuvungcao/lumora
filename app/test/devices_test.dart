@@ -326,7 +326,7 @@ void main() {
     await t.scrollUntilVisible(find.text('Đăng xuất'), 200, scrollable: find.byType(Scrollable).first);
     await t.tap(find.text('Đăng xuất'));
     await settle(t);
-    expect(find.text('Đăng xuất khỏi máy này?'), findsOneWidget);
+    expect(find.text('Đăng xuất khỏi thiết bị này?'), findsOneWidget);
     expect(find.textContaining('24 từ khôi phục'), findsWidgets);
     expect(find.byType(Checkbox), findsNothing, reason: 'no phrase quiz to sign out');
     await t.tap(find.widgetWithText(FilledButton, 'Đăng xuất'));

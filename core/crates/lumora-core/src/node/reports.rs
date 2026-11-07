@@ -737,7 +737,12 @@ mod tests {
         assert!(laptop.group_blocked(&gid));
         assert!(!laptop.store.conversations().unwrap().iter().any(|x| x.id == st.conv_id()), "still shown on the other device");
         assert!(drain(&mut lev).iter().any(|e| e["event"] == "group_removed"));
-        tokio::time::sleep(BLOCK_LEAVE_WAIT * 3).await;
+        // (after BLOCK_LEAVE_WAIT; the leave itself may take a while on a loaded machine)
+        let t0 = std::time::Instant::now();
+        while laptop.groups.read().get(&gid).unwrap().is_member(&laptop.me) && t0.elapsed() < BLOCK_LEAVE_WAIT * 50 {
+            tokio::time::sleep(BLOCK_LEAVE_WAIT / 4).await;
+        }
+        assert!(t0.elapsed() >= BLOCK_LEAVE_WAIT, "left before waiting for the other device's Leave");
         assert!(!laptop.groups.read().get(&gid).unwrap().is_member(&laptop.me), "the other device didn't leave");
         // unblock: allowed again
         c.group_unblock(&gid).unwrap();

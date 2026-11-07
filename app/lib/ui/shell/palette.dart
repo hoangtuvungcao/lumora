@@ -185,14 +185,14 @@ class _CommandPaletteState extends State<CommandPalette> {
                   run: () => _openConv(chat.ensureDirect(c)),
                 ));
     // Natural commands: "gọi Minh Anh", "video Bảo", "điều khiển máy Bảo",
-    // "nhắn Linh", "gửi file cho Hà" (VI + EN keywords).
+    // "nhắn Linh", "gửi tệp cho Hà" (VI + EN keywords).
     final actions = <_Item>[];
     const verbs = <String, List<String>>{
       'call': ['gọi ', 'goi ', 'call '],
       'video': ['video ', 'gọi video ', 'facetime '],
       'remote': ['điều khiển máy ', 'điều khiển ', 'dieu khien ', 'remote ', 'control '],
       'chat': ['nhắn ', 'nhan ', 'chat ', 'message '],
-      'file': ['gửi file cho ', 'gửi file ', 'send file to ', 'send file '],
+      'file': ['gửi tệp cho ', 'gửi tệp ', 'gửi file cho ', 'gửi file ', 'send file to ', 'send file '],
     };
     String? verb;
     var who = q;

@@ -4,16 +4,21 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'core/api.dart';
 import 'platform/android_bridge.dart';
 import 'platform/apple_services.dart';
 import 'platform/camera_bridge.dart';
+import 'platform/network_hint.dart';
 import 'platform/tones.dart';
 import 'state/app_lock.dart';
+import 'state/community_defaults.dart';
 import 'state/data_rescue.dart';
 import 'state/devices_store.dart';
+import 'state/group_calls.dart';
+import 'state/group_invites.dart';
 import 'state/moderation.dart';
 import 'state/settings.dart';
 import 'state/reminder_snooze.dart';
@@ -22,6 +27,7 @@ import 'state/stores.dart';
 import 'ui/calls/call_layer.dart';
 import 'ui/chats/stickers.dart' show stickersChanged;
 import 'ui/devices/history_sync.dart';
+import 'ui/devices/my_devices.dart' show showRelistPrompt;
 import 'ui/devices/signed_out.dart';
 import 'ui/lock/app_lock_screen.dart';
 import 'ui/onboarding/lock_screen.dart';
@@ -72,14 +78,36 @@ class AppServices {
       nav: nav,
     );
     hub.listeners.add(devices.onEvent);
+    // an old device of this account asks to be listed again (after a restore with the
+    // recovery phrase): the user decides right away (it also waits in My devices)
+    _relistSub = devices.relistEvents.listen((r) {
+      final c = appNavigatorKey.currentState?.overlay?.context;
+      if (c != null && c.mounted) unawaited(showRelistPrompt(c, r));
+    });
+    // self-destruct timers: a new chat starts with the default one, and each
+    // chat's timer is kept on this device (it survives a restart)
+    chat.ttlByConv.addAll(settings.chatTtls);
+    chat.defaultTtl = () => settings.defaultTtlMs;
+    chat.onTtlChanged = (conv, ms) {
+      if ((settings.chatTtls[conv] ?? 0) == ms) return;
+      settings.update((s) => s.chatTtls = {...s.chatTtls}..remove(conv)..addAll({if (ms > 0) conv: ms}));
+    };
+    communityDefaults = CommunityDefaults(api, settings);
+    hub.listeners.add(communityDefaults.onEvent);
+    hub.listeners.add(_onNoticeEvent);
     // ringtone / ringback / message ping (the in-memory demo stays quiet)
     sounds = SoundAlerts(calls: calls, chat: chat, nav: nav, settings: settings, player: api.isMock ? const SilentTonePlayer() : null);
     hub.listeners.add(sounds.onEvent);
     // reports / blocked groups / hidden members (synced between my devices)
     hub.listeners.add(moderation.onEvent);
     hub.loaders.add(moderation.load);
+    // plain group calls that don't ring me ("Join" banner), and invitations
+    // to groups waiting for my answer
+    AvailableCalls.of(api);
+    hub.loaders.add(GroupInvitesStore.of(api).load);
     hub.isHiddenMember = moderation.isHidden;
     sounds.isHiddenMember = moderation.isHidden;
+    sounds.myPeer = () => session.me?.peer ?? '';
     sounds.attach();
     // "Hoãn 10 phút": fired again as a reminder_due of our own
     snoozer = ReminderSnoozer(
@@ -101,6 +129,13 @@ class AppServices {
     };
     moderation.onReport = (r) => notices.add(Notice(kind: NoticeKind.report, title: r.groupName, body: r.excerpt.isNotEmpty ? r.excerpt : r.memberName, conv: r.conv, peer: r.member, ref: r.id));
     moderation.onHandled = notices.removeRefs;
+    // A group / community deleted by its owner: say so (bell + toast); its
+    // chats, rail icon and open screens are already gone (EventHub).
+    hub.onGroupDissolved = (name, community) {
+      final text = S(settings.locale != 'en')(community ? 'space_deleted' : 'group_deleted', {'name': name});
+      notices.add(Notice(kind: NoticeKind.system, title: text));
+      showTopToast(null, text, duration: const Duration(seconds: 4), overlay: appNavigatorKey.currentState?.overlay);
+    };
     moderation.onGroupBlocked = (gid) {
       final conv = 'g:$gid';
       if (chat.convs.containsKey(conv)) chat.onGroupRemoved(conv, left: true);
@@ -126,6 +161,51 @@ class AppServices {
   }
 
   late final AppLock appLock;
+
+  /// "Default history retention for communities", applied on create / join.
+  late final CommunityDefaults communityDefaults;
+
+  /// Core events that only need a word to the user: auto-clean (`storage`)
+  /// and what a remote controller's lock / restart / log out did here
+  /// (`remote_action`, host side) and what it did on the controlled computer
+  /// (`remote_action_result`, controller side).
+  void _onNoticeEvent(String name, Map<String, dynamic> d) {
+    final s = S(settings.locale != 'en');
+    void say(String text, {bool bell = false}) {
+      if (bell) notices.add(Notice(kind: NoticeKind.system, title: text));
+      showTopToast(null, text, duration: const Duration(seconds: 4), overlay: appNavigatorKey.currentState?.overlay);
+    }
+
+    if (name == 'storage') {
+      final n = d['removed_files'] is num ? (d['removed_files'] as num).toInt() : 0;
+      if (n <= 0) return;
+      final freed = d['freed_bytes'] is num ? (d['freed_bytes'] as num).toInt() : 0;
+      say(s('storage_auto_cleaned', {'n': n, 'size': s.bytes(freed)}));
+      // the storage screen (if it was opened) shows the new numbers
+      if (net.storage != null) unawaited(net.loadStorage().catchError((_) {}));
+    } else if (name == 'remote_action') {
+      final action = d['action']?.toString() ?? '';
+      if (!const {'lock', 'restart', 'logout'}.contains(action)) return;
+      final what = s('remote_act_$action');
+      if (d['ok'] == true) {
+        say(s('remote_did_$action'), bell: true);
+      } else if (d['code'] == 'err.power_not_allowed') {
+        say(s('remote_power_refused', {'action': what}), bell: true);
+      } else {
+        say(s('remote_power_failed', {'action': what}), bell: true);
+      }
+    } else if (name == 'remote_action_result') {
+      final action = d['action']?.toString() ?? '';
+      if (!const {'lock', 'restart', 'logout'}.contains(action)) return;
+      if (d['ok'] == true) {
+        say(s('remote_res_$action'));
+      } else if (d['code'] == 'err.power_not_allowed') {
+        say(s('remote_res_refused'));
+      } else {
+        say(s('remote_res_failed'));
+      }
+    }
+  }
   AppLifecycleListener? _life;
 
   /// Call ringtone / ringback and the new-message ping (state/sound_alerts.dart).
@@ -192,6 +272,7 @@ class AppServices {
     AndroidBridge.onOpenConv = openConvFromNotification;
     AndroidBridge.onCallAction = onCallNotificationAction;
     AndroidBridge.isMuted = (c) => chat.convs[c]?.muted ?? false;
+    AndroidBridge.myPeer = () => session.me?.peer ?? '';
     AndroidBridge.convTitle = (c) => chat.convs[c]?.title;
     // Notifications in the app's language, not the phone's (no-op if unchanged).
     AndroidBridge.setLanguage(settings.locale);
@@ -209,6 +290,9 @@ class AppServices {
   }
 
   final LumoraApi api;
+
+  /// Wi-Fi / mobile data → the core (auto-download limits per network).
+  late final NetworkHint networkHint = NetworkHint(api);
   final Settings settings;
   final String dataDir;
   final SessionStore session;
@@ -230,7 +314,11 @@ class AppServices {
   /// The exception behind [SessionPhase.error] (technical details).
   Object? startupError;
 
+  StreamSubscription<RelistRequest>? _relistSub;
+
   void dispose() {
+    _relistSub?.cancel();
+    networkHint.dispose();
     _loadRetry?.cancel();
     _historyReload?.cancel();
     _meReload?.cancel();
@@ -419,7 +507,11 @@ class AppServices {
     'privacy.read_receipts': 'read_receipts',
     'privacy.typing': 'typing',
     'privacy.store_forward': 'store_forward',
+    'privacy.mentions_only': 'mentions_only',
   };
+
+  /// `mentions_only` from the core (null: not there / not a list).
+  static List<String>? _coreList(Map<String, dynamic> core, String k) => core[k] is List ? [for (final e in core[k] as List) '$e'] : null;
 
   Future<void> _adoptCorePrivacy() async {
     final Map<String, dynamic> core;
@@ -430,7 +522,10 @@ class AppServices {
     }
     bool? b(String k) => core[k] is bool ? core[k] as bool : null;
     final rr = b('read_receipts'), ty = b('typing'), sf = b('store_forward');
-    if ((rr ?? settings.readReceipts) == settings.readReceipts && (ty ?? settings.typingIndicators) == settings.typingIndicators && (sf ?? settings.storeForward) == settings.storeForward) {
+    // "mentions only" chats: the same on every device of the account
+    final mo = _coreList(core, 'mentions_only');
+    final moSame = mo == null || mo.join('\n') == settings.mentionsOnlyChats.join('\n');
+    if ((rr ?? settings.readReceipts) == settings.readReceipts && (ty ?? settings.typingIndicators) == settings.typingIndicators && (sf ?? settings.storeForward) == settings.storeForward && moSame) {
       return;
     }
     // the core has these already: nothing to push back (no echo to the other device)
@@ -439,11 +534,13 @@ class AppServices {
       'read_receipts': ?rr,
       'typing': ?ty,
       'store_forward': ?sf,
+      'mentions_only': ?mo,
     };
     settings.update((s) {
       s.readReceipts = rr ?? s.readReceipts;
       s.typingIndicators = ty ?? s.typingIndicators;
       s.storeForward = sf ?? s.storeForward;
+      if (mo != null) s.mentionsOnlyChats = mo;
     });
   }
 
@@ -588,6 +685,8 @@ class AppServices {
     _coreSettings = _coreSettingsSnapshot();
     settings.removeListener(_syncCoreSettings);
     settings.addListener(_syncCoreSettings);
+    // a (re)started core assumes Wi-Fi until told otherwise
+    unawaited(networkHint.resend().then((_) => networkHint.start()));
     // a newly linked device that was closed while copying history shows the
     // progress again
     // From here the core runs and the password was right: a list that fails
@@ -650,6 +749,7 @@ class AppServices {
     'video_beauty': settings.videoBeauty,
     'video_lowlight': settings.videoLowlight,
     'video_mirror_send': settings.videoMirrorSend,
+    'mentions_only': List<String>.of(settings.mentionsOnlyChats),
   };
 
   /// Makes the core match what Settings shows (it keeps its own copy of these
@@ -676,8 +776,17 @@ class AppServices {
         if (core['video_beauty'] is num) s.videoBeauty = (core['video_beauty'] as num).toInt().clamp(0, 3);
         final relays = core['relays'];
         if (relays is List && relays.isNotEmpty) s.relays = relays.map((e) => '$e').toList();
+        final mo = _coreList(core, 'mentions_only');
+        if (mo != null) s.mentionsOnlyChats = mo;
       });
       return;
+    }
+    // "mentions only" was changed on another device while this one was off:
+    // the account's list wins, also when it was emptied (null = never set on this
+    // account: this device's own list fills it below)
+    final mo = _coreList(core, 'mentions_only');
+    if (mo != null && mo.join('\n') != settings.mentionsOnlyChats.join('\n')) {
+      settings.update((s) => s.mentionsOnlyChats = mo);
     }
     final diff = <String, dynamic>{};
     _coreSettingsSnapshot().forEach((k, v) {
@@ -780,6 +889,7 @@ class LumoraApp extends StatelessWidget {
       providers: [
         Provider<AppServices>.value(value: sv),
         Provider<LumoraApi>.value(value: sv.api),
+        Provider<CommunityDefaults>.value(value: sv.communityDefaults),
         ChangeNotifierProvider.value(value: sv.settings),
         ChangeNotifierProvider.value(value: sv.session),
         ChangeNotifierProvider.value(value: sv.contacts),
@@ -812,6 +922,10 @@ class LumoraApp extends StatelessWidget {
             darkTheme: buildTheme(Brightness.dark, compact: compact),
             themeMode: mode,
             locale: Locale(locale),
+            // the framework's own texts (copy / paste menu, tooltips such as "Back",
+            // screen-reader labels, date pickers) follow the app language too
+            supportedLocales: const [Locale('vi'), Locale('en')],
+            localizationsDelegates: GlobalMaterialLocalizations.delegates,
             themeAnimationDuration: Motion.normal,
             builder: (context, child) {
               final mq = MediaQuery.of(context);
@@ -833,7 +947,7 @@ class LumoraApp extends StatelessWidget {
                         child: LockShield(
                           child: Stack(
                             children: [
-                              if (overlays) HostBannerFrame(child: child!) else child!,
+                              if (overlays) HostBannerFrame(child: CallPillFrame(child: child!)) else child!,
                               if (overlays) const RemoteLayer(),
                               if (overlays) const CallLayer(),
                               if (overlays) const ReminderBannerLayer(),

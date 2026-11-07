@@ -436,4 +436,28 @@ void main() {
       expect(AppLock(st).lockNow(), isFalse, reason: 'no app lock: nothing to lock');
     });
   });
+
+  // 1.0.8 review: "mentions only" emptied on another device must not come back from
+  // this device's stale list; never set on the account → this device's list fills it.
+  group('mentions only: cleared vs never set', () {
+    testWidgets('cleared on the account: this device adopts the empty list', (t) async {
+      final api = MockLumoraApi(timers: false);
+      await t.runAsync(() => api.settingsSet({'mentions_only': <String>[]}));
+      final sv = await makeServices(t, api: api, start: false);
+      sv.settings.mentionsOnlyChats = ['g:old'];
+      await t.runAsync(() => sv.unlock(null));
+      expect(sv.settings.mentionsOnlyChats, isEmpty);
+      expect((await t.runAsync(api.settingsGet))!['mentions_only'], isEmpty);
+      sv.dispose();
+    });
+    testWidgets("never set: this device's list goes to the account", (t) async {
+      final api = MockLumoraApi(timers: false);
+      final sv = await makeServices(t, api: api, start: false);
+      sv.settings.mentionsOnlyChats = ['g:mine'];
+      await t.runAsync(() => sv.unlock(null));
+      expect(sv.settings.mentionsOnlyChats, ['g:mine']);
+      expect((await t.runAsync(api.settingsGet))!['mentions_only'], ['g:mine']);
+      sv.dispose();
+    });
+  });
 }

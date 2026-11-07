@@ -4,6 +4,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- location is optional (sharing a place in a chat): tablets without GPS must still see
+         Lumora on Google Play (the location permission implies a required feature otherwise) -->
+    <uses-feature android:name="android.hardware.location" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
@@ -124,7 +127,7 @@
             <!-- Read by Google Play reviewers for the specialUse declaration. -->
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Peer-to-peer messenger without a push server: keeps the user's end-to-end encrypted connection to friends and own devices open so messages and incoming calls reach this phone while the app is in the background (no third-party push service exists to wake it)." />
+                android:value="Peer-to-peer messaging app without a push server: keeps the user's end-to-end encrypted connection to friends and own devices open so messages and incoming calls reach this phone while the app is in the background (no third-party push service exists to wake it)." />
         </service>
         <!-- "Hoãn 10 phút" on a reminder notification (and the snoozed reminder
              firing again when Lumora is not running). -->

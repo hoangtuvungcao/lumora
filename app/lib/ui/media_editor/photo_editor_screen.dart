@@ -1,4 +1,4 @@
-// Full-screen photo editor + send preview (Telegram/Zalo style).
+// Full-screen photo editor + send preview.
 //
 // Preview mode: the photo(s), "Chỉnh sửa", caption, quality toggle and the
 // finish actions (Gửi / Chuyển tiếp… / Lưu về máy).

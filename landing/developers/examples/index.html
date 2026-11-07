@@ -84,7 +84,7 @@
 <section class="doc-sec" id="starter">
   <div class="guide__top"><span class="feature__icon fi-violet"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#sparkles"/></svg></span><div><h2><span class="l-vi">Bot khởi đầu</span><span class="l-en" lang="en">Starter bot</span></h2><p><span class="l-vi">Lệnh, nút bấm, dữ liệu nút theo tiền tố và regex, sửa tin nhắn khi bấm nút, nhắc lại tin nhắn.</span><span class="l-en" lang="en">Commands, buttons, callbacks by prefix and regex, editing the message on press, echo.</span></p></div></div>
   <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/starter_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>starter_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/starter-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>starter-bot.mjs</span></a></p>
-  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-17-0" aria-controls="panel-17-0" data-sync="py">starter_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-17-1" aria-controls="panel-17-1" data-sync="js">starter-bot.mjs</button></div><div role="tabpanel" id="panel-17-0" aria-labelledby="tab-17-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Starter bot: commands, inline buttons, callbacks, editing a message, echo.
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-18-0" aria-controls="panel-18-0" data-sync="py">starter_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-18-1" aria-controls="panel-18-1" data-sync="js">starter-bot.mjs</button></div><div role="tabpanel" id="panel-18-0" aria-labelledby="tab-18-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Starter bot: commands, inline buttons, callbacks, editing a message, echo.
 
 Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 starter_bot.py
       (without a token it starts a test bot named &quot;Starter Bot&quot;)
@@ -129,7 +129,7 @@ def echo(ctx):
 
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-17-1" aria-labelledby="tab-17-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Starter bot: commands, inline buttons, callbacks, editing a message, echo.
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-18-1" aria-labelledby="tab-18-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Starter bot: commands, inline buttons, callbacks, editing a message, echo.
 //
 // Run:  LUMORA_BOT_TOKEN=lumora_bot_... node starter-bot.mjs
 //       (without a token it starts a test bot named &quot;Starter Bot&quot;)
@@ -161,9 +161,9 @@ bot.onMessage((ctx) =&gt; ctx.reply(`Bạn nói / You said: ${ctx.text}`, { repl
 await bot.run();</code></pre></div></div>
 </section>
 <section class="doc-sec" id="group-helper">
-  <div class="guide__top"><span class="feature__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#users"/></svg></span><div><h2><span class="l-vi">Bot quản lý nhóm</span><span class="l-en" lang="en">Group helper bot</span></h2><p><span class="l-vi">Chào thành viên mới, nút nội quy, tự bật chế độ chậm khi có người spam, lệnh chỉ dành cho quản trị viên nhóm (cấm, xóa tin, chế độ chậm).</span><span class="l-en" lang="en">Welcomes new members, a rules button, automatic slow mode on spam, group-admin-only commands (ban, purge, slow mode).</span></p></div></div>
+  <div class="guide__top"><span class="feature__icon fi-cyan"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#users"/></svg></span><div><h2><span class="l-vi">Bot quản lý nhóm</span><span class="l-en" lang="en">Group helper bot</span></h2><p><span class="l-vi">Chào thành viên mới, nút nội quy, tự bật chế độ chậm khi có người spam, lệnh chỉ dành cho quản trị viên nhóm (cấm, xoá tin, chế độ chậm).</span><span class="l-en" lang="en">Welcomes new members, a rules button, automatic slow mode on spam, group-admin-only commands (ban, purge, slow mode).</span></p></div></div>
   <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/group_helper_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>group_helper_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/group-helper-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>group-helper-bot.mjs</span></a></p>
-  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-18-0" aria-controls="panel-18-0" data-sync="py">group_helper_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-18-1" aria-controls="panel-18-1" data-sync="js">group-helper-bot.mjs</button></div><div role="tabpanel" id="panel-18-0" aria-labelledby="tab-18-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Group helper: welcome message, rules button, automatic slow mode on spam,
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-19-0" aria-controls="panel-19-0" data-sync="py">group_helper_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-19-1" aria-controls="panel-19-1" data-sync="js">group-helper-bot.mjs</button></div><div role="tabpanel" id="panel-19-0" aria-labelledby="tab-19-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Group helper: welcome message, rules button, automatic slow mode on spam,
 admin-only moderation commands.
 
 Add the bot to a group (group info → Bots → add @yourbot), turn on &quot;Let the bot read all
@@ -271,14 +271,14 @@ def ban(ctx):
     ctx.reply(f&quot;🚫 Đã cấm / Banned {bot.name_of(who)}.&quot;)
 
 
-@bot.command(&quot;purge&quot;, &quot;Xóa mọi tin của một người / Delete all their messages&quot;, chats=&quot;group&quot;, hidden=True)
+@bot.command(&quot;purge&quot;, &quot;Xoá mọi tin của một người / Delete all their messages&quot;, chats=&quot;group&quot;, hidden=True)
 @group_admin
 def purge(ctx):
     who = target_of(ctx)
     if not who:
         return ctx.reply(&quot;Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.&quot;)
     bot.group_purge_member(ctx.conv, who)
-    ctx.reply(&quot;🧹 Đã xóa. / Deleted.&quot;, silent=True)
+    ctx.reply(&quot;🧹 Đã xoá. / Deleted.&quot;, silent=True)
 
 
 @bot.on_message(chats=&quot;group&quot;, kinds=None)
@@ -301,7 +301,7 @@ def anti_spam(ctx):
 
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-18-1" aria-labelledby="tab-18-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Group helper: welcome message, rules button, automatic slow mode on spam,
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-19-1" aria-labelledby="tab-19-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Group helper: welcome message, rules button, automatic slow mode on spam,
 // admin-only moderation commands.
 //
 // Add the bot to a group (group info → Bots → add @yourbot), turn on &quot;Let the bot read all
@@ -383,11 +383,11 @@ bot.command(&quot;ban&quot;, &quot;Cấm thành viên (trả lời tin của h�
   await ctx.reply(`🚫 Đã cấm / Banned ${await bot.nameOf(who)}.`);
 }), groupOnly);
 
-bot.command(&quot;purge&quot;, &quot;Xóa mọi tin của một người / Delete all their messages&quot;, groupAdmin(async (ctx) =&gt; {
+bot.command(&quot;purge&quot;, &quot;Xoá mọi tin của một người / Delete all their messages&quot;, groupAdmin(async (ctx) =&gt; {
   const who = await targetOf(ctx);
   if (!who) return ctx.reply(&quot;Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.&quot;);
   await bot.groupPurgeMember(ctx.conv, who);
-  await ctx.reply(&quot;🧹 Đã xóa. / Deleted.&quot;, { silent: true });
+  await ctx.reply(&quot;🧹 Đã xoá. / Deleted.&quot;, { silent: true });
 }), groupOnly);
 
 bot.onMessage({ chats: &quot;group&quot;, kinds: null }, async (ctx) =&gt; {
@@ -414,7 +414,7 @@ await bot.run();</code></pre></div></div>
 <section class="doc-sec" id="team-tasks">
   <div class="guide__top"><span class="feature__icon fi-gold"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#checks"/></svg></span><div><h2><span class="l-vi">Bot việc nhóm</span><span class="l-en" lang="en">Team tasks bot</span></h2><p><span class="l-vi">Danh sách việc bằng /todo, nhắc hẹn bằng /remind, chúc mừng khi xong việc, danh sách stand-up lúc 9:00 mỗi ngày.</span><span class="l-en" lang="en">Checklists with /todo, reminders with /remind, a cheer when everything is done, a daily 9:00 stand-up checklist.</span></p></div></div>
   <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/team_tasks_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>team_tasks_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/team-tasks-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>team-tasks-bot.mjs</span></a></p>
-  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-19-0" aria-controls="panel-19-0" data-sync="py">team_tasks_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-19-1" aria-controls="panel-19-1" data-sync="js">team-tasks-bot.mjs</button></div><div role="tabpanel" id="panel-19-0" aria-labelledby="tab-19-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Team tasks: checklists, reminders and a daily stand-up message.
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-20-0" aria-controls="panel-20-0" data-sync="py">team_tasks_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-20-1" aria-controls="panel-20-1" data-sync="js">team-tasks-bot.mjs</button></div><div role="tabpanel" id="panel-20-0" aria-labelledby="tab-20-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;Team tasks: checklists, reminders and a daily stand-up message.
 
   /todo Release 1.2: write notes; build; publish     → a checklist anyone can tick
   /remind 30m Stand-up call                          → a reminder for everyone in the chat
@@ -531,7 +531,7 @@ def morning():
 
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-19-1" aria-labelledby="tab-19-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Team tasks: checklists, reminders and a daily stand-up message.
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-20-1" aria-labelledby="tab-20-1" class="tabs__panel"><pre class="code"><code data-lang="js">// Team tasks: checklists, reminders and a daily stand-up message.
 //
 //   /todo Release 1.2: write notes; build; publish     → a checklist anyone can tick
 //   /remind 30m Stand-up call                          → a reminder for everyone in the chat
@@ -647,7 +647,7 @@ await bot.run();</code></pre></div></div>
 <section class="doc-sec" id="file-summary">
   <div class="guide__top"><span class="feature__icon fi-pink"><svg class="ic" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#file"/></svg></span><div><h2><span class="l-vi">Bot tóm tắt tệp</span><span class="l-en" lang="en">File summary bot</span></h2><p><span class="l-vi">Nhận tệp .txt/.csv, đọc phần xem trước, tải về, trả lời bản tóm tắt và gửi lại một tệp tóm tắt có xem trước.</span><span class="l-en" lang="en">Receives .txt/.csv files, reads the preview, downloads them, replies with a summary and sends back a summary file with a preview.</span></p></div></div>
   <p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/file_summary_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>file_summary_bot.py</span></a> <a class="btn btn--glass btn--sm" href="/developers/sdk/examples/file-summary-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>file-summary-bot.mjs</span></a></p>
-  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-20-0" aria-controls="panel-20-0" data-sync="py">file_summary_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-20-1" aria-controls="panel-20-1" data-sync="js">file-summary-bot.mjs</button></div><div role="tabpanel" id="panel-20-0" aria-labelledby="tab-20-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;File summary: send the bot a .txt or .csv file and get a short summary back,
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-21-0" aria-controls="panel-21-0" data-sync="py">file_summary_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-21-1" aria-controls="panel-21-1" data-sync="js">file-summary-bot.mjs</button></div><div role="tabpanel" id="panel-21-0" aria-labelledby="tab-21-0" class="tabs__panel"><pre class="code"><code data-lang="py">&quot;&quot;&quot;File summary: send the bot a .txt or .csv file and get a short summary back,
 plus a summary file whose preview shows the result before anyone downloads it.
 
 Run:  LUMORA_BOT_TOKEN=lumora_bot_... python3 file_summary_bot.py
@@ -732,7 +732,7 @@ def other_files(ctx):
 
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-20-1" aria-labelledby="tab-20-1" class="tabs__panel"><pre class="code"><code data-lang="js">// File summary: send the bot a .txt or .csv file and get a short summary back,
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-21-1" aria-labelledby="tab-21-1" class="tabs__panel"><pre class="code"><code data-lang="js">// File summary: send the bot a .txt or .csv file and get a short summary back,
 // plus a summary file whose preview shows the result before anyone downloads it.
 //
 // Run:  LUMORA_BOT_TOKEN=lumora_bot_... node file-summary-bot.mjs
@@ -819,7 +819,7 @@ await bot.run();</code></pre></div></div>
 <section class="doc-sec" id="small">
   <h2><span class="l-vi">Ví dụ nhỏ</span><span class="l-en" lang="en">Small examples</span></h2>
   <p><span class="l-vi">Bot thời tiết có nút bấm, bot cửa hàng có quản trị viên, vai trò và gửi hàng loạt, bot nhắc lại bằng JavaScript.</span><span class="l-en" lang="en">A weather bot with buttons, a shop bot with admins, roles and broadcasts, an echo bot in JavaScript.</span></p>
-  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-21-0" aria-controls="panel-21-0">weather_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-21-1" aria-controls="panel-21-1">admin_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-21-2" aria-controls="panel-21-2">echo-bot.mjs</button></div><div role="tabpanel" id="panel-21-0" aria-labelledby="tab-21-0" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/weather_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>weather_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot Lumora (Python): chào hỏi, nút bấm, trả lời lại tin nhắn.&quot;&quot;&quot;
+  <div class="tabs tabs--code glass" data-tabs><div class="tabs__list" role="tablist"><button type="button" role="tab" aria-selected="true" id="tab-22-0" aria-controls="panel-22-0">weather_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-22-1" aria-controls="panel-22-1">admin_bot.py</button><button type="button" role="tab" aria-selected="false" id="tab-22-2" aria-controls="panel-22-2">echo-bot.mjs</button></div><div role="tabpanel" id="panel-22-0" aria-labelledby="tab-22-0" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/weather_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>weather_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot Lumora (Python): chào hỏi, nút bấm, trả lời lại tin nhắn.&quot;&quot;&quot;
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), &quot;..&quot;, &quot;python&quot;))
 # pyrefly: ignore[missing-import]
@@ -844,7 +844,7 @@ def echo(ctx):
     ctx.reply(f&quot;Gõ /start để bắt đầu. Bạn vừa nói: {ctx.text}&quot;)
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-21-1" aria-labelledby="tab-21-1" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/admin_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>admin_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot có phân quyền admin, vai trò, lưu trữ và gửi hàng loạt.&quot;&quot;&quot;
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-22-1" aria-labelledby="tab-22-1" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/admin_bot.py" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>admin_bot.py</span></a></p><pre class="code"><code data-lang="py">&quot;&quot;&quot;Ví dụ bot có phân quyền admin, vai trò, lưu trữ và gửi hàng loạt.&quot;&quot;&quot;
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), &quot;..&quot;, &quot;python&quot;))
 # pyrefly: ignore[missing-import]
@@ -879,7 +879,7 @@ def on_btn(ctx):
         ctx.reply(&quot;Cà phê 25k\nTrà sữa 30k&quot;)
 
 if __name__ == &quot;__main__&quot;:
-    bot.run()</code></pre></div><div role="tabpanel" id="panel-21-2" aria-labelledby="tab-21-2" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/echo-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>echo-bot.mjs</span></a></p><pre class="code"><code data-lang="js">// Ví dụ bot Lumora (JavaScript / Node.js ≥ 18)
+    bot.run()</code></pre></div><div role="tabpanel" id="panel-22-2" aria-labelledby="tab-22-2" class="tabs__panel"><p class="ex-links"><a class="btn btn--glass btn--sm" href="/developers/sdk/examples/echo-bot.mjs" download><svg class="ic ic--sm" aria-hidden="true" focusable="false"><use href="/assets/img/icons.svg#download"/></svg><span>echo-bot.mjs</span></a></p><pre class="code"><code data-lang="js">// Ví dụ bot Lumora (JavaScript / Node.js ≥ 18)
 import { Bot } from &quot;../js/lumora-bot.mjs&quot;;
 
 const bot = new Bot({ name: &quot;Echo Bot&quot;, dataDir: process.env.BOT_DIR || &quot;./echo-bot&quot;, about: &quot;Nhắc lại mọi tin nhắn&quot; });
@@ -925,6 +925,8 @@ BOT_DIR=./team-tasks node team-tasks-bot.mjs          # JavaScript</code></pre>
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

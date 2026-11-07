@@ -7,13 +7,16 @@ pub mod chat_locks;
 mod conn;
 pub mod devices;
 mod extras;
+pub use extras::{StoryAudience, STORY_CLOSE_KEY, STORY_HIDDEN_KEY};
 mod files;
 mod groups;
+pub use groups::community::community_api;
 pub mod link;
 #[cfg(feature = "media")]
 pub mod media_pipe;
 mod olm;
 mod peer_relay;
+mod recovery;
 mod push;
 mod social;
 mod stickers;
@@ -22,6 +25,7 @@ mod tasks;
 pub mod wake;
 pub mod remote;
 mod revoke;
+mod voice;
 
 use crate::crypto::{open_sealed, seal_to};
 use crate::group::{Gid, GroupState};
@@ -246,6 +250,10 @@ pub struct Node {
     pub protection: String,
     name: RwLock<String>,
     peers: RwLock<HashMap<PeerId, Arc<PeerConn>>>,
+    /// Live connections to a peer that are not the one in use (a replaced one being drained,
+    /// a duplicate that lost the dedupe): the fallback when the peer closes the one in use
+    /// at once — it never had it (`fallback_to_standby`).
+    standby: Mutex<HashMap<PeerId, Vec<std::sync::Weak<PeerConn>>>>,
     dial_locks: Mutex<HashMap<PeerId, Arc<tokio::sync::Mutex<()>>>>,
     pending_answers: Mutex<HashMap<u64, (PeerId, oneshot::Sender<ConnInfo>)>>,
     recent_offers: Mutex<lru::LruCache<(PeerId, u64), ()>>,
@@ -261,6 +269,11 @@ pub struct Node {
     pub(crate) upgrade_backoff: Mutex<HashMap<PeerId, (Instant, Duration)>>,
     /// Hint from the app: metered network / low battery → no birthday spraying.
     pub(crate) power_saving: std::sync::atomic::AtomicBool,
+    /// Hint from the app: the device is on mobile data / a metered network (auto-download
+    /// uses the mobile-data limits).
+    pub(crate) metered: std::sync::atomic::AtomicBool,
+    /// Hint from the app: roaming or a metered Wi-Fi (auto-download uses the roaming limits).
+    pub(crate) roaming: std::sync::atomic::AtomicBool,
     pub(crate) inbound_limits: Mutex<conn::InboundLimits>,
     /// Protocol versions announced by devices we keep nothing about (strangers): memory only.
     pub(crate) stranger_proto: Mutex<lru::LruCache<PeerId, u32>>,
@@ -280,6 +293,8 @@ pub struct Node {
     pub(crate) relay_stop: tokio::sync::Notify,
     pub(crate) files: files::Transfers,
     pub remote: remote::RemoteState,
+    /// Community voice rooms: presence and this device's room (node/voice.rs).
+    pub(crate) voice: voice::VoiceState,
     info_refreshed: Mutex<Option<Instant>>,
     shutdown: tokio::sync::watch::Sender<bool>,
     pub(crate) link: link::LinkState,
@@ -293,6 +308,9 @@ pub struct Node {
     /// Last queued "seen up to" receipt per (group chat, member): a newer one replaces it
     /// in the outbox instead of piling up for an offline member.
     pub(crate) group_read_ids: Mutex<HashMap<(String, PeerId), [u8; 16]>>,
+    /// Main device: own devices missing from my list that asked to be listed again (after a
+    /// restore with the recovery phrase) — waiting for the user's approval (node/devices.rs).
+    pub(crate) relist_pending: Mutex<HashMap<PeerId, devices::RelistRequest>>,
     /// Acks owed to devices that reached us only by signaling mail (batched).
     pub(crate) mail_acks: Mutex<HashMap<PeerId, Vec<[u8; 16]>>>,
 }
@@ -498,6 +516,12 @@ impl Node {
             // this device was signed out of its account last time: start as a fresh install
             revoke::apply_reset_marker(&dir);
         }
+        // a new keystore made from the recovery phrase: friends may help it get its history
+        // back (node/recovery.rs)
+        let from_phrase = !crate::keystore::exists(&dir)
+            && cfg.restore_backup.is_none()
+            && cfg.bot_token.as_deref().unwrap_or("").is_empty()
+            && cfg.recovery_phrase.as_deref().is_some_and(|p| !p.trim().is_empty());
         let unlocked = Self::open_keystore(&cfg);
         // the password / recovery phrase / backup password are not needed any more: wipe
         // them now (also on failure) instead of keeping them in `node.cfg` for the app's life
@@ -601,6 +625,7 @@ impl Node {
             protection,
             name: RwLock::new(name),
             peers: RwLock::new(HashMap::new()),
+            standby: Mutex::new(HashMap::new()),
             dial_locks: Mutex::new(HashMap::new()),
             pending_answers: Mutex::new(HashMap::new()),
             recent_offers: Mutex::new(lru::LruCache::new(std::num::NonZeroUsize::new(4096).unwrap())),
@@ -614,6 +639,8 @@ impl Node {
             backoff: Mutex::new(HashMap::new()),
             upgrade_backoff: Mutex::new(HashMap::new()),
             power_saving: std::sync::atomic::AtomicBool::new(false),
+            metered: std::sync::atomic::AtomicBool::new(false),
+            roaming: std::sync::atomic::AtomicBool::new(false),
             inbound_limits: Mutex::new(Default::default()),
             stranger_proto: Mutex::new(lru::LruCache::new(std::num::NonZeroUsize::new(1024).unwrap())),
             offer_ts: Mutex::new(lru::LruCache::new(std::num::NonZeroUsize::new(4096).unwrap())),
@@ -626,6 +653,7 @@ impl Node {
             relay_stop: tokio::sync::Notify::new(),
             files: files::Transfers::default(),
             remote: remote::RemoteState::new(&store),
+            voice: Default::default(),
             info_refreshed: Mutex::new(None),
             shutdown,
             link: Default::default(),
@@ -633,9 +661,13 @@ impl Node {
             solicited: Mutex::new(HashMap::new()),
             mail_retry: Mutex::new(HashMap::new()),
             group_read_ids: Mutex::new(HashMap::new()),
+            relist_pending: Mutex::new(HashMap::new()),
             mail_acks: Mutex::new(HashMap::new()),
         });
         *node.self_ref.lock() = Some(Arc::downgrade(&node));
+        if from_phrase && !secondary {
+            node.mark_restored();
+        }
         node.ensure_own_list();
         node.push_list_after_promote();
         node.refresh_sync_enabled();
@@ -644,6 +676,7 @@ impl Node {
         node.clone().spawn_signal_loop(signals);
         node.clone().spawn_background();
         node.spawn_sync_loop();
+        node.spawn_voice_loop();
         if let Some(tok) = cfg.bot_token.as_deref().filter(|t| !t.is_empty()) {
             let t = botfather::BotToken::decode(tok)?;
             node.apply_bot_token(&t)?;
@@ -829,6 +862,31 @@ impl Node {
     /// The app says the device is on a metered network or saving battery.
     pub fn set_power_saving(&self, on: bool) {
         self.power_saving.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// The app says the device is (or no longer is) on mobile data / a metered network.
+    pub fn set_metered(&self, on: bool) {
+        self.metered.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn is_metered(&self) -> bool {
+        self.metered.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The app says the device is roaming / on a metered Wi-Fi (or no longer is).
+    pub fn set_roaming(&self, on: bool) {
+        self.roaming.store(on, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Which auto-download limits apply right now.
+    pub(crate) fn net_class(&self) -> files::NetClass {
+        if self.roaming.load(std::sync::atomic::Ordering::Relaxed) {
+            files::NetClass::Roaming
+        } else if self.is_metered() {
+            files::NetClass::Cell
+        } else {
+            files::NetClass::Wifi
+        }
     }
 
     /// A live connection to the device that doesn't look dead.
@@ -1210,7 +1268,9 @@ impl Node {
     }
 
     /// A replaced connection: drained, then closed (never in the middle of a transfer).
-    fn retire(old: Arc<PeerConn>) {
+    fn retire(self: &Arc<Self>, old: Arc<PeerConn>) {
+        self.note_standby(&old);
+        let me = self.clone();
         tokio::spawn(async move {
             // a dead path has nothing in flight worth waiting for (the outbox re-sends)
             if !old.is_suspect() {
@@ -1223,8 +1283,40 @@ impl Node {
                 }
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
-            old.conn.close(0u32.into(), b"upgraded");
+            // (in use again: the one that replaced it was closed by the peer meanwhile)
+            if !me.is_current(&old) {
+                old.conn.close(0u32.into(), b"upgraded");
+            }
         });
+    }
+
+    /// Remember a live connection that is not the one in use (see `standby`).
+    fn note_standby(&self, pc: &Arc<PeerConn>) {
+        let mut sb = self.standby.lock();
+        sb.retain(|_, v| {
+            v.retain(|w| w.upgrade().is_some_and(|c| c.alive()));
+            !v.is_empty()
+        });
+        sb.entry(pc.peer).or_default().push(Arc::downgrade(pc));
+    }
+
+    /// The connection in use was closed by the peer at once (e.g. both sides' attempts
+    /// completed together and the peer dropped the one we had picked before it could take
+    /// part in the dedupe): switch to a live replaced / duplicate connection instead of
+    /// going offline — the peer is very likely using that one. True if switched.
+    pub(crate) fn fallback_to_standby(self: &Arc<Self>, closed: &Arc<PeerConn>) -> bool {
+        let cand = {
+            let mut sb = self.standby.lock();
+            let v = sb.remove(&closed.peer).unwrap_or_default();
+            v.iter().filter_map(|w| w.upgrade()).filter(|c| !Arc::ptr_eq(c, closed) && c.alive() && !c.is_suspect()).max_by_key(|c| c.since)
+        };
+        let Some(c) = cand else { return false };
+        if self.peers.read().get(&closed.peer).is_some_and(|x| x.alive()) {
+            return true; // something else took over already
+        }
+        tracing::info!("{:?}: connection in use closed by the peer, back on another live one", closed.peer);
+        self.adopt(&c);
+        true
     }
 
     /// Is `pc` the connection in use for its device?
@@ -1233,9 +1325,9 @@ impl Node {
     }
 
     /// `Ext PATH_CHOSEN` on `pc`: the other side switched to this connection because the
-    /// one we kept looked dead to it. Switch too — only when `pc` lost to the connection
-    /// still in use and that one wasn't itself a repair (two fresh connections are settled
-    /// by the shared tiebreak alone, so both sides end on the same one).
+    /// one we kept looked dead to it (or it alone sees `pc` as the LAN path). Switch too —
+    /// only when `pc` lost to (or was replaced by) the connection still in use; when that one
+    /// was itself chosen that way here, the shared tiebreak decides, the same on both ends.
     pub(crate) fn on_path_chosen(self: &Arc<Self>, pc: &Arc<PeerConn>) {
         if !pc.alive() {
             return;
@@ -1247,7 +1339,12 @@ impl Node {
                     return; // already the one in use
                 }
                 let lost_to_cur = pc.lost_to.lock().as_ref().and_then(|w| w.upgrade()).map(|l| Arc::ptr_eq(&l, cur)).unwrap_or(false);
-                if !lost_to_cur || cur.chosen_by_repair.load(std::sync::atomic::Ordering::Relaxed) {
+                if !lost_to_cur {
+                    return;
+                }
+                // both sides chose (a repair / a LAN view each): the shared tiebreak settles it
+                // the same way on both ends
+                if cur.chosen_by_repair.load(std::sync::atomic::Ordering::Relaxed) && conn_tiebreak_id(&cur.conn) <= conn_tiebreak_id(&pc.conn) {
                     return;
                 }
                 cur.mark_suspect();
@@ -1270,7 +1367,7 @@ impl Node {
                 }
             }
             if old.alive() {
-                Self::retire(old);
+                self.retire(old);
             }
         }
         let (me, pc2) = (self.clone(), pc.clone());
@@ -1345,10 +1442,17 @@ impl Node {
                 // any new connection. Only one side may think so (its watchdog fired, the
                 // other's didn't yet): that side then says `PATH_CHOSEN` on the new
                 // connection and the other switches too (`on_path_chosen`).
+                // LAN vs direct: only this side may see that one of them runs inside the LAN
+                // (behind a hairpinning NAT the other side sees both as direct). Keep the LAN
+                // one and say so with `PATH_CHOSEN`, so the other side follows even when its
+                // tiebreak picked the hairpin path (NAT lab samenat-hp).
+                let lan_pref = !old.is_suspect() && path.rank() == old.path.rank() && (old.path == PathKind::Lan) != (path == PathKind::Lan);
                 let keep_old = if old.is_suspect() {
                     false
                 } else if path.rank() != old.path.rank() {
                     old.path.rank() < path.rank()
+                } else if lan_pref {
+                    old.path == PathKind::Lan
                 } else if old.path == PathKind::Direct && path == PathKind::Direct && direct_v6(&old.conn) != direct_v6(&conn) {
                     // Two direct paths over different families (both punched at once): keep the
                     // IPv6 one — no NAT on it to time out or rebind. Both ends see the same family
@@ -1362,12 +1466,17 @@ impl Node {
                     let keep = old.clone();
                     *pc.lost_to.lock() = Some(Arc::downgrade(&keep));
                     drop(peers);
+                    self.note_standby(&pc);
                     // Still *read* the losing duplicate until it closes: the other side may have
                     // written frames on it before it reached the same decision.
                     if let (Some((send, recv)), Some(rx)) = (dial_stream, own_rx) {
                         self.clone().spawn_control(pc.clone(), send, recv, rx);
                     }
                     self.clone().spawn_conn_tasks(pc.clone());
+                    if lan_pref {
+                        keep.chosen_by_repair.store(true, std::sync::atomic::Ordering::Relaxed);
+                        let _ = keep.ctl.try_send(proto::ext(proto::ext::PATH_CHOSEN, &PathChosenMsg::default()));
+                    }
                     let (me, dup) = (self.clone(), pc.clone());
                     tokio::spawn(async move {
                         // graceful: let in-flight frames drain before closing the duplicate
@@ -1385,9 +1494,11 @@ impl Node {
                     });
                     return Ok(keep);
                 }
-                if old.is_suspect() {
+                if old.is_suspect() || lan_pref {
                     pc.chosen_by_repair.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
+                // (superseded: a `PATH_CHOSEN` on it from the peer may bring it back)
+                *old.lost_to.lock() = Some(Arc::downgrade(&pc));
             }
             peers.insert(peer, pc.clone());
             old
@@ -1407,7 +1518,7 @@ impl Node {
             }
         }
         if let Some(old) = existing {
-            Self::retire(old);
+            self.retire(old);
         }
         tracing::info!("connected {:?} via {:?} ({})", peer, path, conn.remote_address());
 

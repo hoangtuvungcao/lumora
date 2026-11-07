@@ -1,5 +1,5 @@
 // Screens that keep their own copy of something the account syncs between
-// its devices (the BotFather chat, my bots, "find me by ID"…) reload it when
+// its devices (the Bot Studio chat, my bots, "find me by ID"…) reload it when
 // the core says it changed on another device — without being reopened.
 
 import 'dart:async';

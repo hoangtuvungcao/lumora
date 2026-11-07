@@ -10,6 +10,12 @@ const GOSSIP_FANOUT: usize = 6;
 #[path = "reports.rs"]
 pub(super) mod reports;
 
+/// Community 2.0: roles, channel settings, timeouts, invite links, invitations, privacy
+/// choices (node/community.rs).
+#[path = "community.rs"]
+pub(super) mod community;
+use crate::community::perm;
+
 fn conv_for(gid: &Gid, channel: &str) -> String {
     if channel.is_empty() {
         format!("g:{}", hex::encode(gid))
@@ -60,6 +66,14 @@ pub(super) struct GroupKeyRequestMsg {
 }
 
 /// What a group log row carries (store column `k`) and the message it is about.
+/// Content `p` signed at `hlc` in `channel`, dated more than [`RIGHTS_GRACE_MS`] before a
+/// change of what `p` may post, that today's rules refuse: it could be backdated past that
+/// change (a timed-out / demoted / removed author), so it is not taken from `p` directly.
+fn content_backdated(st: &GroupState, p: &PeerId, channel: &str, hlc: u64, media: bool) -> bool {
+    st.posting_rules_changed_after(p, hlc.saturating_add(RIGHTS_GRACE_MS << 8))
+        && (st.post_refusal(p, channel, crate::util::hlc_to_ms(hlc), media).is_some() || (st.admins_only && st.role(p).unwrap_or(Role::Member) < Role::Admin))
+}
+
 fn log_kind(p: &Payload) -> (u8, Option<[u8; 16]>) {
     match p {
         Payload::Op(_) => (1, None),
@@ -126,6 +140,11 @@ pub(super) const FLOOD_PER_HOUR: u64 = 600;
 pub(super) const AUTHOR_DAY_BYTES: u64 = if cfg!(test) { 256 * 1024 } else { 32 * 1024 * 1024 };
 /// Bytes all members together may add to one group per day (the group's storage quota).
 pub(super) const GROUP_DAY_BYTES: u64 = if cfg!(test) { 384 * 1024 } else { 128 * 1024 * 1024 };
+/// Op envelope bytes one plain member may have stored in one group per day (creation
+/// time; and 4× that by arrival). Superseded pictures are blanked as they are replaced (see
+/// `blank_superseded_pictures`), so normal use stays far below; it caps what a member can
+/// make every device keep through ops (long names / descriptions, rejected pictures…).
+pub(super) const OP_AUTHOR_DAY_BYTES: u64 = if cfg!(test) { 1024 * 1024 } else { 4 * 1024 * 1024 };
 /// Content dated further ahead than this is bogus (and would drag our clock forward).
 const MAX_FUTURE_MS: u64 = 86_400_000;
 
@@ -166,16 +185,31 @@ fn hlc_back(hlc: u64, ms: u64) -> u64 {
 }
 
 impl Node {
-    /// A membership op by a plain member: only the rate limits (ops are small; a picture
-    /// change has its own limit in the fold).
-    fn group_op_flood_check(&self, st: &GroupState, author: &PeerId, signer: &PeerId, hlc: u64) -> Option<Flood> {
+    /// A membership op by a plain member (`bytes`: its envelope): the rate limits, and a
+    /// daily byte quota for stored ops (a picture change also has its own limit in the fold).
+    fn group_op_flood_check(&self, st: &GroupState, author: &PeerId, signer: &PeerId, hlc: u64, bytes: u64) -> Option<Flood> {
         if st.role(author).unwrap_or(Role::Member) >= Role::Admin {
             return None;
         }
         let gid = &st.gid[..];
         let (per_min, _) = self.store.group_log_window(gid, signer, hlc_back(hlc, 60_000), hlc);
         let (per_hour, _) = self.store.group_log_window(gid, signer, hlc_back(hlc, 3_600_000), hlc);
-        (per_min >= FLOOD_PER_MIN || per_hour >= FLOOD_PER_HOUR).then_some(Flood::Rate)
+        if per_min >= FLOOD_PER_MIN || per_hour >= FLOOD_PER_HOUR {
+            return Some(Flood::Rate);
+        }
+        let (day, rcv) = self.store.group_log_op_bytes(gid, signer, hlc_back(hlc, 86_400_000), hlc, now_ms().saturating_sub(86_400_000));
+        (day + bytes > OP_AUTHOR_DAY_BYTES || rcv + bytes > RCV_QUOTA_FACTOR * OP_AUTHOR_DAY_BYTES).then_some(Flood::AuthorQuota)
+    }
+
+    /// Blank the stored envelopes of pictures that no longer matter (superseded or held
+    /// Cover / Meta ops, see `GroupState::superseded_picture_ids`): only the effective
+    /// ones stay. The rows stay as tombstones (never re-taken from a peer); new members
+    /// get the effective picture through `compact_ops` either way.
+    fn blank_superseded_pictures(&self, st: &GroupState, held: &[group::Signed]) {
+        let ids = st.superseded_picture_ids(held);
+        if !ids.is_empty() {
+            let _ = self.store.group_log_blank(&st.gid, &ids);
+        }
     }
 
     /// Would content by `author` (signed by device `signer`, created at `hlc`, `bytes` long)
@@ -258,7 +292,7 @@ impl Node {
     }
 
     pub(super) fn load_groups(&self) {
-        let all: Vec<GroupState> = self.store.group_all().iter().filter_map(|b| crate::proto::from_slice_capped::<GroupState>(b).ok()).collect();
+        let all: Vec<GroupState> = self.store.group_all().iter().filter_map(|b| GroupState::decode(b).ok()).collect();
         for st in &all {
             // keys stored by an older version (first one wins) are checked against the
             // winning commitment once
@@ -298,6 +332,9 @@ impl Node {
 
     pub fn group_info(&self, gid: &Gid) -> Result<Value> {
         let g = self.groups.read().get(gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
+        // deleted by its owner: kept only as a tombstone (refuses re-joins, serves the
+        // Dissolve to members that were offline) — gone for the UI
+        anyhow::ensure!(!g.dissolved(), crate::i18n::user_err("err.group_not_found"));
         let members: Vec<Value> = g
             .members
             .iter()
@@ -308,22 +345,43 @@ impl Node {
                     self.display(p)
                 };
                 let contact = *p != self.me && self.store.contact(p).map(|c| c.status == 3).unwrap_or(false);
-                json!({"peer": p.to_base32(), "name": name, "role": r.as_str(), "online": *p == self.me || self.is_online(p),
-                       "short_id": p.short_id_fmt(), "friend": contact})
+                // (online: only friends ever show it — "who sees me online")
+                json!({"peer": p.to_base32(), "name": name, "role": r.as_str(), "online": self.shows_online(p),
+                       "short_id": p.short_id_fmt(), "friend": contact, "roles": g.ext.roles_of(p), "timeout_until": g.timeout_until(p)})
             })
             .collect();
-        Ok(json!({
+        // channels I can see, in display order, with their settings (the key names the
+        // conversation for good; `name` is what it shows)
+        let channels: Vec<Value> = g
+            .channel_order()
+            .into_iter()
+            .enumerate()
+            .filter(|(_, c)| g.can_see(&self.me, &c.name))
+            .map(|(i, c)| {
+                let m = g.chan_meta(&c.name);
+                json!({"id": c.name, "name": g.channel_name(&c.name), "voice": c.voice, "conv": conv_for(&g.gid, &c.name),
+                       "topic": m.topic, "category": m.category, "position": i, "private": m.private,
+                       "allow_roles": m.allow_roles, "announce": m.announce})
+            })
+            .collect();
+        let mut v = json!({
             "gid": hex::encode(g.gid), "conv": g.conv_id(), "name": g.name, "kind": g.kind,
             "owner": g.owner.to_base32(), "members": members, "epoch": g.epoch,
             "my_role": g.role(&self.me).map(|r| r.as_str()).unwrap_or("none"),
             "description": g.description, "has_avatar": !g.avatar.is_empty(),
+            "has_cover": !g.cover().is_empty(), "cover_rev": g.cover_rev(),
             "slow_mode_s": g.slow_mode_s, "admins_only": g.admins_only,
+            // Community 2.0 rules (roles, permissions…); false: an older group an admin may
+            // switch over (`group_upgrade_rules`) once every member runs 1.0.8+
+            "rules_v2": g.ext.rules_v2,
             "banned": g.banned.iter().map(|p| p.to_base32()).collect::<Vec<_>>(),
             "public": g.public,
             "handle": if g.public && !g.handle.is_empty() { json!(format!("@{}·{}", g.handle, group::group_tag(&g.gid))) } else { Value::Null },
-            "bots": g.bots.iter().map(|(p, all)| json!({"peer": p.to_base32(), "read_all": all})).collect::<Vec<_>>(),
-            "channels": g.channels.iter().map(|c| json!({"name": c.name, "voice": c.voice, "conv": conv_for(&g.gid, &c.name)})).collect::<Vec<_>>(),
-        }))
+            "bots": g.bots.iter().map(|(p, all)| json!({"peer": p.to_base32(), "read_all": all, "roles": g.ext.roles_of(p)})).collect::<Vec<_>>(),
+            "channels": channels,
+        });
+        self.community_info(&g, &mut v);
+        Ok(v)
     }
 
     pub fn groups_list(&self) -> Vec<Value> {
@@ -354,6 +412,52 @@ impl Node {
         for conv in self.store.group_convs(&conv_for(gid, "")) {
             let _ = self.clear_local(&conv, u64::MAX, true);
         }
+    }
+
+    /// The owner deleted the group (Dissolve applied here — sent from this device, another
+    /// of mine, or received): its chats go away like a left group's, its stored content
+    /// is dropped, and the UI is told. The state stays as a tombstone (see `group_info`).
+    fn on_group_dissolved(&self, st: &GroupState) {
+        for conv in self.store.group_convs(&conv_for(&st.gid, "")) {
+            let _ = self.clear_local_ex(&conv, u64::MAX, true, true);
+        }
+        // (content goes; op envelopes and the held ops stay: late ops still fold in, see
+        // `on_group_envelope`)
+        let _ = self.store.group_log_clear(&st.gid, u64::MAX);
+        // its directory listing (published by an admin's main device) goes too
+        if st.public && !st.handle.is_empty() && self.is_primary() && st.was_member(&self.me) && st.role(&self.me).unwrap_or(Role::Member) >= Role::Admin {
+            if let Some(pool) = self.net.nostr.read().clone() {
+                pool.unpublish_group(&st.handle);
+            }
+        }
+        tracing::info!("group {} dissolved by its owner", hex::encode(st.gid));
+        let code = if st.kind == 1 { "community.dissolved" } else { "group.dissolved" };
+        self.emit(
+            "group_removed",
+            json!({"gid": hex::encode(st.gid), "conv": st.conv_id(), "left": false, "dissolved": true,
+                   "name": st.name, "kind": st.kind, "text": crate::i18n::trf(code, &[("name", &st.name)])}),
+        );
+    }
+
+    /// A late op undid the Dissolve here: it sorts before the Dissolve and makes it invalid
+    /// (e.g. the owner's own Leave long before it), so on every member that got both the
+    /// group lives on — and so does it here (the content dropped at the Dissolve is gone
+    /// from this device).
+    fn on_group_restored(self: &Arc<Self>, st: &GroupState) {
+        tracing::info!("group {}: a late op undid its dissolve", hex::encode(st.gid));
+        if !st.is_member(&self.me) {
+            return;
+        }
+        let _ = self.store.ensure_conv(&st.conv_id(), 1, &st.name);
+        self.apply_community_retention(st);
+        for ch in st.channels.iter().filter(|c| !c.voice) {
+            let _ = self.store.ensure_conv(&conv_for(&st.gid, &ch.name), 1, &format!("{} › #{}", st.name, ch.name));
+        }
+        self.after_group_change(st);
+        if let Ok(v) = self.group_info(&st.gid) {
+            self.emit("group", v);
+        }
+        self.emit_conv(&st.conv_id());
     }
 
     /// Whether I'm out of `st` because of my own Leave (not a Remove / Ban by an admin).
@@ -396,11 +500,20 @@ impl Node {
         let name = name.trim();
         anyhow::ensure!(!name.is_empty(), crate::i18n::user_err("err.group_name_empty"));
         let members: Vec<PeerId> = members.into_iter().filter(|m| *m != self.me).collect();
-        let (st, op) = group::create(&self.signer, self.hlc.tick(), name, members.clone(), kind)?;
+        // (members on an app that can't read Community 2.0 groups: told to update first)
+        if let Some(old) = members.iter().find(|m| self.known_pre_groups_v2(m)) {
+            bail!(crate::i18n::user_err("err.group_peer_outdated").with("name", self.display(old)));
+        }
+        let (st, ops) = group::create_v2(&self.signer, self.hlc.tick(), name, members.clone(), kind)?;
+        if let Some(last) = ops.last() {
+            self.hlc.observe(last.hlc);
+        }
         let key: [u8; 32] = crate::crypto::random_bytes();
         self.store.group_key_put(&st.gid, 0, &key)?;
-        let env = group::seal_envelope(&key, 0, &op)?;
-        self.store.group_log_put(&op.id, &st.gid, &self.device, op.hlc, &env)?;
+        for op in &ops {
+            let env = group::seal_envelope(&key, 0, op)?;
+            self.store.group_log_put(&op.id, &st.gid, &self.device, op.hlc, &env)?;
+        }
         self.save_group(&st)?;
         self.store.ensure_conv(&st.conv_id(), 1, &st.name)?;
         self.apply_community_retention(&st);
@@ -418,14 +531,20 @@ impl Node {
         Ok(json!({"gid": hex::encode(st.gid), "conv": st.conv_id()}))
     }
 
-    async fn send_welcome(self: &Arc<Self>, gid: &Gid, to: PeerId) -> Result<()> {
+    pub(super) async fn send_welcome(self: &Arc<Self>, gid: &Gid, to: PeerId) -> Result<()> {
         let st = self.groups.read().get(gid).cloned().ok_or_else(|| anyhow!("no group"))?;
         let key = if st.is_private_bot(&to) {
             [0u8; 32] // privacy-mode bot: membership info only, never the key
         } else {
             self.store.group_key_get(gid, st.epoch).ok_or_else(|| anyhow!("missing group key"))?
         };
-        let w = rmp_serde::to_vec(&Welcome { gid: *gid, ops: st.compact_ops(), epoch: st.epoch, key })?;
+        let ops = st.compact_ops();
+        // an app that can't read the new op kinds would drop the whole welcome
+        if ops.iter().any(group::op_is_v2_kind) && self.known_pre_groups_v2(&to) {
+            tracing::warn!("welcome to {to:?} for group {} not sent: its app is too old", hex::encode(gid));
+            bail!(crate::i18n::user_err("err.group_peer_outdated").with("name", self.display(&to)));
+        }
+        let w = rmp_serde::to_vec(&Welcome { gid: *gid, ops, epoch: st.epoch, key })?;
         anyhow::ensure!(w.len() + 64 * 1024 <= proto::MAX_CONTROL_FRAME, "group state too large to welcome ({} bytes)", w.len());
         // sealed to each device of the account (my own other devices when `to == me`)
         self.deliver_sealed(to, &w, |sealed| PeerMsg::GroupWelcome { sealed }).await
@@ -469,6 +588,14 @@ impl Node {
             return Err(crate::i18n::user_err("err.group_syncing").detail("missing group key").into());
         };
         let s = Signed::new(&self.signer, gid, self.hlc.tick(), payload);
+        // An older-rules group with a member on 1.0.7: an op kind that app can't decode (a
+        // cover, delete-for-everyone…) would be dropped there silently and the members
+        // would no longer agree on the group — told to update first instead.
+        if !st.ext.rules_v2 && group::op_is_v2_kind(&s) && !matches!(s.payload, Payload::Op(GroupOp::RulesV2)) {
+            if let Some(old) = st.members.keys().find(|m| self.known_pre_groups_v2(m)) {
+                bail!(crate::i18n::user_err("err.group_peer_outdated").with("name", self.display(old)));
+            }
+        }
         // members drop ops dated too far ahead: never apply locally what they would reject
         anyhow::ensure!(
             crate::util::hlc_to_ms(s.hlc) <= now_ms() + crate::util::MAX_FUTURE_OP_MS,
@@ -478,7 +605,7 @@ impl Node {
         // members would reject it: say so here instead of sending it into the void
         let flood = match &s.payload {
             Payload::Op(GroupOp::Leave) => None,
-            Payload::Op(_) => self.group_op_flood_check(&st, &self.me, &self.device, s.hlc),
+            Payload::Op(_) => self.group_op_flood_check(&st, &self.me, &self.device, s.hlc, env.len() as u64),
             _ => self.group_flood_check(&st, &self.me, &self.device, s.hlc, env.len() as u64),
         };
         if let Some(why) = flood {
@@ -537,7 +664,8 @@ impl Node {
         // they are still in the group) with the signed ops alone.
         if let Payload::Op(op) = &s.payload {
             let cur = self.groups.read().get(&gid).cloned().unwrap_or(st.clone());
-            let mut bots: Vec<PeerId> = cur.bots.iter().filter(|(b, all)| !**all && **b != self.me && cur.is_member(b)).map(|(b, _)| *b).collect();
+            // (a dissolve: everyone who was in it)
+            let mut bots: Vec<PeerId> = cur.bots.iter().filter(|(b, all)| !**all && **b != self.me && cur.was_member(b)).map(|(b, _)| *b).collect();
             if let GroupOp::Remove { peer } | GroupOp::Ban { peer } = op {
                 if st.is_private_bot(peer) && *peer != self.me {
                     bots.push(*peer);
@@ -564,11 +692,19 @@ impl Node {
         let lock = self.group_lock(&gid);
         let _guard = lock.lock().await;
         let Some(st) = self.groups.read().get(&gid).cloned() else { return Ok(()) };
+        // Deleted by its owner: no content is taken (nor forwarded) any more — but ops still
+        // are: one that sorts before the Dissolve (an owner's Leave, a promotion changing
+        // who the owner is) may change the fold, and every member must fold the same ops
+        // whatever order they arrived in.
+        let dissolved = st.dissolved();
         let epoch = group::envelope_epoch(&env).ok_or_else(|| anyhow!("bad env"))?;
         // the epoch's key, or the key of a concurrent rotation that lost (still valid for
         // what was sent under it)
         let keys = self.store.group_keys_all(&gid, epoch);
         let Some(s) = group::open_envelope_any(&keys, &gid, &env)? else {
+            if dissolved {
+                return Ok(());
+            }
             // A key we don't have (yet): an epoch ahead of ours, or a rotation we haven't
             // got the key of. Held (persisted, bounded) until it arrives — only from members.
             let from_member = from.map(|(f, _)| st.is_member(&f) || st.left.contains(&f)).unwrap_or(true);
@@ -583,8 +719,13 @@ impl Node {
         // Author must be a member — or an ex-member: what it signed while it was one is
         // still valid (the fold / the checks below decide), so concurrent removals and
         // late history converge instead of depending on arrival order.
+        if dissolved && !matches!(s.payload, Payload::Op(_)) {
+            return Ok(());
+        }
         let member_now = st.is_member(&s.author);
-        if !member_now && !st.left.contains(&s.author) {
+        // (a dissolved group's tombstone still lists who was in it)
+        let member_then = if dissolved { st.was_member(&s.author) } else { false };
+        if !member_now && !member_then && !st.left.contains(&s.author) {
             return Ok(());
         }
         let signer = s.signer_device();
@@ -600,15 +741,37 @@ impl Node {
             if crate::util::hlc_to_ms(s.hlc) > now_ms() + crate::util::MAX_FUTURE_OP_MS || s.hlc.saturating_add(MAX_OP_BACKDATE_MS << 8) < st.last_op_hlc {
                 return Ok(());
             }
-            // someone who lost its rights can't backdate ops to when it still had them
-            // (beyond the concurrency window)
-            if let Some(cut) = st.rights_cut(&s.author) {
-                if s.hlc < cut && s.hlc.saturating_add(RIGHTS_GRACE_MS << 8) < cut {
+            // someone who lost its rights (removed, demoted, timed out, a role taken or made
+            // weaker…) can't backdate ops to when it still had them (beyond the concurrency
+            // window)
+            if st.rights_cut_after(&s.author, s.hlc.saturating_add(RIGHTS_GRACE_MS << 8)).is_some() {
+                return Ok(());
+            }
+            // an ex-owner's Dissolve racing its own Leave: only while that Leave is fresh
+            // here (the fold also refuses it once anyone acted after the Leave)
+            if matches!(op, GroupOp::Dissolve) && !member_now {
+                let fresh = st
+                    .ops
+                    .iter()
+                    .rev()
+                    .find(|o| o.author == s.author && matches!(o.payload, Payload::Op(GroupOp::Leave)))
+                    .and_then(|l| self.store.group_log_rcv(&l.id))
+                    .is_some_and(|rcv| now_ms() <= rcv.saturating_add(group::DISSOLVE_AFTER_LEAVE_MS));
+                if !fresh {
                     return Ok(());
                 }
             }
+            // "revoke every link made so far" can't reach links made after it arrives
+            if matches!(op, GroupOp::RevokeInvite { id: None }) && crate::util::hlc_to_ms(s.hlc) > now_ms() + crate::util::MAX_CLOCK_SKEW_MS {
+                return Ok(());
+            }
+            // never valid (an oversized picture, a plain member's picture in a community):
+            // neither stored nor held
+            if st.never_valid(&s) {
+                return Ok(());
+            }
             if !matches!(op, GroupOp::Leave) && !self.store.group_log_has(&s.id) {
-                if let Some(why) = self.group_op_flood_check(&st, &s.author, &signer, s.hlc) {
+                if let Some(why) = self.group_op_flood_check(&st, &s.author, &signer, s.hlc, env.len() as u64) {
                     self.on_group_flood(&st, &s.author, why);
                     return Ok(());
                 }
@@ -621,6 +784,26 @@ impl Node {
             // an ex-member's content: only what it wrote while it was a member
             if !member_now && st.role_at(&s.author, s.hlc).is_none() {
                 return Ok(());
+            }
+            // Content dated well before a change of the author's rights that today's rules
+            // refuse (timed out, demoted, removed, a channel closed to it…): not taken from
+            // the author itself or unattributed mail — it could backdate past that change.
+            // What another member already took and now serves (history sync) still is.
+            let vouched = from.is_some_and(|(f, _)| f != s.author && st.is_member(&f));
+            if !vouched {
+                let cutoff = s.hlc.saturating_add(RIGHTS_GRACE_MS << 8);
+                let stale = match &s.payload {
+                    Payload::Msg { channel, msg } => content_backdated(&st, &s.author, channel, s.hlc, matches!(msg.body, Body::File { .. })),
+                    // moderation (someone else's message, the whole history): by the rights then
+                    Payload::Action { target_author, action, .. } => {
+                        let moderation = *target_author != s.author || matches!(action, MsgAction::ClearHistory { .. } | MsgAction::PurgeAuthor { .. });
+                        moderation && st.rights_cut_after(&s.author, cutoff).is_some()
+                    }
+                    Payload::Op(_) => false,
+                };
+                if stale {
+                    return Ok(());
+                }
             }
             if !self.store.group_log_has(&s.id) {
                 if let Some(why) = self.group_flood_check(&st, &s.author, &signer, s.hlc, env.len() as u64) {
@@ -674,16 +857,37 @@ impl Node {
                 if held.len() != held_before || !accepted {
                     let _ = self.store.group_held_set(&gid, &held);
                 }
+                if matches!(op, GroupOp::Cover { .. } | GroupOp::Meta { .. }) {
+                    self.blank_superseded_pictures(&after, &held);
+                }
+                if before.dissolved() {
+                    // a late op for a dissolved group: fold it in; it may even undo the Dissolve
+                    if after.ops.iter().map(|o| o.id).ne(before.ops.iter().map(|o| o.id)) {
+                        self.save_group(&after)?;
+                        if !after.dissolved() {
+                            self.on_group_restored(&after);
+                        }
+                    }
+                    return Ok(accepted);
+                }
                 if !accepted {
                     if after.ops.len() != before.ops.len() {
                         // still, held ops may have become valid
                         self.save_group(&after)?;
+                        if after.dissolved() && !before.dissolved() {
+                            self.on_group_dissolved(&after);
+                            return Ok(false);
+                        }
                         self.after_group_change(&after);
                         self.emit("group", self.group_info(&gid)?);
                     }
                     return Ok(false);
                 }
                 self.save_group(&after)?;
+                if after.dissolved() && !before.dissolved() {
+                    self.on_group_dissolved(&after);
+                    return Ok(true);
+                }
                 // a Rekey (ours, a concurrent one, or one that arrived late) may change which
                 // key each epoch uses: check what we hold against the winning commitments
                 if matches!(op, GroupOp::Rekey { .. }) && self.revalidate_keys(&after) {
@@ -718,15 +922,33 @@ impl Node {
                     )),
                     GroupOp::Channel { name, voice, remove } => {
                         if !remove && !voice {
-                            self.store.ensure_conv(&conv_for(&gid, name), 1, &format!("{} › #{}", after.name, name))?;
+                            self.store.ensure_conv(&conv_for(&gid, name), 1, &format!("{} › #{}", after.name, after.channel_name(name)))?;
                         }
                         None
                     }
+                    GroupOp::ChannelUpdate { name, new_name: Some(_), .. } => {
+                        // a renamed channel keeps its conversation; its title follows
+                        let conv = conv_for(&gid, name);
+                        if after.channels.iter().any(|c| &c.name == name && !c.voice) && self.store.group_convs(&after.conv_id()).contains(&conv) {
+                            self.store.ensure_conv(&conv, 1, &format!("{} › #{}", after.name, after.channel_name(name)))?;
+                            self.emit_conv(&conv);
+                        }
+                        None
+                    }
+                    GroupOp::TransferOwner { peer } => Some(("sys.owner_changed", vec![("actor", actor.clone()), ("peer", peer_name(peer))])),
                     _ => None,
                 };
                 if let Some((code, args)) = line {
                     let a: Vec<(&str, &str)> = args.iter().map(|(k, v)| (*k, v.as_str())).collect();
                     self.system_msg(&gid, code, &a);
+                }
+                // the owner left: who took over
+                if matches!(op, GroupOp::Leave) && after.owner != before.owner && after.is_member(&self.me) {
+                    self.system_msg(&gid, "sys.owner_changed", &[("actor", &actor), ("peer", &self.display(&after.owner))]);
+                }
+                // an approved join request is done
+                if let GroupOp::Add { peer } = op {
+                    self.drop_join_request(&gid, peer);
                 }
                 // Someone lost access to the key after the current epoch's (winning) rotation
                 // → rotate again; key of the current epoch missing → ask for it.
@@ -752,6 +974,12 @@ impl Node {
                 if msg.author != s.author || !self.verify_content(&msg.author, &msg.signing_bytes(&group_scope(&gid, channel)), &msg.sig) {
                     bail!("bad group chat signature");
                 }
+                // The message's own time (what is shown and stored) is the envelope's, give or
+                // take the moment between the two clock ticks: the rules are judged at the
+                // envelope's time, so a message dated elsewhere would dodge them.
+                if msg.hlc > s.hlc || s.hlc - msg.hlc > (crate::util::MAX_CLOCK_SKEW_MS << 8) {
+                    return Ok(false);
+                }
                 anyhow::ensure!(super::chat::chat_msg_size_ok(msg), "group message too large");
                 // only the group's own channels (an undeclared one would dodge moderation)
                 if !before.channel_declared(channel) {
@@ -765,7 +993,7 @@ impl Node {
                 // author's role at its hlc, and the author's previous message by creation
                 // time — so every member reaches the same verdict in any arrival order and
                 // history that was valid when written is never dropped.
-                let (slow_mode_s, admins_only) = before.settings_at(msg.hlc);
+                let (slow_mode_s, admins_only) = before.settings_at(s.hlc);
                 if slow_mode_s > 0 || admins_only {
                     let role = before.role_at(&msg.author, s.hlc).unwrap_or(Role::Member);
                     if admins_only && role < Role::Admin {
@@ -781,8 +1009,32 @@ impl Node {
                         }
                     }
                 }
+                // Community 2.0: the author's permissions, timeout and the channel's settings
+                // when it was written (every member judges the same way)
+                let mut stripped;
+                let mut msg: &crate::proto::ChatMsg = msg;
+                let at = before.state_for(&msg.author, s.hlc);
+                if at.ext.rules_v2 {
+                    if at.post_refusal(&msg.author, channel, crate::util::hlc_to_ms(s.hlc), matches!(msg.body, Body::File { .. })).is_some() {
+                        return Ok(false);
+                    }
+                    // @all needs `mention_everyone`: otherwise it is an ordinary message
+                    if msg.meta.mention_all && !at.has(&msg.author, perm::MENTION_EVERYONE) {
+                        stripped = msg.clone();
+                        stripped.meta.mention_all = false;
+                        msg = &stripped;
+                    }
+                }
+                drop(at);
+                // A private channel I can't see: its envelope is kept (and relayed) like any
+                // other, but no plaintext is stored, nothing previewed, notified or downloaded.
+                // (Channels share the group key: this hides content from my app, it is no
+                // cryptographic boundary — docs/src/dev/community2-contract.md.)
+                if !before.can_see(&self.me, channel) {
+                    return Ok(true);
+                }
                 let conv = conv_for(&gid, channel);
-                let title = if channel.is_empty() { before.name.clone() } else { format!("{} › #{}", before.name, channel) };
+                let title = if channel.is_empty() { before.name.clone() } else { format!("{} › #{}", before.name, before.channel_name(channel)) };
                 self.store.ensure_conv(&conv, 1, &title)?;
                 let expires = msg.ttl_ms.map(|t| crate::util::hlc_to_ms(msg.hlc).saturating_add(t.min(365 * 86_400_000)) as i64);
                 let mine = msg.author == self.me;
@@ -816,14 +1068,7 @@ impl Node {
                             Body::File { file_id, name, size, hash, .. } => {
                                 self.on_file_offer(msg.author, *file_id, name.clone(), *size, *hash, conv.clone())?
                             }
-                            Body::Voice { file_id, size, hash, .. } if *size > 0 => self.on_file_offer(
-                                msg.author,
-                                *file_id,
-                                format!("voice-{}.ogg", &hex::encode(file_id)[..8]),
-                                *size,
-                                *hash,
-                                conv.clone(),
-                            )?,
+                            Body::Voice { file_id, size, hash, .. } if *size > 0 => self.on_voice_offer(msg.author, *file_id, *size, *hash, conv.clone())?,
                             _ => {}
                         }
                     }
@@ -838,6 +1083,9 @@ impl Node {
                 let conv = conv_for(&gid, channel);
                 // moderation rights are those the actor had when it acted
                 let actor_role_at = || before.role_at(&s.author, s.hlc).unwrap_or(Role::Member);
+                let actor_has = |bit: u32| before.state_for(&s.author, s.hlc).has(&s.author, bit);
+                let v2_then = before.state_for(&s.author, s.hlc).ext.rules_v2;
+                let may_moderate_msgs = || if v2_then { actor_has(perm::MANAGE_MESSAGES) } else { actor_role_at() >= Role::Admin };
                 match action {
                     MsgAction::ClearHistory { upto_hlc, .. } => {
                         // owner/admin wipes the group history for everyone — every channel,
@@ -854,23 +1102,32 @@ impl Node {
                     MsgAction::PurgeAuthor { author } => {
                         let actor_role = actor_role_at();
                         let target_role = before.role_at(author, s.hlc).unwrap_or(Role::Member);
-                        if actor_role >= Role::Admin && (target_role < actor_role || *author == s.author) {
+                        let allowed = if v2_then {
+                            *author == s.author || (actor_has(perm::MANAGE_MESSAGES) && (target_role < Role::Admin || actor_role == Role::Owner) && *author != before.owner)
+                        } else {
+                            actor_role >= Role::Admin && (target_role < actor_role || *author == s.author)
+                        };
+                        if allowed {
                             let convs = self.store.group_convs(&conv_for(&gid, ""));
                             for c in &convs {
                                 let files = self.store.file_messages(c, i64::MAX, Some(author))?;
                                 self.forget_files_of(&files);
                             }
-                            for (c, id) in self.store.purge_author(&convs, author)? {
+                            for (c, id) in self.store.purge_author(&convs, author, &s.author)? {
                                 if let Ok(id16) = <[u8; 16]>::try_from(id.as_slice()) {
                                     self.untrack_reminder(&id16);
                                 }
-                                self.emit("message_update", json!({"conv": c, "id": hex::encode(id), "deleted": true}));
+                                self.emit("message_update", json!({"conv": c, "id": hex::encode(id), "deleted": true, "deleted_by": s.author.to_base32()}));
                             }
                         }
                         return Ok(true);
                     }
                     MsgAction::Callback { .. } => return Ok(true), // callbacks go directly to the author
                     _ => {}
+                }
+                // a private channel I can't see: nothing of it is kept in plaintext here
+                if !before.can_see(&self.me, channel) {
+                    return Ok(false);
                 }
                 let target_id = match action {
                     MsgAction::ClearHistory { .. } | MsgAction::PurgeAuthor { .. } | MsgAction::Callback { .. } => [0u8; 16],
@@ -894,7 +1151,7 @@ impl Node {
                         // moderator's delete / the author's edit is remembered and applied
                         // when the message arrives — it must not resurface
                         let allowed = match action {
-                            MsgAction::Delete { .. } => *target_author == s.author || actor_role_at() >= Role::Admin,
+                            MsgAction::Delete { .. } => *target_author == s.author || may_moderate_msgs(),
                             MsgAction::Edit { .. } => *target_author == s.author,
                             _ => false,
                         };
@@ -904,14 +1161,14 @@ impl Node {
                         return Ok(false);
                     }
                 }
-                let actor_role = if matches!(action, MsgAction::Pin { .. } | MsgAction::Delete { .. }) { actor_role_at() } else { Role::Member };
+                let v2 = v2_then;
                 let ok = match action {
                     MsgAction::ClearHistory { .. } | MsgAction::PurgeAuthor { .. } | MsgAction::Callback { .. } => false,
                     MsgAction::React { .. } | MsgAction::Vote { .. } => true,
-                    MsgAction::Pin { .. } => before.kind == 0 || actor_role >= Role::Admin,
+                    MsgAction::Pin { .. } => if v2 { actor_has(perm::PIN) } else { before.kind == 0 || actor_role_at() >= Role::Admin },
                     MsgAction::LiveLocation { .. } => *target_author == s.author,
                     MsgAction::Edit { .. } => *target_author == s.author,
-                    MsgAction::Delete { .. } => *target_author == s.author || actor_role >= Role::Admin,
+                    MsgAction::Delete { .. } => *target_author == s.author || may_moderate_msgs(),
                     // any member ticks / marks seen; only the sender extends or cancels
                     MsgAction::ChecklistToggle { .. } | MsgAction::ReminderSeen { .. } => true,
                     MsgAction::ChecklistAdd { .. } | MsgAction::ReminderCancel { .. } => *target_author == s.author,
@@ -919,9 +1176,9 @@ impl Node {
                 if ok {
                     match action {
                         MsgAction::Delete { target } if *target_author != s.author => {
-                            if self.delete_message_everywhere(target, None)? {
+                            if self.delete_message_everywhere(target, None, &s.author)? {
                                 self.untrack_reminder(target);
-                                self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true}));
+                                self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true, "deleted_by": s.author.to_base32()}));
                             }
                         }
                         MsgAction::Delete { .. } | MsgAction::Edit { .. } => self.apply_action_at(&conv, target_author, action, s.hlc)?,
@@ -1099,7 +1356,11 @@ impl Node {
             self.retry_pending(ku.gid);
         } else if ku.epoch == 0 && !st.key_commits.contains_key(&0) {
             // the creation key has no commitment: only from an admin, only if we lack it
-            if st.role(&sender).unwrap_or(Role::Member) >= Role::Admin && self.store.group_key_get(&ku.gid, 0).is_none() {
+            // — or from any member when it opens a held envelope that SOMEONE ELSE (a member)
+            // signed: a restored member catching up after its friends welcomed it back
+            // (node/recovery.rs), when the creator is gone
+            let admin = st.role(&sender).unwrap_or(Role::Member) >= Role::Admin;
+            if (admin || self.key_opens_held(&st, 0, &ku.key, &sender)) && self.store.group_key_get(&ku.gid, 0).is_none() {
                 self.store.group_key_put(&ku.gid, 0, &ku.key)?;
                 self.retry_pending(ku.gid);
             }
@@ -1253,10 +1514,21 @@ impl Node {
         let (sender_dev, _ts, body) = open_sealed(&self.id, sealed)?;
         let sender = self.account_of(&sender_dev);
         anyhow::ensure!(!self.is_revoked(&sender, &sender_dev), "welcome from a revoked device");
+        self.welcome_body(sender, from, body, false).await
+    }
+
+    /// A welcome sealed by `sender` (arrived from device `from`). `accepted`: I said yes
+    /// to it as an invitation ("who can add me").
+    pub(super) async fn welcome_body(self: &Arc<Self>, sender: PeerId, from: PeerId, body: Vec<u8>, accepted: bool) -> Result<()> {
         let w: Welcome = crate::proto::from_slice_capped(&body)?;
         let lock = self.group_lock(&w.gid);
         let guard = lock.lock().await;
         let existing_state = self.groups.read().get(&w.gid).cloned();
+        // deleted by its owner: never brought back (a member that hasn't heard yet may
+        // still send a welcome)
+        if existing_state.as_ref().is_some_and(|ex| ex.dissolved()) {
+            return Ok(());
+        }
         // a group I reported and blocked: never (re-)joined, by anyone
         if self.group_blocked(&w.gid) && !existing_state.as_ref().is_some_and(|ex| ex.is_member(&self.me)) {
             tracing::info!("welcome to blocked group {} ignored", hex::encode(w.gid));
@@ -1267,10 +1539,16 @@ impl Node {
                 return self.welcome_update(ex, w, sender, from, guard).await;
             }
         } else {
-            // unsolicited group from a non-friend → ignore (no spam groups), unless we asked to join
+            // "who can add me": a group from someone else (a stranger, or anyone with
+            // "nobody") waits for my answer — unless I asked to join it
             let asked = self.store.kv_get(&format!("join.pending.{}", hex::encode(w.gid))).map(|v| v == b"1").unwrap_or(false);
             let bot_ok = self.is_bot() && self.store.kv_get("bot.allow_groups").map(|v| v != b"0").unwrap_or(true);
-            if !self.store.is_friend(&sender) && sender != self.me && !asked && !bot_ok {
+            if !accepted && !asked && !bot_ok && !self.may_add_me(&sender) {
+                let st = GroupState::fold(w.gid, w.ops.clone())?;
+                if st.is_member(&sender) && st.is_member(&self.me) && w.epoch == st.epoch {
+                    drop(guard);
+                    self.hold_group_invite(sender, from, &st, body)?;
+                }
                 return Ok(());
             }
         }
@@ -1316,12 +1594,18 @@ impl Node {
         }
         self.revalidate_keys(&merged);
         let _ = self.store.kv_set(&format!("join.pending.{}", hex::encode(w.gid)), b"");
+        self.drop_group_invite(&w.gid);
         self.store.ensure_conv(&merged.conv_id(), 1, &merged.name)?;
         self.apply_community_retention(&merged);
         for ch in merged.channels.iter().filter(|c| !c.voice) {
             self.store.ensure_conv(&conv_for(&merged.gid, &ch.name), 1, &format!("{} › #{}", merged.name, ch.name))?;
         }
-        if sender != self.me {
+        // back in through a friend's help after a phrase restore: nobody "added" me
+        let restored_key = format!("{}{}", super::recovery::GROUP_KEY_PREFIX, hex::encode(w.gid));
+        if self.store.kv_get(&restored_key).is_some_and(|v| v == b"1") {
+            let _ = self.store.kv_del(&restored_key);
+            self.system_msg(&w.gid, "sys.group_restored", &[("name", &merged.name)]);
+        } else if sender != self.me {
             self.system_msg(&w.gid, "sys.you_added", &[("actor", &self.display(&sender)), ("name", &merged.name)]);
         }
         drop(guard);
@@ -1377,6 +1661,12 @@ impl Node {
         }
         let removed = !merged.is_member(&self.me);
         self.save_group(&merged)?;
+        if merged.dissolved() {
+            // the ops brought the owner's Dissolve
+            drop(guard);
+            self.on_group_dissolved(&merged);
+            return Ok(());
+        }
         if changed && self.revalidate_keys(&merged) {
             got_key = true;
         }
@@ -1403,7 +1693,9 @@ impl Node {
 
     pub(super) async fn on_group_sync(self: &Arc<Self>, pc: &Arc<PeerConn>, gid: Gid, heads: Vec<(PeerId, u64)>) -> Result<()> {
         let g = self.groups.read().get(&gid).cloned();
-        let is_member = g.as_ref().map(|g| g.is_member(&pc.account)).unwrap_or(false);
+        // a dissolved group still serves its ops to those who were members (the Dissolve
+        // reaches a member that was offline through its normal catch-up)
+        let is_member = g.as_ref().map(|g| if g.dissolved() { g.was_member(&pc.account) } else { g.is_member(&pc.account) }).unwrap_or(false);
         if !is_member {
             return Ok(());
         }
@@ -1459,6 +1751,15 @@ impl Node {
         if let Some(g) = self.groups.read().get(&gid).cloned() {
             let role = g.role(&self.me).unwrap_or(Role::Member);
             anyhow::ensure!(!(g.admins_only && role < Role::Admin), crate::i18n::user_err("err.admins_only_post"));
+            // Community 2.0: timeout, send_messages / send_media, private / announcement channels
+            if g.is_member(&self.me) {
+                if let Some(code) = g.post_refusal(&self.me, channel, now_ms(), matches!(body, Body::File { .. })) {
+                    bail!(crate::i18n::user_err(code));
+                }
+                if meta.mention_all && !g.has(&self.me, perm::MENTION_EVERYONE) {
+                    bail!(crate::i18n::user_err("err.no_permission"));
+                }
+            }
             if g.slow_mode_s > 0 && role < Role::Admin {
                 let convs = self.store.group_convs(&conv_for(&gid, ""));
                 if let Some(last) = self.store.prev_hlc_by(&convs, &self.me, u64::MAX) {
@@ -1510,21 +1811,102 @@ impl Node {
     pub async fn group_add(self: &Arc<Self>, gid: Gid, peer: PeerId) -> Result<()> {
         let st = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
         anyhow::ensure!(!st.is_member(&peer), crate::i18n::user_err("err.already_member"));
-        if st.kind == 1 {
-            anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only_add"));
-        }
+        anyhow::ensure!(st.has(&self.me, perm::INVITE), crate::i18n::user_err("err.admin_only_add"));
+        let admin = st.role(&self.me).unwrap_or(Role::Member) >= Role::Admin;
+        // removed (or banned) by an admin: only admins bring them back
+        anyhow::ensure!(admin || !(st.removed_by_admin(&peer) || st.banned.contains(&peer)), crate::i18n::user_err("err.removed_admin_only"));
+        // an app that can't read this group (Community 2.0 op kinds): update first
+        anyhow::ensure!(
+            !(st.ops.iter().any(group::op_is_v2_kind) && self.known_pre_groups_v2(&peer)),
+            crate::i18n::user_err("err.group_peer_outdated").with("name", self.display(&peer))
+        );
         self.publish(gid, Payload::Op(GroupOp::Add { peer })).await?;
         self.send_welcome(&gid, peer).await
     }
 
+    /// Has a device of `account` announced a protocol older than Community 2.0 groups (its
+    /// app can't decode the new op kinds)? Unknown devices are not "older".
+    pub(crate) fn known_pre_groups_v2(&self, account: &PeerId) -> bool {
+        let mut devs = self.delivery_targets(account);
+        devs.push(*account);
+        devs.iter().any(|d| {
+            let v = self.peer(d).map(|pc| pc.proto.load(std::sync::atomic::Ordering::Relaxed)).filter(|v| *v > 0).unwrap_or_else(|| self.peer_proto(d));
+            v > 0 && v < proto::PROTO_V4
+        })
+    }
+
+    /// Has every known device of `account` announced Community 2.0 groups?
+    fn advertised_groups_v2(&self, account: &PeerId) -> bool {
+        let mut devs = if *account == self.me { self.siblings() } else { self.delivery_targets(account) };
+        if *account != self.me && !devs.contains(account) && self.peer_proto(account) > 0 {
+            devs.push(*account);
+        }
+        devs.iter().all(|d| {
+            let v = self.peer(d).map(|pc| pc.proto.load(std::sync::atomic::Ordering::Relaxed)).filter(|v| *v > 0).unwrap_or_else(|| self.peer_proto(d));
+            v >= proto::PROTO_V4
+        })
+    }
+
+    /// Switch a group to the Community 2.0 rules (admins; every member must run 1.0.8+).
+    pub async fn group_upgrade_rules(self: &Arc<Self>, gid: Gid) -> Result<Value> {
+        let st = self.group_live(&gid)?;
+        if st.ext.rules_v2 {
+            return self.group_info(&gid);
+        }
+        anyhow::ensure!(st.role(&self.me).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+        if let Some(old) = st.members.keys().find(|m| **m != self.me && self.known_pre_groups_v2(m)) {
+            bail!(crate::i18n::user_err("err.group_upgrade_blocked").with("name", self.display(old)));
+        }
+        self.publish(gid, Payload::Op(GroupOp::RulesV2)).await?;
+        self.group_info(&gid)
+    }
+
+    /// The owner's main device switches its old groups to the Community 2.0 rules once
+    /// every member device it knows of has announced them.
+    pub(super) fn maybe_upgrade_rules(self: &Arc<Self>) {
+        // (called on every Hello from a new app: at most every 30 s)
+        static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now = now_ms();
+        let last = LAST.load(std::sync::atomic::Ordering::Relaxed);
+        if now < last.saturating_add(30_000) || LAST.compare_exchange(last, now, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed).is_err() {
+            return;
+        }
+        if !self.is_primary() {
+            return;
+        }
+        let due: Vec<Gid> = self
+            .groups
+            .read()
+            .values()
+            .filter(|g| !g.ext.rules_v2 && !g.dissolved() && g.owner == self.me && g.is_member(&self.me))
+            .filter(|g| g.members.keys().all(|m| self.advertised_groups_v2(m)))
+            .map(|g| g.gid)
+            .collect();
+        for gid in due {
+            let me = self.clone();
+            tokio::spawn(async move {
+                match me.group_upgrade_rules(gid).await {
+                    Ok(_) => tracing::info!("group {}: switched to the Community 2.0 rules", hex::encode(gid)),
+                    Err(e) => tracing::debug!("group {}: rules upgrade: {e:#}", hex::encode(gid)),
+                }
+            });
+        }
+    }
+
     pub async fn group_remove(self: &Arc<Self>, gid: Gid, peer: PeerId) -> Result<()> {
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.no_perm_remove"));
+        let st = self.group_live(&gid)?;
+        let bot = st.bots.contains_key(&peer);
+        anyhow::ensure!(
+            (st.has(&self.me, perm::KICK) || (bot && st.has(&self.me, perm::MANAGE_BOTS))) && st.may_moderate(&self.me, &peer),
+            crate::i18n::user_err("err.no_perm_remove")
+        );
         self.publish(gid, Payload::Op(GroupOp::Remove { peer })).await?;
         Ok(())
     }
 
     pub async fn group_ban(self: &Arc<Self>, gid: Gid, peer: PeerId, ban: bool) -> Result<()> {
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.no_perm_remove"));
+        let st = self.group_live(&gid)?;
+        anyhow::ensure!(st.has(&self.me, perm::BAN) && (!ban || !st.is_member(&peer) || st.may_moderate(&self.me, &peer)), crate::i18n::user_err("err.no_perm_remove"));
         let op = if ban { GroupOp::Ban { peer } } else { GroupOp::Unban { peer } };
         self.publish(gid, Payload::Op(op)).await?;
         Ok(())
@@ -1538,6 +1920,7 @@ impl Node {
 
     pub async fn group_rename(self: &Arc<Self>, gid: Gid, name: &str) -> Result<()> {
         anyhow::ensure!(!name.trim().is_empty(), crate::i18n::user_err("err.name_empty"));
+        anyhow::ensure!(self.group_live(&gid)?.has(&self.me, perm::MANAGE_COMMUNITY), crate::i18n::user_err("err.admin_only"));
         self.publish(gid, Payload::Op(GroupOp::Rename { name: name.trim().to_string() })).await?;
         Ok(())
     }
@@ -1549,26 +1932,55 @@ impl Node {
         Ok(())
     }
 
-    pub async fn group_meta(self: &Arc<Self>, gid: Gid, avatar_b64: Option<&str>, description: Option<&str>) -> Result<()> {
+    /// Picture / description and (its own op) the cover; a part not given is left as is.
+    pub async fn group_meta(self: &Arc<Self>, gid: Gid, avatar_b64: Option<&str>, description: Option<&str>, cover_b64: Option<&str>) -> Result<()> {
         let cur = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
+        anyhow::ensure!(!cur.dissolved(), crate::i18n::user_err("err.group_dissolved"));
+        anyhow::ensure!(cur.has(&self.me, perm::MANAGE_COMMUNITY), crate::i18n::user_err("err.admin_only"));
+        if let Some(c) = cover_b64 {
+            let cover = if c.is_empty() { vec![] } else { data_encoding::BASE64.decode(c.as_bytes())? };
+            anyhow::ensure!(cover.len() <= group::MAX_COVER, crate::i18n::user_err("err.image_too_large").with("max", "300 KB"));
+            if cur.kind == 1 {
+                anyhow::ensure!(cur.role(&self.me).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+            }
+            self.publish(gid, Payload::Op(GroupOp::Cover { cover })).await?;
+            if avatar_b64.is_none() && description.is_none() {
+                return Ok(());
+            }
+        }
         let avatar = match avatar_b64 {
             Some("") => vec![],
             Some(a) => data_encoding::BASE64.decode(a.as_bytes())?,
             None => cur.avatar.clone(),
         };
-        anyhow::ensure!(avatar.len() <= 96 * 1024, crate::i18n::user_err("err.image_too_large").with("max", "96 KB"));
+        anyhow::ensure!(avatar.len() <= group::MAX_GROUP_AVATAR, crate::i18n::user_err("err.image_too_large").with("max", "96 KB"));
         let description = description.map(|d| d.to_string()).unwrap_or(cur.description.clone());
         self.publish(gid, Payload::Op(GroupOp::Meta { avatar, description })).await?;
         Ok(())
     }
 
     pub fn group_avatar(&self, gid: &Gid) -> Option<Vec<u8>> {
-        self.groups.read().get(gid).map(|g| g.avatar.clone()).filter(|a| !a.is_empty())
+        self.groups.read().get(gid).filter(|g| !g.dissolved()).map(|g| g.avatar.clone()).filter(|a| !a.is_empty())
+    }
+
+    pub fn group_cover(&self, gid: &Gid) -> Option<Vec<u8>> {
+        self.groups.read().get(gid).filter(|g| !g.dissolved()).map(|g| g.cover().to_vec()).filter(|c| !c.is_empty())
+    }
+
+    /// Owner: delete the group / community for everyone. Every member's device (and each
+    /// of mine) forgets it on receiving the Dissolve; members offline now get it through
+    /// the outbox / group catch-up when they are back.
+    pub async fn group_dissolve(self: &Arc<Self>, gid: Gid) -> Result<()> {
+        let st = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
+        anyhow::ensure!(!st.dissolved(), crate::i18n::user_err("err.group_dissolved"));
+        anyhow::ensure!(st.role(&self.me) == Some(Role::Owner), crate::i18n::user_err("err.owner_only_dissolve"));
+        self.publish(gid, Payload::Op(GroupOp::Dissolve)).await?;
+        Ok(())
     }
 
     pub async fn group_settings(self: &Arc<Self>, gid: Gid, slow_mode_s: Option<u32>, admins_only: Option<bool>) -> Result<()> {
         let g = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
-        anyhow::ensure!(g.role(&self.me).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+        anyhow::ensure!(g.has(&self.me, perm::MANAGE_COMMUNITY), crate::i18n::user_err("err.admin_only"));
         self.publish(gid, Payload::Op(GroupOp::Settings {
             slow_mode_s: slow_mode_s.unwrap_or(g.slow_mode_s),
             admins_only: admins_only.unwrap_or(g.admins_only),
@@ -1579,15 +1991,19 @@ impl Node {
     pub(super) fn on_group_read(&self, from: PeerId, gid: Gid, conv: String, upto: u64) -> Result<()> {
         let ok = self.groups.read().get(&gid).map(|g| g.is_member(&from)).unwrap_or(false);
         if ok && conv.starts_with(&format!("g:{}", hex::encode(gid))) {
-            self.store.group_read_set(&conv, &from, crate::util::clamp_hlc(upto).min(i64::MAX as u64) as i64)?;
-            self.emit("group_read", json!({"conv": conv, "peer": from.to_base32(), "upto": upto}));
+            let upto = crate::util::clamp_hlc(upto).min(i64::MAX as u64) as i64;
+            // (only when it moved: a repeated / older receipt changes nothing)
+            if self.store.group_read_set(&conv, &from, upto)? {
+                self.emit("group_read", json!({"conv": conv, "peer": from.to_base32(), "upto": upto}));
+            }
         }
         Ok(())
     }
 
     /// Admin: delete every message of `peer` in this group for everyone.
     pub async fn group_purge_member(self: &Arc<Self>, gid: Gid, peer: PeerId) -> Result<()> {
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+        let st = self.group_live(&gid)?;
+        anyhow::ensure!(st.has(&self.me, perm::MANAGE_MESSAGES) && (peer == self.me || st.may_moderate(&self.me, &peer)), crate::i18n::user_err("err.admin_only"));
         self.publish(gid, Payload::Action { channel: String::new(), target_author: peer, action: MsgAction::PurgeAuthor { author: peer } }).await?;
         Ok(())
     }
@@ -1604,6 +2020,11 @@ impl Node {
         let st = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
         if st.is_private_bot(&self.me) && self.store.group_key_get(&gid, st.epoch).is_none() {
             return self.bot_leave(st).await;
+        }
+        // the owner picks the next owner first (group_transfer_owner) while people remain
+        // (Community 2.0 rules; before them the fold picks the successor)
+        if st.ext.rules_v2 && st.is_member(&self.me) && st.role(&self.me) == Some(Role::Owner) && st.members.keys().any(|m| *m != self.me && !st.bots.contains_key(m)) {
+            bail!(crate::i18n::user_err("err.owner_must_transfer"));
         }
         self.publish(gid, Payload::Op(GroupOp::Leave)).await?;
         Ok(())
@@ -1681,7 +2102,35 @@ impl Node {
         let g = self.groups.read().get(&gid).cloned().ok_or_else(|| anyhow!("unknown group"))?;
         anyhow::ensure!(g.bots.contains_key(&from) && g.is_member(&from) && msg.author == from, "not a bot of this group");
         anyhow::ensure!(self.verify_content(&msg.author, &msg.signing_bytes(&group_scope(&gid, &channel)), &msg.sig), "bad signature");
+        anyhow::ensure!(super::chat::chat_msg_size_ok(&msg), "group message too large");
         if g.admins_only && g.role(&from).unwrap_or(Role::Member) < Role::Admin {
+            return Ok(());
+        }
+        // only the group's own channels; never from the future; nor backdated past a change
+        // of the bot's rights (it hands its posts to us directly)
+        let media = matches!(msg.body, Body::File { .. });
+        if !g.channel_declared(&channel)
+            || crate::util::hlc_to_ms(msg.hlc) > now_ms() + crate::util::MAX_CLOCK_SKEW_MS
+            || msg.hlc.saturating_add(600_000 << 8) < g.created
+            || content_backdated(&g, &from, &channel, msg.hlc, media)
+        {
+            return Ok(());
+        }
+        let mut msg = msg;
+        {
+            let at = g.state_for(&from, msg.hlc);
+            if at.ext.rules_v2 {
+                if at.post_refusal(&from, &channel, crate::util::hlc_to_ms(msg.hlc), media).is_some() {
+                    return Ok(());
+                }
+                // @all needs `mention_everyone`
+                if msg.meta.mention_all && !at.has(&from, perm::MENTION_EVERYONE) {
+                    msg.meta.mention_all = false;
+                }
+            }
+        }
+        // a private channel I can't see: nothing kept in plaintext
+        if !g.can_see(&self.me, &channel) {
             return Ok(());
         }
         let conv = conv_for(&gid, &channel);
@@ -1701,7 +2150,7 @@ impl Node {
     /// Make a group public (discoverable by @handle·tag, anyone may join) or private.
     pub async fn group_visibility(self: &Arc<Self>, gid: Gid, public: bool, handle: &str) -> Result<Value> {
         let handle = handle.trim().trim_start_matches('@').to_lowercase();
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+        anyhow::ensure!(self.group_live(&gid)?.has(&self.me, perm::MANAGE_COMMUNITY), crate::i18n::user_err("err.admin_only"));
         if public {
             anyhow::ensure!(crate::net::nostr::valid_username(&handle), crate::i18n::user_err("err.username_invalid"));
         }
@@ -1717,10 +2166,16 @@ impl Node {
         self.group_info(&gid)
     }
 
+    /// Do I announce `g` in the public directory? (public, with a handle, I administer it,
+    /// from my main device — and never once it is dissolved)
+    pub(super) fn directory_listable(&self, g: &GroupState) -> bool {
+        !g.dissolved() && g.public && !g.handle.is_empty() && g.role(&self.me).unwrap_or(Role::Member) >= Role::Admin && self.is_primary()
+    }
+
     /// (Re)announce a public group in the directory (called on change and daily).
     pub(super) fn publish_group_directory(&self, gid: Gid) {
         let Some(g) = self.groups.read().get(&gid).cloned() else { return };
-        if !g.public || g.handle.is_empty() || g.role(&self.me).unwrap_or(Role::Member) < Role::Admin || !self.is_primary() {
+        if !self.directory_listable(&g) {
             return;
         }
         let pool = self.net.nostr.read().clone();
@@ -1748,7 +2203,13 @@ impl Node {
         };
         anyhow::ensure!(crate::net::nostr::valid_username(&name), crate::i18n::user_err("err.username_invalid"));
         let mut out = vec![];
+        let mut dissolved: Vec<String> = vec![];
         for g in self.groups.read().values() {
+            if g.dissolved() {
+                // deleted by its owner: not offered, not even from a stale directory listing
+                dissolved.push(hex::encode(g.gid));
+                continue;
+            }
             if self.group_blocked(&g.gid) {
                 continue;
             }
@@ -1765,7 +2226,11 @@ impl Node {
                 let Ok(gid16) = <[u8; 16]>::try_from(gb.as_slice()) else { continue };
                 let t = group::group_tag(&gid16);
                 // a group I reported / blocked isn't offered again
-                if tag.as_deref().map(|x| x == t).unwrap_or(true) && !out.iter().any(|o| o["gid"].as_str() == Some(&gid)) && !self.group_blocked(&gid16) {
+                if tag.as_deref().map(|x| x == t).unwrap_or(true)
+                    && !out.iter().any(|o| o["gid"].as_str() == Some(&gid))
+                    && !dissolved.contains(&gid)
+                    && !self.group_blocked(&gid16)
+                {
                     c["handle"] = json!(format!("@{name}·{t}"));
                     c["joined"] = json!(false);
                     out.push(c);
@@ -1781,12 +2246,13 @@ impl Node {
         anyhow::ensure!(!self.group_blocked(&gid), crate::i18n::user_err("err.group_blocked"));
         anyhow::ensure!(!self.is_bot(), crate::i18n::user_err("err.bot_join_public"));
         self.store.kv_set(&format!("join.pending.{}", hex::encode(gid)), b"1")?;
+        self.store.kv_set(&format!("join.via.{}", hex::encode(gid)), via.to_base32().as_bytes())?;
         self.send_to(via, PeerMsg::JoinPublic { gid }).await
     }
 
     pub(super) async fn on_join_public(self: &Arc<Self>, from: PeerId, gid: Gid) -> Result<()> {
         let Some(g) = self.groups.read().get(&gid).cloned() else { return Ok(()) };
-        if g.public && !g.banned.contains(&from) && !g.is_member(&from) && !self.store.is_blocked(&from) && g.role(&self.me).unwrap_or(Role::Member) >= Role::Admin {
+        if g.public && !g.banned.contains(&from) && !g.removed_by_admin(&from) && !g.is_member(&from) && !self.store.is_blocked(&from) && g.role(&self.me).unwrap_or(Role::Member) >= Role::Admin {
             if !self.join_allowed(&gid) {
                 tracing::warn!("public join from {from:?} dropped: join rate limit for this group");
                 return Ok(());
@@ -1797,13 +2263,13 @@ impl Node {
     }
 
     pub async fn group_add_bot(self: &Arc<Self>, gid: Gid, bot: PeerId, read_all: bool) -> Result<()> {
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only_add"));
+        anyhow::ensure!(self.group_live(&gid)?.has(&self.me, perm::MANAGE_BOTS), crate::i18n::user_err("err.admin_only_add"));
         self.publish(gid, Payload::Op(GroupOp::AddBot { peer: bot, read_all })).await?;
         self.send_welcome(&gid, bot).await
     }
 
     pub async fn group_bot_policy(self: &Arc<Self>, gid: Gid, bot: PeerId, read_all: bool) -> Result<()> {
-        anyhow::ensure!(self.my_role(&gid).unwrap_or(Role::Member) >= Role::Admin, crate::i18n::user_err("err.admin_only"));
+        anyhow::ensure!(self.group_live(&gid)?.has(&self.me, perm::MANAGE_BOTS), crate::i18n::user_err("err.admin_only"));
         self.publish(gid, Payload::Op(GroupOp::SetBotPolicy { peer: bot, read_all })).await?;
         if read_all {
             self.send_welcome(&gid, bot).await?; // now give it the key
@@ -1813,8 +2279,10 @@ impl Node {
         Ok(())
     }
 
+    /// Current members (calls, file access): nobody once the group is dissolved — its
+    /// tombstone still lists who was in it when it was.
     pub fn group_members(&self, gid: &Gid) -> Vec<PeerId> {
-        self.groups.read().get(gid).map(|g| g.members.keys().copied().collect()).unwrap_or_default()
+        self.groups.read().get(gid).filter(|g| !g.dissolved()).map(|g| g.members.keys().copied().collect()).unwrap_or_default()
     }
 }
 

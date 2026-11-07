@@ -461,7 +461,7 @@ class SwitchRow extends StatelessWidget {
 OverlayEntry? _topToast;
 
 /// Short notice that slides down from the top of the screen ("Đã gửi tệp", "Đã sao chép", errors…),
-/// like Telegram/Zalo, instead of a bottom snackbar that covers the message composer.
+/// as in most chat apps, instead of a bottom snackbar that covers the message composer.
 /// Pass [overlay] when calling after an `await` (grab it while the context is still mounted).
 void showTopToast(BuildContext? context, String text,
     {Duration duration = const Duration(seconds: 2), String? actionLabel, VoidCallback? onAction, OverlayState? overlay}) {

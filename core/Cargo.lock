@@ -2520,10 +2520,18 @@ name = "lumora-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "form_urlencoded",
+ "hex",
  "lumora-core",
+ "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "tokio-rustls",
+ "tracing",
  "tracing-subscriber",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

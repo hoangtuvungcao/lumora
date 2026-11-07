@@ -64,6 +64,19 @@ These go in `docs/src/dev/security.md` and the UI:
 - **A lost primary** means the root key may be compromised. This is the same exposure as today. Mitigations: keystore passphrase, plus Promote on another device. True account rotation is out of scope.
 - **Secondaries cannot show the recovery phrase.** The `recovery_phrase` API returns `err.phrase_on_primary`.
 - **`export_backup` on a secondary** backs up that device. Restoring a revoked device is useless.
+- **Recovery from friends** (node/recovery.rs, v1.0.8). A primary restored from its phrase into an
+  empty folder has no contacts, so it cannot tell friends from anyone else by its own store. It
+  therefore never says hello on connect: `Ext RECOVER_HELLO` goes only to a peer that proved it holds
+  this account as a friend by sending `Ext DHT_KEY` (a device sends its friends-only DHT key only to
+  accounts that are friends in its own store, `share_dht_key`). Strangers, pending requests and group
+  co-members never learn that the account is recovering. The friend side still re-checks the
+  friendship and the signed hello before offering anything.
+- As soon as a linked device of mine brings messages back (sibling sync or history stream), the
+  primary stops asking friends (`recover.since` = 0, event `recovery {recovering:false, own_device:true}`);
+  offers already accepted still finish.
+- Handed-back messages that are not signed by me carry `meta.restored_from` / `restored_peer`
+  (the bubble shows "Restored from …"); a shared group joined back this way gets the neutral notice
+  `sys.group_restored` instead of "… added you".
 
 ### Signer abstraction
 
@@ -836,7 +849,7 @@ Status per phase, then what changed from the plan above and why.
   (verify + revocation + learn the cert), `ensure_own_list` (primary, version 1, never sent while
   single-device), `publish_own_list`, `DeviceSync` / `DeviceList` / `DeviceListRequest` handlers,
   `devices_json`, `contact_devices_json`, `device_rename`.
-- All content signing goes through `Node.signer` (chat, actions, buttons, stories, invites, BotFather
+- All content signing goes through `Node.signer` (chat, actions, buttons, stories, invites, Bot Studio
   ownership, group ops/messages); all verification through `verify_content` / `verify_by`.
 - Groups: `Signed::new(&Signer…)`, `group::create(&Signer…)` (gid bound to the account), log/heads keyed by
   the signing device, `i_rotate` = signing device is this device (owner-leave: primary only), `GroupSync`
@@ -1157,3 +1170,30 @@ session". It uses the debug-only command `debug_olm_drop`.
   still read what senders with an older list send it.
 - Old-app friends' group sync (`GroupSync`) still only serves account-signed rows; bridged copies
   cover new messages.
+
+### Recovery from friends after a phrase restore (v1.0.8, `node/recovery.rs`)
+
+An account restored from its 24 words into an empty folder (`recover.since`) asks every v3
+peer that connects, for 30 days or until "Stop asking friends", for help:
+
+- `Ext RECOVER_HELLO` `{to, ts, sig}` — signed by the account key over (tag, account, peer, ts);
+  ±10 min. The friend answers only if its OWN store has the account as a friend (not blocked)
+  and "Help friends restore their history" (`privacy.help_restore`, synced kv, default on) is on.
+- `RECOVER_OFFER` `{name, messages, groups, since, proof}` — `proof` is a message the account
+  signed in that 1-1 chat (the app shows "Verified"). Kept only as an answer to our hello;
+  nothing is stored before the user accepts in the review list (`recovery_offers` / `_accept` /
+  `_decline` / `_dismiss`, event `recovery`).
+- `RECOVER_ACCEPT` (signed like the hello) → `RECOVER_BATCH` `{items, done}`: only that friend's
+  1-1 chat, last 183 days, text-like kinds, ≤ 200 items / 256 KB per frame, ≤ 5,000 messages /
+  8 MB, 3 transfers per friend per day. Then a group welcome per shared group; the group's own
+  sync brings its history. An epoch-0 group key from a plain member is accepted when it opens a
+  held envelope someone else signed (the creator may be the one restoring).
+- Tombstones: rows with `deleted=1`, a `expires` timer, or cleared/purged are never served. The
+  friend keeps the signed wire copy of received messages in `msg_wire`; SQLite triggers drop it
+  when the message is deleted, edited, given a timer or removed. Own messages without a wire
+  copy are taken on the friend's word (the authenticated connection), see "Left / limits".
+- IP privacy unchanged: the friend reaches the restored device the usual ways (LAN, its public
+  inbox if findable by ID, or the user re-adding the friend by ID); accepting an offer makes them
+  friends again, which is when addresses may be revealed.
+- Tests: `core/tests/recovery_e2e.py` (5 steps), unit tests in `node/recovery.rs`,
+  `app/test/friend_recovery_test.dart`.

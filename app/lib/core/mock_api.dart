@@ -17,6 +17,8 @@ import 'mock_file_previews.dart';
 import 'mock_media.dart';
 import 'text_fold.dart';
 
+part 'mock_community.dart';
+
 
 /// The mock account's recovery phrase: secret 0x01…0x20 as 24 BIP39 words
 /// (the same golden vector as core/crates/lumora-core/src/identity.rs).
@@ -72,8 +74,64 @@ class MockLumoraApi extends LumoraApi {
     'read_receipts': true, 'typing': true, 'store_forward': true, 'echo_cancel': true, 'noise_suppression': true, 'lan': true,
     'video_beauty': 0, 'video_lowlight': true, 'video_mirror_send': false,
     'relays': <String>[], 'relay_delay_ms': 3500, 'p2p_only': false, 'downloads_dir': '/home/lan/Downloads/Lumora',
-    'discoverable_by_id': true, 'help_friends': true,
+    'discoverable_by_id': true, 'help_friends': true, 'wake_for_friends': true, 'help_restore': true,
+    'story_hidden': <String>[], 'story_close': <String>[], 'metered': false,
+    // privacy choices (synced across my devices; `settings` keys privacy.calls / group_add / online / mentions_only)
+    'who_can_call': 'friends', 'who_can_add': 'friends', 'who_sees_online': 'friends', 'mentions_only': null, // null: never set (like the core)
   };
+
+  /// Auto-download limits per network (`storage_policy.auto_download`), like the core's.
+  final Map<String, Map<String, int>> autoDownload = {
+    'wifi': {'photo': 5 << 20, 'video': 50 << 20, 'voice': 1 << 50, 'file': 25 << 20, 'file_group': 10 << 20},
+    'cell': {'photo': 5 << 20, 'video': 0, 'voice': 1 << 50, 'file': 0, 'file_group': 0},
+    'roaming': {'photo': 1 << 20, 'video': 0, 'voice': 5 << 20, 'file': 0, 'file_group': 0},
+  };
+  Map<String, dynamic> _policyJson() => {
+        ..._policy,
+        'auto_download': {for (final e in autoDownload.entries) e.key: Map.of(e.value)},
+      };
+
+  /// Recovery from friends (tests): restored from the phrase, friends' offers
+  /// (`{peer, name, messages, groups, since, verified, state, received}`).
+  bool recovering = false;
+  final List<Map<String, dynamic>> mockRecoveryOffers = [];
+
+  /// Tests: a friend offers our history back (like the core's `recovery` event).
+  void debugRecoveryOffer(Map<String, dynamic> o) {
+    recovering = true;
+    mockRecoveryOffers.add({'state': 'offered', 'received': 0, 'groups': <String>[], 'verified': false, 'since': 0, ...o});
+    _emit('recovery', {'offers': mockRecoveryOffers});
+  }
+
+  /// Tests: a message a friend handed back after a restore, not signed by me
+  /// (core `meta.restored_from`), at the end of [conv].
+  /// [mine]: "my" message handed back without my signature (`restored_unverified`).
+  void debugRestoredMessage(String conv, String text, String fromName, {bool mine = false}) {
+    final peer = conv.startsWith('d:') ? conv.substring(2) : _friend(1);
+    final author = mine ? myPeer : peer;
+    final m = _mkMsg(conv, author, text, _now)
+      ..['meta'] = {'restored_from': fromName, 'restored_peer': peer, if (mine) 'restored_unverified': true};
+    _msgs.putIfAbsent(conv, () => []).add(m);
+  }
+
+  /// Tests: a system line `{code, args, text}` at the end of [conv].
+  void debugSystemMessage(String conv, String code, {Map<String, String> args = const {}, String text = ''}) {
+    _msgs.putIfAbsent(conv, () => []).add(_mkMsg(conv, myPeer, '', _now, kind: 'system')..['body'] = {'code': code, 'args': args, 'text': text});
+  }
+
+  /// Tests: push a core event (e.g. `settings` changed on another device).
+  void debugEmit(String event, Map<String, dynamic> data) => _emit(event, data);
+
+  Map<String, dynamic> _recoveryJson() => {'recovering': recovering, 'offers': [for (final o in mockRecoveryOffers) Map.of(o)]};
+
+  /// `set_network_hint` calls (tests), newest last.
+  final List<Map<String, dynamic>> networkHints = [];
+
+  /// `post_story` audience of every story posted here (tests), newest last.
+  final List<String> storyAudiences = [];
+
+  /// The fixed remote password last set with `remote_set password` (tests).
+  String? fixedRemotePassword;
   Map<String, int> _policy = {'max_cache': 5 << 30, 'media_days': 0, 'auto_direct': 25 << 20, 'auto_group': 2 << 20, 'community_days': 30};
 
   /// Downloaded media per conversation (bytes) and reclaimable database space.
@@ -87,6 +145,13 @@ class MockLumoraApi extends LumoraApi {
   final Map<String, String> _invites = {};
   final Map<String, String?> _wallpapers = {};
   final Map<String, String> _groupAvatars = {};
+
+  /// gid → base64 JPEG cover (`group_cover`); the group map keeps
+  /// `has_cover` / `cover_rev` like the core.
+  final Map<String, String> _groupCovers = {};
+
+  /// Commands seen (tests check what the UI asked for).
+  final List<String> commandLog = [];
   final List<Map<String, dynamic>> _stories = [];
   /// My stories past their 24 h (demo archive).
   final List<Map<String, dynamic>> _archived = [
@@ -301,6 +366,34 @@ class MockLumoraApi extends LumoraApi {
     _emit('settings', {'key': 'privacy.hidden_members'});
   }
 
+  /// Tests: the owner deleted this group / community (`group_dissolve` on
+  /// their device) — what a member's core then reports.
+  void groupDissolvedByOwner(String gid) => _dissolveGroup(gid);
+
+  /// Like the core after a dissolve: the group and all its chats go, then
+  /// `conversation_removed` per chat and `group_removed` (dissolved).
+  void _dissolveGroup(String gid) {
+    final g = _groups.remove(gid);
+    final sp = _spaces.where((x) => x['id'] == gid).firstOrNull;
+    _spaces.removeWhere((x) => x['id'] == gid);
+    _groupAvatars.remove(gid);
+    _groupCovers.remove(gid);
+    final conv = 'g:$gid';
+    final name = g?['name'] ?? sp?['name'] ?? _convs[conv]?['title'] ?? '';
+    final kind = (g?['kind'] == 1 || sp != null) ? 1 : 0;
+    final chats = {
+      conv,
+      for (final k in _convs.keys) if (k.startsWith('$conv#')) k,
+      for (final c in (sp?['channels'] as List? ?? const [])) (c as Map)['conv'] as String,
+    };
+    for (final c in chats) {
+      _convs.remove(c);
+      _msgs.remove(c);
+      _emit('conversation_removed', {'conv': c});
+    }
+    _emit('group_removed', {'gid': gid, 'conv': conv, 'left': false, 'dissolved': true, 'name': name, 'kind': kind});
+  }
+
   void _forgetGroup(String gid) {
     if (_groups.remove(gid) == null && !_convs.containsKey('g:$gid')) return;
     _convs.remove('g:$gid');
@@ -337,6 +430,12 @@ class MockLumoraApi extends LumoraApi {
   /// This device was signed out (from the main device, or by itself).
   void simulateDeviceRevoked({bool bySelf = false, bool wipe = false}) =>
       _emit('device_revoked', {'device': _thisDevice, 'wipe': wipe, if (bySelf) 'by_self': true});
+
+  /// The last accepted `device_logout`: {primary, wipe, others (devices still in the list)} (tests).
+  Map<String, dynamic>? lastLogout;
+
+  /// Devices signed out with `device_revoke` (tests: `device`, `wipe`).
+  List<Map<String, dynamic>> get revokedDevices => List.unmodifiable(_revokedDevices);
 
   /// The `passphrase` of the last accepted `device_promote` (tests).
   String? lastPromotePassphrase;
@@ -631,6 +730,8 @@ class MockLumoraApi extends LumoraApi {
     chan('Leo rank', 'voice', 'CHUNG', parts: [p(6), p(4)]);
     _spaces.add({'id': sid2, 'name': 'Game Thủ Sài Gòn', 'members': 342, 'channels': chans.sublist(chans2Start)});
     chans.removeRange(chans2Start, chans.length);
+    cmSeedSpaces([for (final i in [1, 0, 2, 3, 5, 7]) p(i)]);
+    if (timers) cmSeedGroups2(p(4)); // (the demo only: tests start without)
 
     // ------------------------------------------------------------ files
     void file(String id, String conv, String peer, String name, int size, int dir, int state, double frac, {int? speed, int agoMin = 5}) {
@@ -663,6 +764,7 @@ class MockLumoraApi extends LumoraApi {
       'password': 'x7k2pq',
       'unattended': false,
       'allow_control': true,
+      'allow_incoming': true,
       'macs': ['a4:bb:6d:10:4e:21'],
       'wayland': {'portal': true, 'pipewire': true},
     };
@@ -1059,6 +1161,115 @@ class MockLumoraApi extends LumoraApi {
   /// Public demo hooks (used by the "Demo" section in Settings).
   /// Emits any core event (tests).
   void emitForTest(String event, [Map<String, dynamic> data = const {}]) => _emit(event, data);
+
+  /// Own devices asking to be listed again (`device_relist_requests`).
+  final List<Map<String, dynamic>> relistRequests = [];
+
+  /// A missing own device asks to be listed again (tests / demo).
+  void simulateRelistRequest(String device, {String name = 'Điện thoại cũ', int kind = 1}) {
+    final r = {'device': device, 'name': name, 'kind': kind, 'short_id': '123 456 789'};
+    relistRequests.removeWhere((x) => x['device'] == device);
+    relistRequests.add(r);
+    _emit('device_relist_request', r);
+  }
+
+  /// Group read marks the core keeps (`group_reads`): conv -> member -> hlc.
+  final Map<String, Map<String, int>> groupReadMarks = {};
+
+  // ------------------------------------------------------------ voice rooms
+
+  /// Tests: the next `voice_join` fails with this core error code.
+  String? failVoiceJoin;
+
+  /// Voice channel `conv` of a community (its channel map), if any.
+  Map<String, dynamic>? _voiceChannel(String conv) {
+    for (final sp in _spaces) {
+      for (final c in (sp['channels'] as List).cast<Map<String, dynamic>>()) {
+        if (c['conv'] == conv && (c['kind'] == 'voice' || c['voice'] == true)) return c;
+      }
+    }
+    return null;
+  }
+
+  final Map<String, Set<String>> _voiceMuted = {};
+
+  Map<String, dynamic> _voiceJson(String conv) {
+    final c = _voiceChannel(conv);
+    final parts = ((c?['participants'] as List?) ?? const []).cast<String>();
+    final room = _calls.values.where((x) => x['room'] == true && x['conv'] == conv).firstOrNull;
+    return {
+      'conv': conv,
+      'participants': List.of(parts),
+      'muted': [for (final p in parts) if (_voiceMuted[conv]?.contains(p) ?? false) p],
+      'speaking': room == null ? <String>[] : List.of((room['speaking'] as List?) ?? const []),
+      'joined': room != null,
+    };
+  }
+
+  Map<String, dynamic> _voiceJoin(String conv, String cmd) {
+    final fail = failVoiceJoin;
+    if (fail != null) {
+      failVoiceJoin = null;
+      throw ApiException(fail == 'err.in_other_call' ? 'Bạn đang trong một cuộc gọi khác.' : 'Không vào được kênh thoại này.', cmd: cmd, code: fail);
+    }
+    final ch = _voiceChannel(conv);
+    if (ch == null) throw ApiException('Không vào được kênh thoại này.', cmd: cmd, code: 'err.not_voice_channel');
+    final mine = _calls.values.where((x) => x['room'] == true).firstOrNull;
+    if (mine != null && mine['conv'] == conv) return {'call_id': mine['call_id'], 'conv': conv};
+    if (mine != null) _voiceLeave(mine['conv'] as String); // one room at a time
+    if (_calls.values.any((x) => x['state'] != 'ended')) {
+      throw ApiException('Bạn đang trong một cuộc gọi khác.', cmd: cmd, code: 'err.in_other_call');
+    }
+    final parts = (ch['participants'] as List).cast<String>().where((p) => p != myPeer).toList();
+    ch['participants'] = [...parts, myPeer];
+    final id = 'room_${_hex(8)}';
+    final call = <String, dynamic>{
+      'call_id': id, 'conv': conv, 'peer': '', 'state': 'active', 'room': true, 'video': false,
+      'participants': parts, 'started_at': _now, 'speaking': <String>[],
+    };
+    _calls[id] = call;
+    _emit('call', Map.of(call));
+    _emit('voice', _voiceJson(conv));
+    return {'call_id': id, 'conv': conv};
+  }
+
+  void _voiceLeave(String conv, {bool emitCall = true}) {
+    final ch = _voiceChannel(conv);
+    if (ch != null) ch['participants'] = (ch['participants'] as List).cast<String>().where((p) => p != myPeer).toList();
+    final ids = [for (final e in _calls.entries) if (e.value['room'] == true && e.value['conv'] == conv) e.key];
+    for (final id in ids) {
+      final call = _calls.remove(id)!;
+      if (emitCall) _emit('call', {...call, 'state': 'ended'});
+    }
+    _emit('voice', _voiceJson(conv));
+  }
+
+  /// Tests / demo: who is in voice channel `conv` changed (others joining,
+  /// leaving, muting or talking) — the core's `voice` event. Others in my
+  /// room join its media too.
+  void simulateVoicePresence(String conv, List<String> others, {List<String> muted = const [], List<String> speaking = const []}) {
+    final ch = _voiceChannel(conv);
+    if (ch == null) return;
+    final room = _calls.values.where((x) => x['room'] == true && x['conv'] == conv).firstOrNull;
+    final mineIn = (ch['participants'] as List).contains(myPeer);
+    ch['participants'] = [...others.where((p) => p != myPeer), if (mineIn) myPeer];
+    _voiceMuted[conv] = muted.toSet();
+    if (room != null) {
+      room['participants'] = others.where((p) => p != myPeer).toList();
+      room['speaking'] = List.of(speaking);
+      _emit('call', Map.of(room));
+      for (final p in others) {
+        _emit('call_peer', {'call_id': room['call_id'], 'peer': p, 'mic': !muted.contains(p), 'cam': false, 'screen': false});
+      }
+    }
+    _emit('voice', _voiceJson(conv));
+  }
+
+  /// Tests: my room ended without me leaving (lost, removed, moved).
+  void simulateVoiceRoomLost(String conv, {bool moved = false, String device = ''}) {
+    if (moved) _emit('voice', {'conv': conv, 'moved': true, 'device_name': device});
+    _voiceLeave(conv);
+  }
 
   /// History copied in from another device (tests): `count` older messages land
   /// before the oldest one of [conv], without `message` events (like the core).
@@ -1487,15 +1698,25 @@ class MockLumoraApi extends LumoraApi {
       if (r is Map<String, dynamic>) _sentByClient[key] = Map.of(r);
       return r;
     }
+    final hold = debugHold[cmd];
+    if (hold != null) await hold.future;
     return _handle(cmd, args);
   }
+
+  /// Tests: a command named here waits for its completer before it is handled (a slow core).
+  final Map<String, Completer<void>> debugHold = {};
 
   /// `send_*` results by `cmd|client_id`.
   final Map<String, Map<String, dynamic>> _sentByClient = {};
 
   Future<dynamic> _handle(String cmd, Map<String, dynamic> args) async {
+    commandLog.add(cmd);
+    if (commandLog.length > 500) commandLog.removeAt(0);
     // Tiny async gap so UI code paths behave like the real thing.
     await Future<void>.delayed(Duration.zero);
+    // Community 2.0 (roles, channel settings, timeouts): mock_community.dart
+    final community = cmHandle(cmd, args);
+    if (!identical(community, _cmNo)) return community;
     switch (cmd) {
       case 'me':
         return {
@@ -1528,9 +1749,29 @@ class MockLumoraApi extends LumoraApi {
         _revokedDevices.add({...gone.first, 'at': _now, 'wipe': args['wipe_media'] == true});
         _emit('devices', _devicesJson());
         return _devicesJson();
+      case 'device_relist_requests':
+        return [for (final r in relistRequests) Map<String, dynamic>.of(r)];
+      case 'device_relist':
+        _requirePrimary(cmd);
+        final id = '${args['device']}';
+        final req = relistRequests.where((r) => r['device'] == id).toList();
+        if (req.isEmpty) throw ApiException('Không tìm thấy thiết bị', cmd: cmd, code: 'err.device_not_found');
+        relistRequests.remove(req.first);
+        if (args['approve'] == true) {
+          _devices.add({'device': id, 'name': req.first['name'], 'kind': req.first['kind'], 'added': _now, 'last_seen': _now, 'online': true, 'primary': false, 'this': false});
+        } else {
+          _revokedDevices.add({'device': id, 'name': req.first['name'], 'kind': req.first['kind'], 'at': _now, 'wipe': true});
+        }
+        _emit('devices', _devicesJson());
+        return _devicesJson();
       case 'device_logout':
+        if (_passphrase.isNotEmpty && args['passphrase'] != _passphrase) {
+          throw ApiException('Mật khẩu không đúng', cmd: cmd, code: 'err.wrong_passphrase');
+        }
         if (_isPrimary && args['primary_ok'] != true) throw ApiException('Đây là thiết bị chính của tài khoản.', cmd: cmd, code: 'err.primary_logout');
-        _soon(const Duration(milliseconds: 400), () => simulateDeviceRevoked(bySelf: true));
+        final wipe = args['wipe'] == true;
+        lastLogout = {'primary': _isPrimary, 'wipe': wipe, 'others': [for (final d in _devices) if (d['device'] != _thisDevice) d['device']]};
+        _soon(const Duration(milliseconds: 400), () => simulateDeviceRevoked(bySelf: true, wipe: wipe));
         return {'notified': true};
       case 'device_promote':
         if (_isPrimary) throw ApiException('Thiết bị này đã là thiết bị chính.', cmd: cmd, code: 'err.already_primary');
@@ -1746,9 +1987,14 @@ class MockLumoraApi extends LumoraApi {
         }
         final m = _find(args['conv'], args['msg_id']);
         if (m != null) {
+          // (as the core: in 1-1 chats only the author deletes for both)
+          if ((args['conv'] as String).startsWith('d:') && m['mine'] != true) {
+            throw ApiException('Trong cuộc trò chuyện 1-1, bạn chỉ có thể xoá với mọi người tin nhắn của chính mình.', cmd: cmd);
+          }
           m['deleted'] = true;
           m['body'] = '';
-          _emit('message_update', {'conv': args['conv'], 'id': args['msg_id'], 'deleted': true, 'body': ''});
+          m['deleted_by'] = myPeer;
+          _emit('message_update', {'conv': args['conv'], 'id': args['msg_id'], 'deleted': true, 'body': '', 'deleted_by': myPeer});
         }
         return null;
       case 'react':
@@ -1824,7 +2070,9 @@ class MockLumoraApi extends LumoraApi {
       case 'forward_message':
         final src = _findAny(args['msg_id'] as String);
         if (src == null) throw ApiException('Không tìm thấy tin nhắn', cmd: cmd);
-        _copyTo(args['to_conv'] as String, src, meta: {'forwarded_from': src['author']});
+        // (as the core: self-destructing messages stay put; "hide sender name")
+        if (src['expires'] != null) throw ApiException('Không thể chuyển tiếp tin nhắn tự huỷ.', cmd: cmd);
+        _copyTo(args['to_conv'] as String, src, meta: args['hide_sender'] == true ? const {} : {'forwarded_from': src['author']});
         return null;
       case 'pin_message':
         final m = _find(args['conv'], args['msg_id']);
@@ -1946,13 +2194,19 @@ class MockLumoraApi extends LumoraApi {
       case 'group_channel':
         final g = _groups[args['gid']];
         if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd);
-        final chans = (g['channels'] as List?) ?? [];
+        final chans = <Map<String, dynamic>>[for (final c in (g['channels'] as List?) ?? const []) Map<String, dynamic>.of(c as Map<String, dynamic>)];
+        final space = _spaces.where((sp) => sp['id'] == args['gid']).firstOrNull;
         if (args['remove'] == true) {
           chans.removeWhere((c) => c['name'] == args['name']);
+          (space?['channels'] as List?)?.removeWhere((c) => c['name'] == args['name']);
         } else {
-          chans.add({'id': _hex(8), 'name': args['name'], 'kind': args['voice'] == true ? 'voice' : 'text', 'conv': 'g:${args['gid']}#${args['name']}', 'participants': []});
+          final ch = <String, dynamic>{'id': _hex(8), 'name': args['name'], 'kind': args['voice'] == true ? 'voice' : 'text', 'conv': 'g:${args['gid']}#${args['name']}', 'participants': <String>[]};
+          chans.add(ch);
+          // the community's channel list (`spaces`) follows
+          if (space != null) space['channels'] = [...(space['channels'] as List), {...ch, 'unread': 0, 'category': ''}];
         }
         g['channels'] = chans;
+        cmChannelCreated(args);
         _emit('group', g);
         return null;
       case 'create_invite':
@@ -1965,7 +2219,7 @@ class MockLumoraApi extends LumoraApi {
         if (gid != null) return {'name': _groups[gid]?['name'] ?? '', 'valid': true, 'already_member': true, 'members': (_groups[gid]?['members'] as List?)?.length ?? 0};
         if (link.startsWith('lumora://join/') && link.length > 20) {
           final g = _inviteGid(link);
-          return {'gid': g, 'name': 'Cộng đồng Rust Việt Nam', 'valid': true, 'already_member': false, 'members': 2150, 'kind': 1, 'blocked': _groupBlocked(g)};
+          return {'gid': g, 'name': 'Cộng đồng Rust Việt Nam', 'valid': true, 'already_member': false, 'kind': 1, 'blocked': _groupBlocked(g)};
         }
         return {'name': '', 'valid': false, 'already_member': false};
       case 'join_invite':
@@ -1975,6 +2229,8 @@ class MockLumoraApi extends LumoraApi {
           throw ApiException('Bạn đã chặn nhóm này. Hãy bỏ chặn trong Cài đặt › Quyền riêng tư để tham gia lại.', cmd: cmd, code: 'err.group_blocked');
         }
         final gid = _inviteGid(link);
+        // a group that approves new members: only the request goes out (like the real core)
+        if (link.contains('approve')) return {'gid': gid, 'name': 'Nhóm duyệt thành viên', 'pending': true};
         _groups[gid] = {'gid': gid, 'name': 'Cộng đồng Rust Việt Nam', 'owner': _friend(2), 'epoch': 1, 'my_role': 'member', 'kind': 1,
           'members': [{'peer': myPeer, 'name': _me['name'], 'role': 'member'}]};
         final conv = 'g:$gid';
@@ -2003,9 +2259,29 @@ class MockLumoraApi extends LumoraApi {
         for (final k in _coreSettings.keys.toList()) {
           if (args.containsKey(k)) _coreSettings[k] = args[k];
         }
+        // like the core: "pure P2P" owns the relay delay
+        if (args['p2p_only'] is bool) _coreSettings['relay_delay_ms'] = args['p2p_only'] == true ? 600000 : 3500;
         return null;
       case 'settings_get':
         return Map.of(_coreSettings);
+      case 'recovery_offers':
+        return _recoveryJson();
+      case 'recovery_accept':
+      case 'recovery_decline':
+        final o = mockRecoveryOffers.firstWhere((o) => o['peer'] == args['peer'], orElse: () => throw ApiException('no such offer', cmd: cmd));
+        o['state'] = cmd == 'recovery_accept' ? 'accepted' : 'declined';
+        if (cmd == 'recovery_accept') {
+          // the friend's history arrives a moment later
+          Timer(const Duration(milliseconds: 50), () {
+            o['state'] = 'done';
+            o['received'] = o['messages'];
+            _emit('recovery', {'offers': mockRecoveryOffers});
+          });
+        }
+        return _recoveryJson();
+      case 'recovery_dismiss':
+        recovering = false;
+        return _recoveryJson();
       case 'phrase_check':
         final key = phraseSecretKey('${args['phrase']}');
         return {'matches': key != null && key == phraseSecretKey(_restoredPhrase ?? kMockRecoveryPhrase)};
@@ -2119,6 +2395,8 @@ class MockLumoraApi extends LumoraApi {
       case 'group_clear_history':
         _msgs['g:${args['gid']}']?.clear();
         return null;
+      case 'group_reads':
+        return Map<String, dynamic>.of(groupReadMarks[args['conv']] ?? const {});
       case 'seen_by':
         return [for (final p in _contacts.values.where((c) => c['status'] == 3).take(3)) {'peer': p['peer'], 'ts': _now - 120000}];
       case 'mute':
@@ -2293,6 +2571,7 @@ class MockLumoraApi extends LumoraApi {
         _msgs.putIfAbsent(conv, () => []).add(m);
         return Map.of(m);
       case 'post_story':
+        storyAudiences.add('${args['audience'] ?? 'friends'}');
         final id = 'st_${_hex(6)}';
         _stories.insert(0, {'id': id, 'author': myPeer, 'created': _now, 'text': args['text'] ?? '', 'has_image': args['image_path'] != null, 'bg': args['bg'] ?? 'aurora', 'seen': true, 'views': 0, 'image_path': args['image_path']});
         _emit('story', Map.of(_stories.first));
@@ -2343,7 +2622,24 @@ class MockLumoraApi extends LumoraApi {
         return {'wallpaper': _wallpapers[args['conv']]};
       case 'group_meta':
         final g = _groups[args['gid']];
-        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd);
+        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd, code: 'err.group_not_found');
+        final cover = args['cover'] as String?;
+        if (cover != null) {
+          // like the core: communities → owner/admin; plain groups → any member
+          final role = g['my_role'] ?? 'member';
+          if (g['kind'] == 1 && role != 'owner' && role != 'admin') throw ApiException('Chỉ quản trị viên', cmd: cmd, code: 'err.admin_only');
+          if (role == 'none') throw ApiException('Không còn là thành viên', cmd: cmd, code: 'err.not_member');
+          if (cover.isEmpty) {
+            _groupCovers.remove(args['gid']);
+            g['has_cover'] = false;
+            g['cover_rev'] = _hex(16);
+          } else {
+            if (base64Decode(cover).length > 307200) throw ApiException('Ảnh quá lớn', cmd: cmd, code: 'err.image_too_large');
+            _groupCovers[args['gid'] as String] = cover;
+            g['has_cover'] = true;
+            g['cover_rev'] = _hex(16);
+          }
+        }
         if (args['description'] != null) g['description'] = args['description'];
         if (args['avatar'] != null) {
           _groupAvatars[args['gid'] as String] = args['avatar'] as String;
@@ -2353,6 +2649,14 @@ class MockLumoraApi extends LumoraApi {
         return null;
       case 'group_avatar':
         return {'avatar': _groupAvatars[args['gid']]};
+      case 'group_cover':
+        return {'cover': _groupCovers[args['gid']]};
+      case 'group_dissolve':
+        final g = _groups[args['gid']];
+        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd, code: 'err.group_not_found');
+        if (g['my_role'] != 'owner') throw ApiException('Chỉ trưởng nhóm', cmd: cmd, code: 'err.admin_only');
+        _dissolveGroup(args['gid'] as String);
+        return null;
       case 'change_passphrase':
         if (_passphrase.isNotEmpty && args['old'] != _passphrase) throw ApiException('Mật khẩu cũ không đúng', cmd: cmd);
         _passphrase = args['new'] as String? ?? '';
@@ -2399,11 +2703,11 @@ class MockLumoraApi extends LumoraApi {
         };
         _msgs[conv] = [
           _mkMsg(conv, myPeer, '', _now, kind: 'system')
-            ..['body'] = {'code': 'sys.group_created', 'args': {'actor': myPeer, 'name': args['name']}, 'text': 'Group created'},
+            ..['body'] = {'code': 'sys.group_created', 'args': {'actor': myPeer, 'name': args['name']}, 'text': 'Bạn đã tạo nhóm “${args['name']}”'},
         ];
         if (args['kind'] == 1) {
           _groups[gid]!['kind'] = 1;
-          _groups[gid]!['channels'] = [
+          _groups[gid]!['channels'] = <Map<String, dynamic>>[
             {'id': 'c1', 'name': 'chung', 'kind': 'text', 'conv': conv},
             {'id': 'c2', 'name': 'Phòng thoại', 'kind': 'voice', 'conv': '$conv#voice'},
           ];
@@ -2420,8 +2724,8 @@ class MockLumoraApi extends LumoraApi {
         return {'gid': gid, 'conv': conv};
       case 'group_info':
         final g = _groups[args['gid']];
-        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd);
-        return {...g, 'members': (g['members'] as List).map((m) => Map.of(m as Map)).toList()};
+        if (g == null) throw ApiException('Không tìm thấy nhóm', cmd: cmd, code: 'err.group_not_found');
+        return cmInfo({'has_cover': false, 'cover_rev': '', ...g, 'members': (g['members'] as List).map((m) => Map.of(m as Map)).toList()});
       case 'group_add':
         final g = _groups[args['gid']]!;
         (g['members'] as List).add({'peer': args['peer'], 'name': _contacts[args['peer']]?['name'] ?? '?', 'role': 'member'});
@@ -2454,23 +2758,38 @@ class MockLumoraApi extends LumoraApi {
       case 'group_leave':
         // like the core: my own Leave deletes the chat
         _groups.remove(args['gid']);
+        _spaces.removeWhere((sp) => sp['id'] == args['gid']);
         _convs.remove('g:${args['gid']}');
         _emit('conversation_removed', {'conv': 'g:${args['gid']}'});
         _emit('group_removed', {'gid': args['gid'], 'conv': 'g:${args['gid']}', 'left': true});
         return null;
       case 'spaces':
-        return _spaces;
+        return cmSpaces([
+          for (final sp in _spaces)
+            {
+              ...sp,
+              'has_cover': _groups[sp['id']]?['has_cover'] ?? false,
+              'cover_rev': _groups[sp['id']]?['cover_rev'] ?? '',
+              'my_role': _groups[sp['id']]?['my_role'] ?? 'member',
+              'owner': _groups[sp['id']]?['owner'] ?? '',
+              // like the core (api.rs `spaces`): voice channels carry who has the
+              // microphone off, so a reload never wipes the live muted state
+              'channels': [
+                for (final c in (sp['channels'] as List).cast<Map<String, dynamic>>())
+                  {
+                    ...c,
+                    if (c['kind'] == 'voice' || c['voice'] == true) 'muted': _voiceJson(c['conv'] as String)['muted'],
+                  },
+              ],
+            },
+        ]);
       case 'voice_join':
+        return _voiceJoin(args['conv']?.toString() ?? '', cmd);
       case 'voice_leave':
-        for (final s in _spaces) {
-          for (final c in s['channels'] as List) {
-            final parts = (c['participants'] as List).cast<String>();
-            parts.remove(myPeer);
-            if (cmd == 'voice_join' && c['conv'] == args['conv']) parts.add(myPeer);
-            c['participants'] = parts;
-          }
-        }
+        _voiceLeave(args['conv']?.toString() ?? '');
         return null;
+      case 'voice_state':
+        return _voiceJson(args['conv']?.toString() ?? '');
       case 'send_file':
         final path = args['path'] as String;
         final name = path.split(RegExp(r'[/\\]')).last;
@@ -2524,6 +2843,8 @@ class MockLumoraApi extends LumoraApi {
         return _files.values.map((f) => Map.of(f)).toList();
       case 'call_start':
         final conv = args['conv'] as String;
+        // like the core: a voice channel is a drop-in room (joined, nobody rung)
+        if (_voiceChannel(conv) != null) return _voiceJoin(conv, cmd);
         final id = 'c_${_hex(8)}';
         List<String> parts;
         if (conv.startsWith('d:')) {
@@ -2570,6 +2891,11 @@ class MockLumoraApi extends LumoraApi {
         }
         return null;
       case 'call_end':
+        final room = _calls[args['call_id']];
+        if (room != null && room['room'] == true) {
+          _voiceLeave(room['conv'] as String);
+          return null;
+        }
         final call = _calls.remove(args['call_id']);
         if (call != null) _emit('call', {...call, 'state': 'ended'});
         return null;
@@ -2578,10 +2904,17 @@ class MockLumoraApi extends LumoraApi {
       case 'remote_status':
         return Map.of(_remote);
       case 'remote_set':
-        for (final k in ['password', 'unattended', 'allow_control']) {
+        for (final k in ['unattended', 'allow_control', 'allow_incoming']) {
           if (args.containsKey(k)) _remote[k] = args[k];
         }
-        return null;
+        // like the core: this is the fixed (unattended) password, not the temporary one
+        if (args.containsKey('password')) fixedRemotePassword = args['password'] as String?;
+        return Map.of(_remote);
+      case 'remote_new_password':
+        const pwChars = 'abcdefghjkmnpqrstuvwxyz23456789';
+        final pw = List.generate(8, (_) => pwChars[_rand.nextInt(pwChars.length)]).join();
+        _remote['password'] = pw;
+        return {'password': pw};
       case 'remote_connect':
         final pw = args['password'] as String? ?? '';
         final id = (args['target'] as String).replaceAll(' ', '');
@@ -2659,7 +2992,7 @@ class MockLumoraApi extends LumoraApi {
           'free_bytes': 870 << 20,
           'disk_bytes': 460 << 30,
           'low_disk': true,
-          'policy': Map.of(_policy),
+          'policy': _policyJson(),
           'by_conv': convs,
         };
       case 'maintain':
@@ -2668,10 +3001,29 @@ class MockLumoraApi extends LumoraApi {
         _dbSlack = 0;
         return _stats();
       case 'storage_policy':
-        return Map.of(_policy);
+        return _policyJson();
       case 'set_storage_policy':
         _policy = {..._policy, for (final k in _policy.keys) if (args[k] is int) k: args[k] as int};
-        return Map.of(_policy);
+        final ad = args['auto_download'];
+        if (ad is Map) {
+          for (final net in const ['wifi', 'cell', 'roaming']) {
+            final v = ad[net];
+            if (v is! Map) continue;
+            final l = autoDownload[net]!;
+            for (final k in l.keys.toList()) {
+              if (v[k] is int) l[k] = v[k] as int;
+            }
+            // like the core: a new file limit keeps groups at most at the network's group default
+            if (v['file'] is int && v['file_group'] is! int) l['file_group'] = math.min(v['file'] as int, net == 'wifi' ? 10 << 20 : 1 << 20);
+          }
+        }
+        return _policyJson();
+      case 'set_network_hint':
+        networkHints.add(Map.of(args));
+        final net = '${args['network'] ?? (args['metered'] == true ? 'cell' : 'wifi')}';
+        _coreSettings['metered'] = net != 'wifi';
+        _coreSettings['network'] = net;
+        return {'metered': net != 'wifi', 'network': net};
       case 'clear_media':
         _seedMedia();
         final conv = args['conv'] as String? ?? '*';

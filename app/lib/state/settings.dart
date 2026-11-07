@@ -44,9 +44,9 @@ class Settings extends ChangeNotifier {
   bool vibrate = true;
 
   /// Android 11+: message notifications can open the chat as a bubble.
-  /// Off by default: on some phones (Xiaomi / HyperOS) an expanded bubble stayed grey —
-  /// the Flutter view is shared with the main window. A new key, so earlier "on" doesn't stick.
-  bool chatBubbles = false;
+  /// On by default. (`chat_bubbles3`: a new key, so the "off" that the
+  /// grey-bubble stopgap stored under `chat_bubbles2` doesn't stick.)
+  bool chatBubbles = true;
 
   /// Android: the "keep Lumora running in the background" prompt was shown
   /// once (it is in Settings › Notifications afterwards).
@@ -58,7 +58,6 @@ class Settings extends ChangeNotifier {
   /// Reminders snoozed on this device ("Hoãn 10 phút"): the `reminder_due`
   /// data plus `snooze_until` (ms). Fired again then, also after a restart.
   List<Map<String, dynamic>> snoozedReminders = [];
-  bool linkPreviews = false;
 
   // No relay by default: pure P2P. Users (or their organisation) may add their own bridge.
   List<String> relays = [];
@@ -82,8 +81,12 @@ class Settings extends ChangeNotifier {
   /// Last time an account backup file was saved (ms since epoch, 0 = never).
   int lastBackupAt = 0;
 
-  /// Default self-destruct timer for new messages (0 = off).
+  /// Default self-destruct timer given to new chats (0 = off).
   int defaultTtlMs = 0;
+
+  /// Self-destruct timer per chat (conv -> ms), kept on this device so a
+  /// chat's timer survives a restart.
+  Map<String, int> chatTtls = {};
 
   /// Echo cancellation (on by default; can be turned off with headphones).
   bool echoCancel = true;
@@ -211,11 +214,11 @@ class Settings extends ChangeNotifier {
     messageSound = j['message_sound'] as bool? ?? messageSound;
     vibrate = j['vibrate'] as bool? ?? vibrate;
     reminderSound = j['reminder_sound'] as bool? ?? reminderSound;
-    chatBubbles = j['chat_bubbles2'] as bool? ?? chatBubbles;
+    chatBubbles = j['chat_bubbles3'] as bool? ?? chatBubbles;
     backgroundAsked = j['background_asked'] as bool? ?? backgroundAsked;
     mentionsOnlyChats = (j['mentions_only_chats'] as List?)?.cast<String>() ?? mentionsOnlyChats;
     snoozedReminders = (j['snoozed_reminders'] as List?)?.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList() ?? snoozedReminders;
-    linkPreviews = j['link_previews'] as bool? ?? linkPreviews;
+    // (`link_previews` from older versions is ignored: there is no such feature)
     relays = (j['relays'] as List?)?.cast<String>() ?? relays;
     relayDelayMs = j['relay_delay_ms'] as int? ?? relayDelayMs;
     upnp = j['upnp'] as bool? ?? upnp;
@@ -228,6 +231,7 @@ class Settings extends ChangeNotifier {
     linkPending = j['link_pending'] as bool? ?? linkPending;
     lastBackupAt = j['last_backup_at'] as int? ?? lastBackupAt;
     defaultTtlMs = j['default_ttl_ms'] as int? ?? defaultTtlMs;
+    chatTtls = {for (final e in ((j['chat_ttls'] as Map?) ?? const {}).entries) if (e.value is num && (e.value as num) > 0) '${e.key}': (e.value as num).toInt()};
     communityRetention = j['community_retention'] as String? ?? communityRetention;
     echoCancel = j['echo_cancel'] as bool? ?? echoCancel;
     noiseSuppression = j['noise_suppression'] as bool? ?? noiseSuppression;
@@ -273,11 +277,10 @@ class Settings extends ChangeNotifier {
         'message_sound': messageSound,
         'vibrate': vibrate,
         'reminder_sound': reminderSound,
-        'chat_bubbles2': chatBubbles,
+        'chat_bubbles3': chatBubbles,
         'background_asked': backgroundAsked,
         'mentions_only_chats': mentionsOnlyChats,
         'snoozed_reminders': snoozedReminders,
-        'link_previews': linkPreviews,
         'relays': relays,
         'relay_delay_ms': relayDelayMs,
         'upnp': upnp,
@@ -290,6 +293,7 @@ class Settings extends ChangeNotifier {
         'link_pending': linkPending,
         'last_backup_at': lastBackupAt,
         'default_ttl_ms': defaultTtlMs,
+        'chat_ttls': chatTtls,
         'community_retention': communityRetention,
         'echo_cancel': echoCancel,
         'noise_suppression': noiseSuppression,

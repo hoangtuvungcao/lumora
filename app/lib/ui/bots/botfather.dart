@@ -1,4 +1,4 @@
-// Built-in "BotFather" pseudo-chat: guided bot creation and management
+// Built-in "Bot Studio" pseudo-chat (internal ids keep the old `botfather` name): guided bot creation and management
 // (bot_create / bot_list / bot_token / bot_revoke / bot_delete).
 
 import 'package:flutter/material.dart';
@@ -15,7 +15,7 @@ import '../widgets/core_events.dart';
 const kBotFatherConv = 'bot:father';
 const kDevDocsUrl = 'https://getlumora.pages.dev/developers/';
 
-/// Gradient robot avatar for BotFather.
+/// Gradient robot avatar for Bot Studio.
 class BotFatherAvatar extends StatelessWidget {
   const BotFatherAvatar({super.key, this.size = 40});
   final double size;
@@ -44,7 +44,7 @@ class BotBadge extends StatelessWidget {
 
 enum _Step { idle, askName, askUsername }
 
-/// One line of the BotFather chat. [kind] says which card goes with a reply
+/// One line of the Bot Studio chat. [kind] says which card goes with a reply
 /// ('docs', 'token' for [user]'s bot, 'bots' = my bots); [token] is only
 /// held in memory for the reply that created it (never saved).
 class _Msg {
@@ -210,6 +210,25 @@ class _BotFatherChatState extends State<BotFatherChat> {
     }
   }
 
+  /// "Clear chat": the Bot Studio conversation goes on every one of my devices
+  /// (the bots themselves stay).
+  Future<void> _clear() async {
+    final s = S.read(context);
+    if (!await confirm(context, title: s('bf_clear'), body: s('bf_clear_body'), action: s('clear'), danger: true)) return;
+    if (!mounted) return;
+    await _saving; // (lines still being saved go too)
+    try {
+      await _api.botfatherClear();
+      if (!mounted) return;
+      setState(() {
+        _msgs.clear();
+        _step = _Step.idle;
+      });
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    }
+  }
+
   Future<void> _listBots() async {
     final s = S.read(context);
     try {
@@ -261,8 +280,21 @@ class _BotFatherChatState extends State<BotFatherChat> {
       PaneHeader(
         onBack: widget.embedded ? null : () => Navigator.of(context).maybePop(),
         leading: const BotFatherAvatar(size: 38),
-        title: Row(mainAxisSize: MainAxisSize.min, children: [const Text('BotFather'), const BotBadge(), const SizedBox(width: 4), const Icon(AppIcons.verifiedFill, size: 16, color: LC.accent)]),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [Text(s('bf_name')), const BotBadge(), const SizedBox(width: 4), const Icon(AppIcons.verifiedFill, size: 16, color: LC.accent)]),
         subtitle: Text(s('bf_subtitle')),
+        actions: [
+          PopupMenuButton<String>(
+            key: const ValueKey('botfather_menu'),
+            tooltip: s('more'),
+            icon: const Icon(AppIcons.moreVertical),
+            onSelected: (v) {
+              if (v == 'clear') _clear();
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'clear', child: Row(children: [const Icon(AppIcons.clearAll, size: 18, color: LC.danger), const SizedBox(width: 10), Text(s('bf_clear'), style: const TextStyle(color: LC.danger))])),
+            ],
+          ),
+        ],
       ),
       Expanded(
         child: ListView.builder(

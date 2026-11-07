@@ -12,12 +12,18 @@
 //! `--link-pending` starts a new device waiting to be linked into an existing account
 //! (`link_start`). Once approved the node asks to be restarted (`link_state: restart`):
 //! lumorad stops it and starts it again in the same process, now as a device of the account.
+//!
+//! `--http-api [HOST:]PORT` (bots only) also serves the HTTP Bot API
+//! (`/bot<TOKEN>/<method>`, see bot_api/). It listens on 127.0.0.1 unless
+//! `--http-api-public` is given too (then any address is allowed).
+mod bot_api;
+
 use lumora_core::node::{Node, NodeConfig};
 use std::io::{BufRead, Write};
 use std::sync::Arc;
 
 fn usage() -> ! {
-    eprintln!("usage: lumorad --data DIR [--name N] [--port P] [--relay URL]... [--passphrase P] [--no-nostr] [--no-dht] [--no-upnp] [--no-lan] [--no-lan-multicast] [--no-mdns] [--relay-delay MS] [--restore-phrase WORDS | --restore-backup FILE PW] [--link-pending] [--stdio]");
+    eprintln!("usage: lumorad --data DIR [--name N] [--port P] [--relay URL]... [--passphrase P] [--no-nostr] [--no-dht] [--no-upnp] [--no-lan] [--no-lan-multicast] [--no-mdns] [--relay-delay MS] [--restore-phrase WORDS | --restore-backup FILE PW] [--link-pending] [--stdio] [--http-api [HOST:]PORT [--http-api-public]]");
     std::process::exit(2)
 }
 
@@ -39,6 +45,8 @@ fn main() -> anyhow::Result<()> {
         cfg.recovery_phrase = Some(p); // same reason
     }
     let mut stdio = false;
+    let mut http_api: Option<String> = None;
+    let mut http_public = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--data" => cfg.data_dir = args.next().unwrap_or_else(|| usage()).into(),
@@ -67,6 +75,8 @@ fn main() -> anyhow::Result<()> {
             "--no-mdns" => cfg.mdns = false,
             "--link-pending" => cfg.link_pending = true,
             "--stdio" => stdio = true,
+            "--http-api" => http_api = Some(args.next().unwrap_or_else(|| usage())),
+            "--http-api-public" => http_public = true,
             "-h" | "--help" => usage(),
             _ => usage(),
         }
@@ -74,6 +84,22 @@ fn main() -> anyhow::Result<()> {
     if !relays.is_empty() {
         cfg.relays = Some(relays);
     }
+    let http = match http_api {
+        None => None,
+        Some(a) => match http_api_addr(&a, http_public) {
+            Ok(addr) => {
+                let Some(token) = cfg.bot_token.clone().filter(|t| !t.trim().is_empty()) else {
+                    eprintln!("lumorad: --http-api needs the bot's token (LUMORA_BOT_TOKEN or --bot-token)");
+                    std::process::exit(2)
+                };
+                Some((addr, token))
+            }
+            Err(e) => {
+                eprintln!("lumorad: {e}");
+                std::process::exit(2)
+            }
+        },
+    };
     let filter = std::env::var("LUMORA_LOG").unwrap_or_else(|_| "info,quinn=warn,rustls=warn,mainline=warn".into());
     tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).init();
 
@@ -93,7 +119,7 @@ fn main() -> anyhow::Result<()> {
     loop {
         // a fresh runtime per node instance: stopping it ends every task of the old one
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
-        let r = rt.block_on(run(cfg.clone(), stdio, &mut req_rx));
+        let r = rt.block_on(run(cfg.clone(), stdio, http.clone(), &mut req_rx));
         rt.shutdown_timeout(std::time::Duration::from_secs(2));
         match r? {
             Exit::Quit => break,
@@ -113,7 +139,31 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn run(cfg: NodeConfig, stdio: bool, req_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> anyhow::Result<Exit> {
+/// `PORT`, `HOST:PORT` or `[V6]:PORT`; anything but loopback needs `--http-api-public`.
+fn http_api_addr(a: &str, public: bool) -> Result<std::net::SocketAddr, String> {
+    let a = a.trim();
+    let addr: std::net::SocketAddr = if let Ok(port) = a.parse::<u16>() {
+        std::net::SocketAddr::from(([127, 0, 0, 1], port))
+    } else if let Some(port) = a.strip_prefix("localhost:") {
+        std::net::SocketAddr::from(([127, 0, 0, 1], port.parse::<u16>().map_err(|_| format!("--http-api: bad port in '{a}'"))?))
+    } else {
+        a.parse().map_err(|_| format!("--http-api: '{a}' is not PORT or IP:PORT"))?
+    };
+    if !addr.ip().is_loopback() && !public {
+        return Err(format!(
+            "--http-api {addr}: refusing to serve the Bot API beyond this computer; add --http-api-public if you really mean it (put it behind HTTPS)"
+        ));
+    }
+    Ok(addr)
+}
+
+async fn run(
+    cfg: NodeConfig,
+    stdio: bool,
+    http: Option<(std::net::SocketAddr, String)>,
+    req_rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>,
+) -> anyhow::Result<Exit> {
+    let data_dir = cfg.data_dir.clone();
     let node = match Node::start(cfg).await {
         Ok(n) => n,
         Err(e) => {
@@ -128,6 +178,17 @@ async fn run(cfg: NodeConfig, stdio: bool, req_rx: &mut tokio::sync::mpsc::Unbou
     #[cfg(feature = "media")]
     lumora_core::node::media_pipe::warm_up(&node);
     eprintln!("lumorad ready: {} ({})", node.me.short_id_fmt(), node.me);
+    if let Some((addr, token)) = http {
+        let c = bot_api::Config { addr, token, state_file: Some(data_dir.join("bot_api.json")), upload_dir: data_dir.join("bot_api_uploads") };
+        match bot_api::start(node.clone(), c).await {
+            Ok((_, a)) => eprintln!("lumorad: HTTP Bot API on http://{a}/bot<TOKEN>/<method>"),
+            Err(e) => {
+                eprintln!("lumorad: {e:#}");
+                node.shutdown();
+                std::process::exit(1);
+            }
+        }
+    }
     let restart = Arc::new(tokio::sync::Notify::new());
     let reset = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let mut ev = node.subscribe();

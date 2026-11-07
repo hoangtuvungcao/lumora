@@ -12,7 +12,9 @@
 // Messages: a ping (and a short vibration on phones) for a new message from
 // someone else in a chat that is neither open on screen nor muted, with the
 // notifications and message-sound settings on; an @mention of me has its own,
-// brighter sound and gets through a chat muted as "Mentions only". A message
+// brighter sound and gets through a chat muted as "Mentions only"; a fully
+// muted chat still pings, softly and without vibration, for a direct
+// @mention of me or a reply to my message (`to_me`). A message
 // counts as new only when the chat's unread count went up with it (the core's
 // `conversation` event right after the `message`): history copied from
 // another device stays quiet, and so does a message read on another of my
@@ -69,6 +71,9 @@ class SoundAlerts {
 
   /// Members whose messages I hide: no ping for them either.
   bool Function(String peer)? isHiddenMember;
+
+  /// My account's peer id (AppServices): to tell a direct @mention / reply.
+  String Function()? myPeer;
 
   /// What plays now (tests).
   CallTone get tone => _tone;
@@ -150,7 +155,7 @@ class SoundAlerts {
 
   /// Messages waiting for their chat's `conversation` event: conv → unread
   /// before, and whether it @mentions me.
-  final Map<String, ({int unread, bool mention, Timer timer})> _pending = {};
+  final Map<String, ({int unread, bool mention, bool quiet, Timer timer})> _pending = {};
 
   /// Pings waiting out [readGrace] (conv → its alert).
   final Map<String, Timer> _due = {};
@@ -161,8 +166,8 @@ class SoundAlerts {
 
   /// A new message waits this long before it pings: if another of my devices
   /// has the chat open, its read receipt (`conversation`, unread 0) arrives
-  /// meanwhile and this device stays quiet — one alert per account, like the
-  /// big messengers.
+  /// meanwhile and this device stays quiet — one alert per account, as in
+  /// the major messaging apps.
   Duration readGrace = const Duration(milliseconds: 1200);
 
   /// Every core event (EventHub listener; runs before the stores update).
@@ -180,7 +185,7 @@ class SoundAlerts {
         final p = _pending.remove(id);
         if (p != null) {
           p.timer.cancel();
-          if (unread > p.unread) _schedule(id, p.mention ? Alert.mention : Alert.message);
+          if (unread > p.unread) _schedule(id, p.mention ? Alert.mention : Alert.message, quiet: p.quiet);
         } else if (unread == 0) {
           _due.remove(id)?.cancel(); // read on another of my devices
         }
@@ -205,14 +210,17 @@ class SoundAlerts {
     if (d['silent'] == true || (d['meta'] is Map && (d['meta'] as Map)['silent'] == true)) return;
     if (d['deleted'] == true || d['status'] == 3) return;
     if (conv.isEmpty || conv == nav.readingConv) return;
-    if (_muted(conv) && !(mention && _mentionsOnly(conv))) return;
+    // muted: only a direct @mention of me / a reply to my message, softly
+    final quiet = _muted(conv) && !(mention && _mentionsOnly(conv));
+    if (quiet && !AndroidBridge.toMe(d, myPeer?.call() ?? '')) return;
     if (isHiddenMember?.call(d['author']?.toString() ?? '') ?? false) return;
     final prev = _pending[conv];
     if (prev != null && (prev.mention || !mention)) return; // one ping per burst
     prev?.timer.cancel();
     _pending[conv] = (
       unread: prev?.unread ?? chat.convs[conv]?.unread ?? 0,
-      mention: mention,
+      mention: mention && !quiet,
+      quiet: quiet,
       timer: Timer(const Duration(seconds: 2), () => _pending.remove(conv)),
     );
   }
@@ -237,25 +245,28 @@ class SoundAlerts {
   /// Muted, except for @mentions of me (the mute sheet's "Mentions only").
   bool _mentionsOnly(String conv) => _either(conv, settings.mentionsOnlyChats.contains);
 
-  void _schedule(String conv, Alert kind) {
+  void _schedule(String conv, Alert kind, {bool quiet = false}) {
     _due.remove(conv)?.cancel();
     if (readGrace == Duration.zero) {
-      _ping(conv, kind);
+      _ping(conv, kind, quiet: quiet);
       return;
     }
     _due[conv] = Timer(readGrace, () {
       _due.remove(conv);
-      _ping(conv, kind);
+      _ping(conv, kind, quiet: quiet);
     });
   }
 
-  void _ping(String conv, Alert kind) {
+  /// [quiet]: a muted chat's direct mention / reply — the soft message
+  /// sound only, never a vibration.
+  void _ping(String conv, Alert kind, {bool quiet = false}) {
     // re-checked: the chat may have been opened / read / a call started meanwhile
     if (!_mayPing || conv == nav.readingConv) return;
+    if (quiet && !settings.messageSound) return;
     final now = DateTime.now();
     if (now.difference(_lastPing) < const Duration(milliseconds: 1500)) return;
     _lastPing = now;
-    unawaited(player.alert(kind, sound: settings.messageSound, vibrate: phone && settings.vibrate));
+    unawaited(player.alert(quiet ? Alert.message : kind, sound: settings.messageSound, vibrate: !quiet && phone && settings.vibrate));
   }
 
   // --------------------------------------------------------------- reminders

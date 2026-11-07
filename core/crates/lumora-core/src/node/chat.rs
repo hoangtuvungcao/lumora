@@ -35,6 +35,26 @@ pub(crate) fn dm_scope(a: &PeerId, b: &PeerId) -> Vec<u8> {
     v
 }
 
+/// How long after its own signed time a message may still be edited (by its author).
+pub(crate) const EDIT_WINDOW_MS: u64 = 48 * 3_600_000;
+
+/// An edit signed at `edit_hlc` of a message signed at `msg_hlc`: inside the edit window?
+/// (Every receiver decides by the two signed times, so all agree.)
+pub(crate) fn edit_in_window(msg_hlc: u64, edit_hlc: u64) -> bool {
+    crate::util::hlc_to_ms(edit_hlc) <= crate::util::hlc_to_ms(msg_hlc).saturating_add(EDIT_WINDOW_MS)
+}
+
+/// Is it still (by this device's clock, with [`crate::util::MAX_CLOCK_SKEW_MS`] allowance)
+/// inside the edit window of a message signed at `msg_hlc`?
+pub(crate) fn edit_arrived_in_window(msg_hlc: u64) -> bool {
+    now_ms() <= crate::util::hlc_to_ms(msg_hlc).saturating_add(EDIT_WINDOW_MS + crate::util::MAX_CLOCK_SKEW_MS)
+}
+
+/// Test builds only: the next chat message is signed this many ms in the past (e2e: an
+/// edit after the window).
+#[cfg(debug_assertions)]
+static DEBUG_BACKDATE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub(super) fn action_bytes(id: &[u8; 16], author: &PeerId, hlc: u64, a: &MsgAction) -> Vec<u8> {
     let mut v = b"lumora-action-v1".to_vec();
     v.extend_from_slice(id);
@@ -49,6 +69,12 @@ impl Node {
         let mut v = serde_json::to_value(m).unwrap_or(Value::Null);
         v["mine"] = Value::Bool(m.author == self.me.to_base32());
         v["silent"] = Value::Bool(m.meta["silent"].as_bool().unwrap_or(false));
+        // deleted for everyone: by whom (its author recalled it, or a group admin removed it)
+        if m.deleted {
+            if let Some(by) = m.meta["deleted_by"].as_str() {
+                v["deleted_by"] = Value::String(by.to_string());
+            }
+        }
         // a locked chat (account setting): every device hides its notification content
         if self.chat_locked(&m.conv) {
             v["locked"] = Value::Bool(true);
@@ -314,10 +340,19 @@ impl Node {
     }
 
     pub fn new_chat_msg_meta(&self, scope: &[u8], body: Body, reply_to: Option<[u8; 16]>, ttl_ms: Option<u64>, meta: MsgMeta) -> ChatMsg {
+        #[allow(unused_mut)]
+        let mut hlc = self.hlc.tick();
+        #[cfg(debug_assertions)]
+        {
+            let back = DEBUG_BACKDATE_MS.swap(0, std::sync::atomic::Ordering::SeqCst);
+            if back > 0 {
+                hlc = now_ms().saturating_sub(back) << 8;
+            }
+        }
         let mut m = ChatMsg {
             id: crate::crypto::random_bytes(),
             author: self.me,
-            hlc: self.hlc.tick(),
+            hlc,
             body,
             reply_to,
             ttl_ms,
@@ -458,16 +493,31 @@ impl Node {
         self.send_body_meta(conv, Body::Text { text: text.to_string() }, reply_to, ttl_ms, meta).await
     }
 
+    /// The name a forwarded message credits: the author's own public name — never the
+    /// private nickname (alias) I gave them.
+    pub(super) fn forward_name(&self, author: &PeerId) -> String {
+        if *author == self.me {
+            return self.name();
+        }
+        let b32 = author.to_base32();
+        self.store
+            .contact(author)
+            .map(|c| c.name)
+            .filter(|n| !n.trim().is_empty())
+            .or_else(|| self.store.kv_get(&format!("member.name.{b32}")).and_then(|v| String::from_utf8(v).ok()).filter(|n| !n.trim().is_empty()))
+            .unwrap_or_else(|| author.short_id_fmt())
+    }
+
     /// Forward a stored message to another conversation (text, sticker, poll, or a file we hold).
-    pub async fn forward(self: &Arc<Self>, msg_id: &[u8; 16], to_conv: &str) -> Result<Value> {
+    /// `hide_sender`: the copy says nothing about who wrote it. Self-destructing messages
+    /// can't be forwarded.
+    pub async fn forward(self: &Arc<Self>, msg_id: &[u8; 16], to_conv: &str, hide_sender: bool) -> Result<Value> {
         let m = self.store.message(msg_id).ok_or_else(|| crate::i18n::user_err("err.message_not_found"))?;
+        anyhow::ensure!(!m.deleted, crate::i18n::user_err("err.message_not_found"));
+        anyhow::ensure!(m.expires.is_none(), crate::i18n::user_err("err.cannot_forward_ttl"));
         let author = PeerId::from_str_any(&m.author)?;
-        let from_name = if author == self.me {
-            self.name()
-        } else {
-            self.store.contact(&author).map(|c| c.alias.unwrap_or(c.name)).unwrap_or_else(|| author.short_id_fmt())
-        };
-        let meta = MsgMeta { forwarded_from: Some(from_name), ..Default::default() };
+        let forwarded_from = if hide_sender { None } else { Some(self.forward_name(&author)) };
+        let meta = MsgMeta { forwarded_from, ..Default::default() };
         match m.kind.as_str() {
             "text" => {
                 let t = m.body["text"].as_str().unwrap_or("").to_string();
@@ -510,6 +560,12 @@ impl Node {
         if self.store.is_blocked(&from) {
             return Ok(false);
         }
+        // the call log line of a call "who can call me" never let ring here: no trace of
+        // it (no "missed call", no chat row for a stranger); friends' calls stay logged
+        if matches!(msg.body, Body::Call { .. }) && !self.call_permitted_from(&from) {
+            tracing::info!("call record from {from:?} dropped (who can call me)");
+            return Ok(false);
+        }
         anyhow::ensure!(chat_msg_size_ok(&msg), "chat message too large");
         // anyone who can DM us (a stranger) is untrusted: our clock follows theirs only
         // within the allowed skew; the message keeps its own hlc for ordering
@@ -520,6 +576,14 @@ impl Node {
         self.store.ensure_conv(&conv, 0, &title)?;
         let new = self.store_chat(&conv, &msg, 2)?;
         if new {
+            // the signed copy, so it can be handed back verifiably if this friend ever restores
+            // the account from the recovery phrase (node/recovery.rs); never for disappearing
+            // messages, and dropped the moment the message is deleted or edited (store.rs)
+            if msg.ttl_ms.is_none() && super::recovery::keeps_wire(&msg.body) {
+                if let Ok(w) = rmp_serde::to_vec(&msg) {
+                    let _ = self.store.wire_put(&msg.id, &conv, &w);
+                }
+            }
             self.check_mention(&conv, &msg);
             self.apply_pending_actions(&msg.id);
             // (conv_touch clamps a future date: a stranger can't pin the chat to the top)
@@ -529,9 +593,7 @@ impl Node {
             match &msg.body {
                 // a File/Voice chat message doubles as an offer
                 Body::File { file_id, name, size, hash, .. } => self.on_file_offer(from, *file_id, name.clone(), *size, *hash, conv.clone())?,
-                Body::Voice { file_id, size, hash, .. } if *size > 0 => {
-                    self.on_file_offer(from, *file_id, format!("voice-{}.ogg", &hex::encode(file_id)[..8]), *size, *hash, conv.clone())?
-                }
+                Body::Voice { file_id, size, hash, .. } if *size > 0 => self.on_voice_offer(from, *file_id, *size, *hash, conv.clone())?,
                 _ => {}
             }
         }
@@ -552,22 +614,35 @@ impl Node {
         Ok(())
     }
 
+    /// May I edit this message now? Only my own text messages, within the edit window.
+    fn check_edit(&self, conv: &str, target: &[u8; 16], now_hlc: u64) -> Result<()> {
+        let m = self.store.message(target).ok_or_else(|| crate::i18n::user_err("err.message_not_found"))?;
+        // only text can be edited (an edit replaces the body with text)
+        let same_conv = m.conv == conv || conv.starts_with("g:");
+        anyhow::ensure!(same_conv && m.kind == "text" && !m.deleted, crate::i18n::user_err("err.cannot_edit"));
+        anyhow::ensure!(m.author == self.me.to_base32(), crate::i18n::user_err("err.edit_not_yours"));
+        anyhow::ensure!(edit_in_window(m.hlc.max(0) as u64, now_hlc), crate::i18n::user_err("err.edit_too_late"));
+        Ok(())
+    }
+
     pub async fn message_action(self: &Arc<Self>, conv: &str, target: [u8; 16], action: MsgAction) -> Result<()> {
+        if let MsgAction::Edit { target, .. } = &action {
+            self.check_edit(conv, target, self.hlc.tick())?;
+        }
         match parse_conv(conv)? {
             ConvRef::Direct(p) => {
-                if let MsgAction::Edit { target, .. } = &action {
-                    // only text can be edited (an edit replaces the body with text)
-                    let ok = self.store.message(target).map(|m| m.conv == conv && m.kind == "text" && !m.deleted).unwrap_or(false);
-                    anyhow::ensure!(ok, crate::i18n::user_err("err.cannot_edit"));
-                }
                 // one signed time for here and there (concurrent edits settle by it)
                 let hlc = self.hlc.tick();
                 match &action {
-                    // Telegram-style: in 1-1 chats either side may delete any message for both
+                    // in 1-1 chats only the author deletes a message for both ("delete for
+                    // me" covers the other person's messages)
                     MsgAction::Delete { target } => {
-                        anyhow::ensure!(self.store.message(target).map(|m| m.conv == conv).unwrap_or(false), crate::i18n::user_err("err.message_not_found"));
-                        if self.delete_message_everywhere(target, None)? {
-                            self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true}));
+                        let m = self.store.message(target).filter(|m| m.conv == conv).ok_or_else(|| crate::i18n::user_err("err.message_not_found"))?;
+                        anyhow::ensure!(m.author == self.me.to_base32(), crate::i18n::user_err("err.delete_not_yours"));
+                        let me = self.me;
+                        if self.delete_message_everywhere(target, Some(&me), &me)? {
+                            self.untrack_reminder(target);
+                            self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true, "deleted_by": me.to_base32()}));
                         }
                     }
                     MsgAction::ClearHistory { upto_hlc, delete_chat } => self.clear_local_ex(conv, *upto_hlc, *delete_chat, true)?,
@@ -582,15 +657,27 @@ impl Node {
                 self.deliver(p, mid, PeerMsg::Action { id: target, author: self.me, hlc, action, sig }, true).await;
                 Ok(())
             }
-            ConvRef::Group(gid, channel) => {
-                if let MsgAction::Edit { target, .. } = &action {
-                    let ok = self.store.message(target).map(|m| m.kind == "text" && !m.deleted).unwrap_or(false);
-                    anyhow::ensure!(ok, crate::i18n::user_err("err.cannot_edit"));
-                }
-                self.group_action(gid, &channel, target, action).await
-            }
+            ConvRef::Group(gid, channel) => self.group_action(gid, &channel, target, action).await,
             ConvRef::Saved => self.apply_action(conv, &self.me.clone(), &action),
         }
+    }
+
+    /// Test builds only: sign the next chat message `ago_ms` in the past.
+    #[cfg(debug_assertions)]
+    pub fn debug_backdate_next(&self, ago_ms: u64) {
+        DEBUG_BACKDATE_MS.store(ago_ms, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Test builds only: sign and send a 1-1 action without the sender-side checks (what an
+    /// older or modified app could send — receivers must enforce the rules themselves).
+    #[cfg(debug_assertions)]
+    pub async fn debug_direct_action_unchecked(self: &Arc<Self>, conv: &str, target: [u8; 16], action: MsgAction) -> Result<()> {
+        let ConvRef::Direct(p) = parse_conv(conv)? else { bail!("1-1 chats only") };
+        let hlc = self.hlc.tick();
+        let sig = self.signer.sign(&action_bytes(&target, &self.me, hlc, &action));
+        let mid: [u8; 16] = crate::crypto::random_bytes();
+        self.deliver(p, mid, PeerMsg::Action { id: target, author: self.me, hlc, action, sig }, true).await;
+        Ok(())
     }
 
     /// Apply edit/delete/react locally (authorisation: only authors edit/delete own messages).
@@ -603,14 +690,18 @@ impl Node {
     pub(super) fn apply_action_at(&self, conv: &str, actor: &PeerId, action: &MsgAction, hlc: u64) -> Result<()> {
         match action {
             MsgAction::Edit { target, text } => {
-                if self.store.edit_message(target, actor, &json!({"text": text}), hlc)? {
+                // the author only (store), within 48 h of the message's signed time — and of
+                // now (give or take clock skew): the edit's own time is the sender's word, a
+                // backdated one would edit old messages forever
+                let in_window = self.store.message(target).is_some_and(|m| edit_in_window(m.hlc.max(0) as u64, hlc) && edit_arrived_in_window(m.hlc.max(0) as u64));
+                if in_window && self.store.edit_message(target, actor, &json!({"text": text}), hlc)? {
                     self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "body": {"text": text}, "edited": true}));
                 }
             }
             MsgAction::Delete { target } => {
-                if self.delete_message_everywhere(target, Some(actor))? {
+                if self.delete_message_everywhere(target, Some(actor), actor)? {
                     self.untrack_reminder(target);
-                    self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true}));
+                    self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true, "deleted_by": actor.to_base32()}));
                 }
             }
             MsgAction::React { target, emoji, on } => {
@@ -704,16 +795,18 @@ impl Node {
             }
             MsgAction::Delete { target } => {
                 match self.store.message(target) {
-                    Some(m) if m.conv == conv => {
-                        if self.delete_message_everywhere(target, None)? {
+                    // only the author recalls a 1-1 message for both; an older app's delete
+                    // of one of mine is ignored (for them it was at most "delete for me")
+                    Some(m) if m.conv == conv && m.author == from.to_base32() => {
+                        if self.delete_message_everywhere(target, Some(&from), &from)? {
                             self.untrack_reminder(target);
-                            self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true}));
+                            self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true, "deleted_by": from.to_base32()}));
                         }
                     }
                     Some(_) => {}
-                    // not here yet: delete it when it arrives (either side may delete in 1-1)
+                    // not here yet: delete it when it arrives — if it is the sender's own
                     None => {
-                        let _ = self.store.pending_action_put(target, &conv, &PeerId([0; 32]), &from, &rmp_serde::to_vec(&action)?);
+                        let _ = self.store.pending_action_put(target, &conv, &from, &from, &rmp_serde::to_vec(&action)?);
                     }
                 }
                 return Ok(());
@@ -736,16 +829,18 @@ impl Node {
     pub(super) fn apply_pending_actions(&self, id: &[u8; 16]) {
         for (conv, target_author, actor, action) in self.store.pending_actions_take(id) {
             let Some(m) = self.store.message(id) else { return };
+            // (1-1 deletes queued by older builds had no author: only the sender's own message)
+            let target_author = if target_author == [0u8; 32] && conv.starts_with("d:") { actor.clone() } else { target_author };
             let any_author = target_author == [0u8; 32];
             if m.conv != conv || (!any_author && m.author != crate::store::b32_pub(&target_author)) {
                 continue;
             }
             let (Ok(action), Ok(actor)) = (crate::proto::from_slice_capped::<MsgAction>(&action), <[u8; 32]>::try_from(actor.as_slice()).map(PeerId)) else { continue };
             let r = match &action {
-                MsgAction::Delete { target } if any_author || m.author != actor.to_base32() => match self.delete_message_everywhere(target, None) {
+                MsgAction::Delete { target } if any_author || m.author != actor.to_base32() => match self.delete_message_everywhere(target, None, &actor) {
                     Ok(true) => {
                         self.untrack_reminder(target);
-                        self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true}));
+                        self.emit("message_update", json!({"conv": conv, "id": hex::encode(target), "deleted": true, "deleted_by": actor.to_base32()}));
                         Ok(())
                     }
                     other => other.map(|_| ()),
@@ -1037,6 +1132,176 @@ mod abuse_tests {
         n.store.upsert_contact(&f, Some("f"), Some(3)).unwrap();
         n.on_profile_v2(f, "f".into(), String::new(), String::new(), pic.clone(), pic.clone(), None, String::new()).unwrap();
         assert!(n.store.contact(&f).unwrap().has_avatar && n.store.contact_cover(&f).is_some());
+        n.shutdown();
+    }
+}
+
+#[cfg(test)]
+mod message_rule_tests {
+    //! Forward names, 1-1 delete-for-everyone, the 48 h edit window, self-destructing
+    //! messages — enforced by every receiver, whatever the other app sends.
+    use super::*;
+    use crate::identity::Identity;
+
+    async fn node(tmp: &std::path::Path) -> Arc<Node> {
+        Node::start(NodeConfig {
+            data_dir: tmp.join("data"),
+            downloads_dir: Some(tmp.join("dl")),
+            enable_lan: false,
+            enable_upnp: false,
+            enable_dht: false,
+            enable_nostr: false,
+            relays: Some(vec![]),
+            nostr: Some(vec![]),
+            stun: Some(vec![]),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+    }
+
+    fn put_text(n: &Node, conv: &str, author: &PeerId, hlc: u64, text: &str, expires: Option<i64>) -> [u8; 16] {
+        let id: [u8; 16] = crate::crypto::random_bytes();
+        assert!(n.store.insert_message(&id, conv, author, hlc, "text", &json!({ "text": text }), 2, None, expires).unwrap());
+        id
+    }
+
+    /// `who` (an account identity) signs an action and it arrives as if over the network.
+    fn act(n: &Node, who: &Identity, target: [u8; 16], hlc: u64, action: MsgAction) -> Result<()> {
+        let author = who.peer_id();
+        let sig = who.sign(&action_bytes(&target, &author, hlc, &action)).to_vec();
+        n.on_direct_action(author, target, author, hlc, action, sig)
+    }
+
+    fn key(e: &anyhow::Error) -> &'static str {
+        crate::i18n::find_user_err(e).map(|u| u.key).unwrap_or("")
+    }
+
+    fn hours_ago(h: u64) -> u64 {
+        (now_ms() - h * 3_600_000) << 8
+    }
+
+    #[test]
+    fn edit_window_is_48_hours_of_signed_time() {
+        let t = 1_000_000_000u64 << 8;
+        assert!(edit_in_window(t, t));
+        assert!(edit_in_window(t, t + ((EDIT_WINDOW_MS - 1) << 8)));
+        assert!(edit_in_window(t, t + (EDIT_WINDOW_MS << 8)));
+        assert!(!edit_in_window(t, t + ((EDIT_WINDOW_MS + 1) << 8)));
+        assert!(edit_in_window(t, t - (5 << 8)), "an edit signed before its message (clock skew) is not late");
+    }
+
+    #[tokio::test]
+    async fn one_to_one_delete_for_everyone_is_the_authors_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let bob = Identity::generate();
+        let b = bob.peer_id();
+        n.store.upsert_contact(&b, Some("Bob"), Some(3)).unwrap();
+        let conv = direct_conv(&b);
+        n.store.ensure_conv(&conv, 0, "Bob").unwrap();
+        let me = n.me;
+        let mine = put_text(&n, &conv, &me, n.hlc.tick(), "mine", None);
+        let his = put_text(&n, &conv, &b, n.hlc.tick(), "his", None);
+
+        // an older (or modified) app deletes my message "for both": ignored here
+        act(&n, &bob, mine, n.hlc.tick(), MsgAction::Delete { target: mine }).unwrap();
+        assert!(!n.store.message(&mine).unwrap().deleted, "the other side deleted my message");
+        // I can't delete his for both either
+        let e = n.message_action(&conv, his, MsgAction::Delete { target: his }).await.unwrap_err();
+        assert_eq!(key(&e), "err.delete_not_yours");
+        assert!(!n.store.message(&his).unwrap().deleted);
+        // "delete for me" stays available for any message
+        n.delete_for_me(&conv, &his).unwrap_or_else(|e| panic!("{e:#}"));
+        // he recalls his own: deleted, and it says who did it
+        let his2 = put_text(&n, &conv, &b, n.hlc.tick(), "his 2", None);
+        act(&n, &bob, his2, n.hlc.tick(), MsgAction::Delete { target: his2 }).unwrap();
+        let m = n.store.message(&his2).unwrap();
+        assert!(m.deleted);
+        assert_eq!(n.msg_json(&m)["deleted_by"], json!(b.to_base32()));
+
+        // deletes that arrive before their message: only the sender's own one is applied
+        let early: [u8; 16] = crate::crypto::random_bytes();
+        act(&n, &bob, early, n.hlc.tick(), MsgAction::Delete { target: early }).unwrap();
+        assert!(n.store.insert_message(&early, &conv, &me, n.hlc.tick(), "text", &json!({"text": "x"}), 3, None, None).unwrap());
+        n.apply_pending_actions(&early);
+        assert!(!n.store.message(&early).unwrap().deleted, "a queued delete removed my message");
+        // ... also one queued by an older build (no target author recorded)
+        let legacy: [u8; 16] = crate::crypto::random_bytes();
+        let raw = rmp_serde::to_vec(&MsgAction::Delete { target: legacy }).unwrap();
+        n.store.pending_action_put(&legacy, &conv, &PeerId([0; 32]), &b, &raw).unwrap();
+        assert!(n.store.insert_message(&legacy, &conv, &me, n.hlc.tick(), "text", &json!({"text": "y"}), 3, None, None).unwrap());
+        n.apply_pending_actions(&legacy);
+        assert!(!n.store.message(&legacy).unwrap().deleted, "a legacy queued delete removed my message");
+        let early2: [u8; 16] = crate::crypto::random_bytes();
+        act(&n, &bob, early2, n.hlc.tick(), MsgAction::Delete { target: early2 }).unwrap();
+        assert!(n.store.insert_message(&early2, &conv, &b, n.hlc.tick(), "text", &json!({"text": "z"}), 2, None, None).unwrap());
+        n.apply_pending_actions(&early2);
+        assert!(n.store.message(&early2).unwrap().deleted, "his own queued recall");
+        n.shutdown();
+    }
+
+    #[tokio::test]
+    async fn edits_close_48_hours_after_the_message() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let bob = Identity::generate();
+        let b = bob.peer_id();
+        n.store.upsert_contact(&b, Some("Bob"), Some(3)).unwrap();
+        let conv = direct_conv(&b);
+        n.store.ensure_conv(&conv, 0, "Bob").unwrap();
+        let old = put_text(&n, &conv, &b, hours_ago(49), "old", None);
+        let recent = put_text(&n, &conv, &b, hours_ago(47), "recent", None);
+        act(&n, &bob, old, n.hlc.tick(), MsgAction::Edit { target: old, text: "late edit".into() }).unwrap();
+        assert_eq!(n.store.message(&old).unwrap().body["text"], "old", "an edit after 48 h was applied");
+        assert!(!n.store.message(&old).unwrap().edited);
+        act(&n, &bob, recent, n.hlc.tick(), MsgAction::Edit { target: recent, text: "fixed".into() }).unwrap();
+        assert_eq!(n.store.message(&recent).unwrap().body["text"], "fixed");
+        // an edit signed inside the window that arrives long after it: its time is only the
+        // sender's word (it could backdate edits forever) — refused
+        let old2 = put_text(&n, &conv, &b, hours_ago(60), "old2", None);
+        act(&n, &bob, old2, hours_ago(59), MsgAction::Edit { target: old2, text: "in time".into() }).unwrap();
+        assert_eq!(n.store.message(&old2).unwrap().body["text"], "old2", "a backdated edit after the window was applied");
+        // …while one that arrives (just) inside the window, skew allowance included, is fine
+        let edge = put_text(&n, &conv, &b, hours_ago(48), "edge", None);
+        act(&n, &bob, edge, hours_ago(47), MsgAction::Edit { target: edge, text: "edge ok".into() }).unwrap();
+        assert_eq!(n.store.message(&edge).unwrap().body["text"], "edge ok");
+        // nobody edits someone else's message
+        let me = n.me;
+        let mine = put_text(&n, &conv, &me, n.hlc.tick(), "mine", None);
+        act(&n, &bob, mine, n.hlc.tick(), MsgAction::Edit { target: mine, text: "hijack".into() }).unwrap();
+        assert_eq!(n.store.message(&mine).unwrap().body["text"], "mine");
+        // my side refuses before sending: someone else's, and my own old one
+        let e = n.message_action(&conv, recent, MsgAction::Edit { target: recent, text: "x".into() }).await.unwrap_err();
+        assert_eq!(key(&e), "err.edit_not_yours");
+        let my_old = put_text(&n, &conv, &me, hours_ago(49), "my old", None);
+        let e = n.message_action(&conv, my_old, MsgAction::Edit { target: my_old, text: "x".into() }).await.unwrap_err();
+        assert_eq!(key(&e), "err.edit_too_late");
+        // saved messages follow the same window
+        let saved = put_text(&n, SAVED_CONV, &me, hours_ago(49), "note", None);
+        assert!(n.message_action(SAVED_CONV, saved, MsgAction::Edit { target: saved, text: "x".into() }).await.is_err());
+        n.shutdown();
+    }
+
+    #[tokio::test]
+    async fn forwards_credit_the_public_name_and_skip_self_destructing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let b = Identity::generate().peer_id();
+        n.store.upsert_contact(&b, Some("Bob Public"), Some(3)).unwrap();
+        n.store.set_contact_field(&b, "alias", rusqlite::types::Value::Text("my secret nickname".into())).unwrap();
+        let conv = direct_conv(&b);
+        n.store.ensure_conv(&conv, 0, "Bob").unwrap();
+        let his = put_text(&n, &conv, &b, n.hlc.tick(), "hello", None);
+        let v = n.forward(&his, SAVED_CONV, false).await.unwrap();
+        assert_eq!(v["meta"]["forwarded_from"], json!("Bob Public"), "{v}");
+        assert!(!v.to_string().contains("nickname"));
+        let v = n.forward(&his, SAVED_CONV, true).await.unwrap();
+        assert!(v["meta"]["forwarded_from"].is_null(), "hide sender name: {v}");
+        // self-destructing: not forwardable
+        let ttl = put_text(&n, &conv, &b, n.hlc.tick(), "secret", Some(now_ms() as i64 + 60_000));
+        let e = n.forward(&ttl, SAVED_CONV, false).await.unwrap_err();
+        assert_eq!(key(&e), "err.cannot_forward_ttl");
         n.shutdown();
     }
 }

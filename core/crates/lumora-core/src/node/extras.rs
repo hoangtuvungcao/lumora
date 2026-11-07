@@ -21,6 +21,41 @@ pub(super) struct StoryDeleteMsg {
     pub id: Vec<u8>,
 }
 
+/// Synced (`privacy.*`) list of friends who never receive my Khoảnh khắc.
+pub const STORY_HIDDEN_KEY: &str = "privacy.story_hidden";
+/// Synced (`privacy.*`) list of my close friends (the "Bạn thân" audience).
+pub const STORY_CLOSE_KEY: &str = "privacy.story_close";
+/// Entries kept per list (an account has at most a few thousand friends).
+const STORY_LIST_MAX: usize = 5000;
+
+/// Who a new story goes to. The hidden list always wins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoryAudience {
+    /// Every friend not on the hidden list.
+    Friends,
+    /// Only close friends (not on the hidden list).
+    Close,
+}
+
+impl StoryAudience {
+    pub fn parse(s: &str) -> Result<Self> {
+        match s {
+            "" | "friends" | "all" => Ok(StoryAudience::Friends),
+            "close" | "close_friends" => Ok(StoryAudience::Close),
+            _ => anyhow::bail!("unknown story audience '{s}' (friends | close)"),
+        }
+    }
+}
+
+/// The friends a story goes to: `friends` filtered by the audience and the hidden list.
+pub(super) fn story_recipients(friends: Vec<PeerId>, audience: StoryAudience, hidden: &[PeerId], close: &[PeerId]) -> Vec<PeerId> {
+    friends
+        .into_iter()
+        .filter(|f| !hidden.contains(f))
+        .filter(|f| audience == StoryAudience::Friends || close.contains(f))
+        .collect()
+}
+
 fn shrink_image(path: &std::path::Path, max: u32, quality: u8) -> Result<Vec<u8>> {
     let img = super::files::decode_upright(path)?;
     let img = if img.width() > max || img.height() > max { img.thumbnail(max, max) } else { img };
@@ -88,7 +123,39 @@ impl Node {
 
     // ------------------------------------------------------------ stories
 
+    /// One of the synced story lists ([`STORY_HIDDEN_KEY`], [`STORY_CLOSE_KEY`]) as account ids.
+    pub fn story_list(&self, key: &str) -> Vec<String> {
+        self.story_peers(key).iter().map(|p| p.to_base32()).collect()
+    }
+
+    fn story_peers(&self, key: &str) -> Vec<PeerId> {
+        self.store.kv_get_json::<Vec<String>>(key).unwrap_or_default().iter().filter_map(|x| PeerId::from_str_any(x).ok()).collect()
+    }
+
+    /// Replace a story list from the app: an array of account ids (bad entries skipped,
+    /// duplicates removed, my own id never listed). Synced to my other devices.
+    pub fn set_story_list(&self, key: &str, v: &Value) -> Result<()> {
+        anyhow::ensure!(key == STORY_HIDDEN_KEY || key == STORY_CLOSE_KEY, "unknown story list");
+        let arr = v.as_array().ok_or_else(|| anyhow!("story list must be an array of ids"))?;
+        let mut out: Vec<String> = Vec::new();
+        for p in arr.iter().filter_map(|x| x.as_str()).filter_map(|x| PeerId::from_str_any(x.trim()).ok()) {
+            let b = p.to_base32();
+            if p != self.me && !out.contains(&b) && out.len() < STORY_LIST_MAX {
+                out.push(b);
+            }
+        }
+        if self.store.kv_get_json::<Vec<String>>(key).unwrap_or_default() == out {
+            return Ok(());
+        }
+        self.store.kv_set_json(key, &out)
+    }
+
     pub async fn post_story(self: &Arc<Self>, text: &str, image_path: Option<&str>, bg: &str) -> Result<Value> {
+        self.post_story_to(text, image_path, bg, StoryAudience::Friends).await
+    }
+
+    /// Post a Khoảnh khắc to `audience`; friends on my hidden list never get it.
+    pub async fn post_story_to(self: &Arc<Self>, text: &str, image_path: Option<&str>, bg: &str, audience: StoryAudience) -> Result<Value> {
         let image = match image_path {
             Some(p) if !p.is_empty() => {
                 let p = PathBuf::from(p);
@@ -110,12 +177,14 @@ impl Node {
         let msg = PeerMsg::Story { id, author: self.me, created, text, image, bg, sig };
         // my other devices show (and can take down) my story too
         let own = (!self.siblings().is_empty()).then_some(self.me);
-        for f in self.store.friend_ids().into_iter().chain(own) {
+        let to = story_recipients(self.store.friend_ids(), audience, &self.story_peers(STORY_HIDDEN_KEY), &self.story_peers(STORY_CLOSE_KEY));
+        let sent = to.len();
+        for f in to.into_iter().chain(own) {
             let mid: [u8; 16] = blake3::derive_key("lumora story slot", &[&id[..], &f.0[..]].concat())[..16].try_into().unwrap();
             self.deliver(f, mid, msg.clone(), false).await;
         }
         self.emit("story", json!({"id": hex::encode(id), "author": self.me.to_base32()}));
-        Ok(json!({"id": hex::encode(id)}))
+        Ok(json!({"id": hex::encode(id), "recipients": sent}))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -129,6 +198,10 @@ impl Node {
         }
         // a story dated in the future would stay up (and sort first) past its 24 h
         let created = created.min(now_ms());
+        // taken down already (on this or another of my devices): a late copy stays out
+        if self.store.story_gone(&id) {
+            return Ok(());
+        }
         if self.store.story_put(&id, &author, created as i64, &text, &image, &bg)? {
             if own {
                 self.store.story_mark_mine(&id)?;
@@ -180,5 +253,32 @@ impl Node {
             self.emit("story_view", json!({"id": hex::encode(id), "viewer": from.to_base32()}));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn story_audience_parse() {
+        assert_eq!(StoryAudience::parse("friends").unwrap(), StoryAudience::Friends);
+        assert_eq!(StoryAudience::parse("").unwrap(), StoryAudience::Friends);
+        assert_eq!(StoryAudience::parse("close").unwrap(), StoryAudience::Close);
+        assert!(StoryAudience::parse("public").is_err());
+    }
+
+    #[test]
+    fn story_recipients_respect_hidden_and_close_lists() {
+        let p = |i: u8| PeerId([i; 32]);
+        let friends = vec![p(1), p(2), p(3), p(4)];
+        let hidden = [p(2), p(9)];
+        let close = [p(3), p(2), p(8)];
+        // everyone minus the hidden ones
+        assert_eq!(story_recipients(friends.clone(), StoryAudience::Friends, &hidden, &close), vec![p(1), p(3), p(4)]);
+        // close friends only; hidden wins over close; a close "friend" who isn't a friend gets nothing
+        assert_eq!(story_recipients(friends.clone(), StoryAudience::Close, &hidden, &close), vec![p(3)]);
+        assert_eq!(story_recipients(friends.clone(), StoryAudience::Friends, &[], &[]), friends);
+        assert!(story_recipients(friends, StoryAudience::Close, &[], &[]).is_empty());
     }
 }

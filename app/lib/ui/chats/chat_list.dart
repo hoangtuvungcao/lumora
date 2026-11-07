@@ -16,6 +16,9 @@ import 'delete_dialogs.dart';
 import '../bots/botfather.dart';
 import '../theme.dart';
 import 'stories.dart';
+import '../calls/group_call.dart' show GroupCallMark;
+import '../groups/group_invites_ui.dart' show GroupInvitesBanner;
+import '../settings/friend_recovery.dart' show RecoveryBanner;
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
@@ -113,8 +116,10 @@ class _ChatListPaneState extends State<ChatListPane> {
         ),
         const SizedBox(height: 6),
         if (!_archived && _q.isEmpty) const StoriesRow(),
+        if (!_archived && _q.isEmpty) const GroupInvitesBanner(),
+        if (!_archived && _q.isEmpty) const RecoveryBanner(),
         if (_q.isEmpty && lockedList.isNotEmpty) LockedChatsFolder(count: lockedList.length, unread: lockedList.any((c) => c.unread > 0)),
-        if (!_archived && (_filter == ChatFilter.all || _filter == ChatFilter.direct) && (_q.isEmpty || foldContains('BotFather', _q)))
+        if (!_archived && (_filter == ChatFilter.all || _filter == ChatFilter.direct) && (_q.isEmpty || foldContains(S.of(context)('bf_name'), _q)))
           _BotFatherTile(onTap: () => widget.onOpen(kBotFatherConv), mobile: widget.mobile),
         if (!_archived && archivedCount > 0 && _q.isEmpty)
           Padding(
@@ -183,11 +188,13 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    // a narrow window (split screen, small desktop window): no logo, the title shrinks
+    final narrow = MediaQuery.sizeOf(context).width < 300;
     return Padding(
       padding: EdgeInsets.fromLTRB(mobile ? 16 : 16, mobile ? 10 : 14, 8, 6),
       child: Row(children: [
-        if (mobile) ...[const LumoraLogo(size: 30), const SizedBox(width: 10)],
-        Expanded(child: Text(s('chats'), style: context.tt.titleLarge)),
+        if (mobile && !narrow) ...[const LumoraLogo(size: 30), const SizedBox(width: 10)],
+        Expanded(child: Text(s('chats'), maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleLarge)),
         const NetStatusDot(),
         if (!mobile) ToolButton(icon: AppIcons.quickSwitcher, tooltip: '${s('quick_switcher')} (Ctrl+K)', onPressed: () => showCommandPalette(context)),
         if (mobile) ToolButton(icon: AppIcons.search, tooltip: s('quick_switcher'), onPressed: () => showCommandPalette(context)),
@@ -251,6 +258,8 @@ class ConversationTile extends StatelessWidget {
     final verified = peer != null && context.select<ContactsStore, bool>((c) => c[peer]?.verified ?? false);
     final unread = conv.unread > 0;
     final lc = context.lc;
+    // someone not in my contacts (no name from the core): a short id, never a blank row
+    final title = conv.title.isEmpty && peer != null ? context.read<ContactsStore>().nameOf(peer) : conv.title;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       child: Material(
@@ -267,7 +276,7 @@ class ConversationTile extends StatelessWidget {
             child: Row(children: [
               conv.isSaved
                   ? const SavedAvatar(size: 48)
-                  : (peer != null ? PeerAvatar(peer: peer, fallbackName: conv.title, size: 48) : GroupAvatar(gid: conv.gid ?? conv.id, name: conv.title, size: 48)),
+                  : (peer != null ? PeerAvatar(peer: peer, fallbackName: title, size: 48) : GroupAvatar(gid: conv.gid ?? conv.id, name: conv.title, size: 48)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -275,7 +284,7 @@ class ConversationTile extends StatelessWidget {
                     Expanded(
                       child: Row(children: [
                         Flexible(
-                          child: Text(conv.isSaved ? s('saved_messages') : conv.title,
+                          child: Text(conv.isSaved ? s('saved_messages') : title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: context.tt.titleMedium?.copyWith(fontWeight: unread ? FontWeight.w700 : FontWeight.w600)),
@@ -283,6 +292,7 @@ class ConversationTile extends StatelessWidget {
                         if (verified) ...[const SizedBox(width: 4), const Icon(AppIcons.verifiedFill, size: 15, color: LC.accent)],
                         if (peer != null && context.select<ContactsStore, bool>((c) => c[peer]?.isBot ?? false)) const BotBadge(),
                         if (conv.muted) ...[const SizedBox(width: 4), Icon(AppIcons.mute, size: 14, color: lc.muted)],
+                        GroupCallMark(conv: conv.id),
                       ]),
                     ),
                     const SizedBox(width: 6),
@@ -448,7 +458,7 @@ class _BotFatherTile extends StatelessWidget {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
-                    Text('BotFather', style: context.tt.titleMedium),
+                    Flexible(child: Text(s('bf_name'), maxLines: 1, overflow: TextOverflow.ellipsis, style: context.tt.titleMedium)),
                     const BotBadge(),
                     const SizedBox(width: 4),
                     const Icon(AppIcons.verifiedFill, size: 15, color: LC.accent),

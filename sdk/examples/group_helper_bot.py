@@ -106,14 +106,14 @@ def ban(ctx):
     ctx.reply(f"🚫 Đã cấm / Banned {bot.name_of(who)}.")
 
 
-@bot.command("purge", "Xóa mọi tin của một người / Delete all their messages", chats="group", hidden=True)
+@bot.command("purge", "Xoá mọi tin của một người / Delete all their messages", chats="group", hidden=True)
 @group_admin
 def purge(ctx):
     who = target_of(ctx)
     if not who:
         return ctx.reply("Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.")
     bot.group_purge_member(ctx.conv, who)
-    ctx.reply("🧹 Đã xóa. / Deleted.", silent=True)
+    ctx.reply("🧹 Đã xoá. / Deleted.", silent=True)
 
 
 @bot.on_message(chats="group", kinds=None)

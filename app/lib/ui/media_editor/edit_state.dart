@@ -44,7 +44,7 @@ class Stroke {
 
 enum OverlayKind { text, emoji, sticker }
 
-/// Background styles for text items (Telegram-like).
+/// Background styles for text items.
 enum TextBg { plain, outline, solid, translucent }
 
 @immutable

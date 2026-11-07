@@ -2,6 +2,8 @@ package vn.lumora.lumora
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -199,6 +201,7 @@ object LumoraEngine {
                 "background" -> result.success(Background.status(app))
                 "requestIgnoreBattery" -> result.success(Background.requestIgnoreBattery(MainActivity.current() ?: app))
                 "openAutostart" -> result.success(Background.openAutostart(MainActivity.current() ?: app))
+                "networkInfo" -> result.success(networkInfo(app))
                 "info" -> result.success(mapOf(
                     "sdk" to Build.VERSION.SDK_INT,
                     "abi" to (Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
@@ -207,6 +210,24 @@ object LumoraEngine {
                 ))
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /** The active network for the automatic-download limits: Wi-Fi / mobile data / roaming
+     *  (or a Wi-Fi the system reports as metered, e.g. a phone hotspot). */
+    private fun networkInfo(ctx: Context): Map<String, Any> {
+        return try {
+            val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return mapOf("online" to false)
+            val n = cm.activeNetwork ?: return mapOf("online" to false)
+            val caps = cm.getNetworkCapabilities(n) ?: return mapOf("online" to false)
+            val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            val cell = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            val roaming = Build.VERSION.SDK_INT >= 28 && !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
+            val metered = !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) &&
+                (Build.VERSION.SDK_INT < 30 || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED))
+            mapOf("online" to true, "wifi" to wifi, "cell" to cell, "roaming" to roaming, "metered" to metered)
+        } catch (e: Exception) {
+            mapOf("online" to false)
         }
     }
 }

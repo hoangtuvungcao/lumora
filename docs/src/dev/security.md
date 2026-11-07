@@ -34,4 +34,4 @@
   only with friends, your own devices and group co-members. The Olm account is pickled encrypted in the
   local database; a stolen *unlocked* database still exposes the stored history.
 * Group encryption is sender-key style, not full MLS (RFC 9420). Planned.
-* A compromised *running* device exposes everything that device can read — like any messenger.
+* A compromised *running* device exposes everything that device can read — like any messaging app.

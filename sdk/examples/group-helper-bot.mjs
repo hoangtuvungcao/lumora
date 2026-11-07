@@ -80,11 +80,11 @@ bot.command("ban", "Cấm thành viên (trả lời tin của họ) / Ban (reply
   await ctx.reply(`🚫 Đã cấm / Banned ${await bot.nameOf(who)}.`);
 }), groupOnly);
 
-bot.command("purge", "Xóa mọi tin của một người / Delete all their messages", groupAdmin(async (ctx) => {
+bot.command("purge", "Xoá mọi tin của một người / Delete all their messages", groupAdmin(async (ctx) => {
   const who = await targetOf(ctx);
   if (!who) return ctx.reply("Trả lời một tin của người đó rồi gõ /purge. / Reply to their message with /purge.");
   await bot.groupPurgeMember(ctx.conv, who);
-  await ctx.reply("🧹 Đã xóa. / Deleted.", { silent: true });
+  await ctx.reply("🧹 Đã xoá. / Deleted.", { silent: true });
 }), groupOnly);
 
 bot.onMessage({ chats: "group", kinds: null }, async (ctx) => {

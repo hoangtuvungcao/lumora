@@ -257,6 +257,36 @@ class _StickerPanelState extends State<StickerPanel> {
     }
   }
 
+  /// Long-press / right-click on a sticker of my pack: remove just that one.
+  Future<void> _stickerMenu(StickerPack p, Sticker st) async {
+    final s = S.read(context);
+    final api = context.read<LumoraApi>();
+    final remove = await showModalBottomSheet<bool>(
+      context: context,
+      useRootNavigator: true,
+      constraints: const BoxConstraints(maxWidth: 480),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(padding: const EdgeInsets.all(12), child: StickerImage(hash: st.hash, size: 96, fallbackEmoji: st.emoji)),
+          ListTile(
+            leading: const Icon(AppIcons.delete, color: LC.danger),
+            title: Text(s('sticker_remove'), style: const TextStyle(color: LC.danger)),
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (remove != true || !mounted) return;
+    try {
+      await api.stickerRemove(p.id, st.hash);
+      if (mounted) toast(context, s('sticker_removed'));
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    }
+    await _reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -342,8 +372,12 @@ class _StickerPanelState extends State<StickerPanel> {
             }
             final st = p.stickers[i];
             return InkWell(
+              key: ValueKey('sticker_${st.hash}'),
               borderRadius: BorderRadius.circular(Radii.md),
               onTap: () => widget.onSend(st),
+              // (every pack here is one of mine)
+              onLongPress: () => _stickerMenu(p, st),
+              onSecondaryTap: () => _stickerMenu(p, st),
               child: Padding(padding: const EdgeInsets.all(4), child: StickerImage(hash: st.hash, size: 76, fallbackEmoji: st.emoji)),
             );
           },

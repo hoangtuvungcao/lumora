@@ -317,7 +317,7 @@ class _AnimatedEmojiState extends State<AnimatedEmoji> with SingleTickerProvider
 }
 
 /// The emoji of a message that is only 1-3 emoji (whitespace allowed), or
-/// null. Such messages render big, like Telegram / Zalo.
+/// null. Such messages render big.
 List<String>? jumboEmojis(String text) {
   final s = text.trim();
   if (s.isEmpty || s.length > 64) return null;
@@ -350,7 +350,7 @@ class JumboEmoji extends StatelessWidget {
     final size = sizeFor(emojis.length);
     return Row(
       mainAxisSize: MainAxisSize.min,
-      // keep moving while on screen (like Telegram's animated emoji); the slot limit and the
+      // keep moving while on screen (animated emoji); the slot limit and the
       // off-screen pause keep it cheap
       children: [for (final e in emojis) AnimatedEmoji(e, size: size, autoplay: true, loop: true, replayOnTap: true)],
     );

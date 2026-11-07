@@ -10,6 +10,7 @@ import '../core/api.dart';
 import '../core/links.dart';
 import '../l10n/strings.dart';
 import '../state/stores.dart';
+import 'calls/group_call.dart' show startCallIn;
 import 'chats/attachments.dart';
 import 'chats/chat_view.dart';
 import 'chats/rich_bubbles.dart';
@@ -49,13 +50,8 @@ abstract final class Flows {
     if (!isDesktop(context)) Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: conv)));
   }
 
-  static Future<void> call(BuildContext context, String conv, {bool video = false}) async {
-    try {
-      await context.read<CallStore>().start(conv, video: video);
-    } catch (e) {
-      if (context.mounted) toastError(context, e);
-    }
-  }
+  /// A plain group first asks who should ring (calls/group_call.dart).
+  static Future<void> call(BuildContext context, String conv, {bool video = false}) => startCallIn(context, conv, video: video);
 
   /// Escalation step: share my screen with this person (starts a video call
   /// if none is running, then enables screen sharing).

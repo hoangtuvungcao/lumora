@@ -8,6 +8,10 @@ use crate::devices::{self as dv, DeviceCert, DeviceEntry, DeviceListBody, SigBy,
 use crate::proto::ext;
 use std::sync::atomic::Ordering;
 
+/// Linked device: the account's device list it held before it went missing from a newer
+/// one (sent to the new main device with its request to be listed again).
+const PREV_LIST_KEY: &str = "device.prev_list";
+
 /// A device not seen for this long (and added longer ago) gets no new copies; it catches
 /// up from its siblings when it comes back.
 const DORMANT_MS: u64 = 30 * 86_400_000;
@@ -34,6 +38,50 @@ pub(super) struct DeviceListMsg {
 pub(super) struct DeviceAcceptMsg {
     #[serde(with = "serde_bytes", default)]
     pub proof: Vec<u8>,
+    /// (a device missing from the list — e.g. after the account was restored on a new main
+    /// device — gives its name and kind so it can be listed again)
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub kind: u8,
+}
+
+/// `Ext DEVICE_REVOKED` (main device → a signed-out device of mine that asked to be listed).
+#[derive(Serialize, Deserialize, Debug)]
+pub(super) struct DeviceRevokedMsg {
+    pub device: PeerId,
+    #[serde(with = "serde_bytes", default)]
+    pub sig: Vec<u8>,
+}
+
+/// What the account key signs to tell `device` it was signed out.
+pub(crate) fn revoked_notice_bytes(account: &PeerId, device: &PeerId) -> Vec<u8> {
+    let mut v = b"lumora-device-revoked-v1".to_vec();
+    v.extend_from_slice(&account.0);
+    v.extend_from_slice(&device.0);
+    v
+}
+
+/// Main device: what an own device's `DEVICE_ACCEPT` leads to.
+#[derive(Debug, PartialEq)]
+pub(crate) enum AcceptDecision {
+    /// listed without its acceptance proof: store the proof
+    Proof,
+    /// signed out before: tell it so (it signs itself out)
+    SignedOut,
+    /// missing from the list: the user approves or refuses
+    AskUser,
+    Nothing,
+}
+
+/// An own device missing from my list that asked to be listed again (waits for the user).
+#[derive(Clone, Debug)]
+pub(crate) struct RelistRequest {
+    pub name: String,
+    pub kind: u8,
+    pub proof: Vec<u8>,
+    /// when the user was last told (the device asks again on every reconnect)
+    pub told: Option<std::time::Instant>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -241,10 +289,13 @@ impl Node {
         }
         let kind = default_device_kind();
         let name = self.store.kv_get("device.name").and_then(|v| String::from_utf8(v).ok()).unwrap_or_else(default_device_name);
+        // version = now (hlc), not 1: an account restored here with the recovery phrase starts
+        // a fresh list, which must rank above every list made before (a linked device still
+        // holding the old one takes the new one and asks to be listed again)
         let body = DeviceListBody {
             v: 1,
             account: self.me,
-            version: 1,
+            version: self.hlc.tick().max(1),
             devices: vec![DeviceEntry::new(self.me, name, kind, dv::CAP_PRIMARY | caps_for(kind), now_ms())],
             revoked: vec![],
         };
@@ -312,9 +363,35 @@ impl Node {
         });
     }
 
+    fn device_accept_msg(&self) -> DeviceAcceptMsg {
+        let name = self.store.kv_get("device.name").and_then(|v| String::from_utf8(v).ok()).filter(|n| !n.is_empty()).unwrap_or_else(default_device_name);
+        DeviceAcceptMsg { proof: dv::sign_accept(&self.id, &self.me), name, kind: default_device_kind() }
+    }
+
     /// Hello with version ≥ 3: compare device-list versions.
+    /// The list version / bytes I may share with `pc`: my own devices always see my list
+    /// (even a single-device one: after a restore with the recovery phrase it is how a
+    /// linked device learns it has to be listed again); others only from 2 devices on.
+    fn list_for(&self, pc: &PeerConn) -> Option<(u64, Vec<u8>)> {
+        if pc.own {
+            self.store.device_list_get(&self.me).filter(|(_, b)| SignedDeviceList::decode(b).ok().and_then(|l| l.validate().ok()).is_some())
+        } else {
+            self.list_shareable()
+        }
+    }
+
+    /// A linked device missing from the account's newest list (the main device was restored
+    /// with the recovery phrase): ask the main device to list it again — with the list it
+    /// held before, so the main device learns which devices were really signed out.
+    fn ask_to_be_listed(&self, pc: &PeerConn) {
+        if let Some(prev) = self.store.kv_get(PREV_LIST_KEY) {
+            let _ = pc.ctl.try_send(proto::ext(ext::DEVICE_LIST, &DeviceListMsg { list: prev }));
+        }
+        let _ = pc.ctl.try_send(proto::ext(ext::DEVICE_ACCEPT, &self.device_accept_msg()));
+    }
+
     pub(super) fn device_sync_on_hello(&self, pc: &Arc<PeerConn>) {
-        let mine = self.list_shareable().map(|(v, _)| v).unwrap_or(0);
+        let mine = self.list_for(pc).map(|(v, _)| v).unwrap_or(0);
         let yours = if pc.account == self.me { 0 } else { self.store.device_list_get(&pc.account).map(|(v, _)| v).unwrap_or(0) };
         let _ = pc.ctl.try_send(proto::ext(ext::DEVICE_SYNC, &DeviceSyncMsg { mine, yours }));
         // a linked device whose entry in the list has no acceptance proof yet (linked before
@@ -322,7 +399,7 @@ impl Node {
         if pc.own && pc.peer == self.me && !self.is_primary() {
             let proven = self.own_list().and_then(|b| b.devices.into_iter().find(|e| e.device == self.device)).map(|e| e.proven_for(&self.me)).unwrap_or(false);
             if !proven {
-                let _ = pc.ctl.try_send(proto::ext(ext::DEVICE_ACCEPT, &DeviceAcceptMsg { proof: dv::sign_accept(&self.id, &self.me) }));
+                self.ask_to_be_listed(pc);
             }
         }
     }
@@ -337,7 +414,7 @@ impl Node {
                 if !pc.own && m.yours > mine_v && mine_v > 0 {
                     let _ = pc.ctl.try_send(proto::ext(ext::DEVICE_LIST_REQUEST, &DeviceListRequestMsg { account: Some(self.me) }));
                 }
-                let (cur, list) = match self.list_shareable() {
+                let (cur, list) = match self.list_for(pc) {
                     Some(x) => x,
                     None => return Ok(()),
                 };
@@ -368,19 +445,151 @@ impl Node {
             ext::DEVICE_ACCEPT if pc.own && self.is_primary() => {
                 let m: DeviceAcceptMsg = proto::ext_body(body)?;
                 anyhow::ensure!(dv::verify_accept(&self.me, &pc.peer, &m.proof), "bad device acceptance");
-                let missing = self.own_list().map(|b| b.devices.iter().any(|e| e.device == pc.peer && !e.proven_for(&self.me))).unwrap_or(false);
-                if missing {
-                    let d = pc.peer;
-                    self.publish_own_list(|b| {
-                        for e in b.devices.iter_mut().filter(|e| e.device == d) {
-                            e.proof = m.proof.clone();
-                        }
-                    })?;
+                let d = pc.peer;
+                match self.accept_decision(&d) {
+                    AcceptDecision::Proof => {
+                        self.publish_own_list(|b| {
+                            for e in b.devices.iter_mut().filter(|e| e.device == d) {
+                                e.proof = m.proof.clone();
+                            }
+                        })?;
+                    }
+                    AcceptDecision::SignedOut => {
+                        // signed out before (perhaps so long ago that the list no longer names
+                        // it): tell it explicitly, so it signs itself out instead of asking forever
+                        tracing::info!("signed-out device {d:?} asked to be listed: telling it it was signed out");
+                        let _ = pc.ctl.try_send(self.revoked_notice(&d));
+                    }
+                    AcceptDecision::AskUser => self.note_relist_request(&d, &m),
+                    AcceptDecision::Nothing => {}
+                }
+            }
+            ext::DEVICE_REVOKED if pc.own && pc.peer == self.me && !self.is_primary() => {
+                let m: DeviceRevokedMsg = proto::ext_body(body)?;
+                if m.device == self.device && self.me.verify(&revoked_notice_bytes(&self.me, &self.device), &m.sig) {
+                    tracing::warn!("the main device says this device was signed out: signing out");
+                    self.self_revoke(false, false);
                 }
             }
             _ => {}
         }
         Ok(())
+    }
+
+    /// Main device: what to do with an own device's acceptance signature.
+    pub(crate) fn accept_decision(&self, d: &PeerId) -> AcceptDecision {
+        let Some(list) = self.own_list() else { return AcceptDecision::Nothing };
+        if list.devices.iter().any(|e| e.device == *d && !e.proven_for(&self.me)) {
+            return AcceptDecision::Proof;
+        }
+        if list.is_revoked(d) || self.is_revoked(&self.me, d) {
+            return AcceptDecision::SignedOut;
+        }
+        if list.is_active(d) || *d == self.device {
+            return AcceptDecision::Nothing;
+        }
+        // a device of this account (its certificate is signed by the account key) that the
+        // list doesn't have — the account was restored here with the recovery phrase, which
+        // starts a fresh list. It may also be a device signed out while offline that never
+        // heard of it (a stolen phone): the user decides, never this code
+        AcceptDecision::AskUser
+    }
+
+    /// Keep "signed out" for an own device in the devices table too (a revocation in the
+    /// list creates no row for a device never listed here, and the list names only the last
+    /// `MAX_REVOKED`): it is refused for good, whatever the list says later.
+    fn remember_revoked(&self, d: &PeerId) {
+        let at = self.own_list().map(|b| b.version).unwrap_or(1);
+        let _ = self.store.device_learn(d, &self.me, 0, now_ms());
+        let _ = self.store.device_set_revoked(d, &self.me, at);
+    }
+
+    fn revoked_notice(&self, d: &PeerId) -> PeerMsg {
+        let sig = self.id.sign(&revoked_notice_bytes(&self.me, d)).to_vec();
+        proto::ext(ext::DEVICE_REVOKED, &DeviceRevokedMsg { device: *d, sig })
+    }
+
+    /// Remember the request and ask the user (`device_relist_request`, at most once a minute
+    /// per device: it asks again on every reconnect).
+    fn note_relist_request(&self, d: &PeerId, m: &DeviceAcceptMsg) {
+        let kind = if m.kind == 0 { default_device_kind() } else { m.kind };
+        let name: String = if m.name.trim().is_empty() { default_device_name() } else { m.name.chars().take(32).collect() };
+        let tell = {
+            let mut p = self.relist_pending.lock();
+            if p.len() >= 64 && !p.contains_key(d) {
+                return;
+            }
+            let r = p.entry(*d).or_insert(RelistRequest { name: name.clone(), kind, proof: vec![], told: None });
+            r.name = name.clone();
+            r.kind = kind;
+            r.proof = m.proof.clone();
+            let tell = r.told.map(|t| t.elapsed() > Duration::from_secs(60)).unwrap_or(true);
+            if tell {
+                r.told = Some(std::time::Instant::now());
+            }
+            tell
+        };
+        if tell {
+            tracing::info!("own device {d:?} missing from the list asks to be listed again: asking the user");
+            self.emit("device_relist_request", json!({"device": d.to_base32(), "name": name, "kind": kind, "short_id": d.short_id_fmt()}));
+        }
+    }
+
+    /// Own devices waiting to be listed again (the user approves or refuses each).
+    pub fn device_relist_requests(&self) -> Value {
+        let p = self.relist_pending.lock();
+        json!(p.iter().map(|(d, r)| json!({"device": d.to_base32(), "name": r.name, "kind": r.kind, "short_id": d.short_id_fmt()})).collect::<Vec<_>>())
+    }
+
+    /// The user's answer to `device_relist_request`: approve → the device is listed again
+    /// (and, on an account restored with nothing, the account is copied from it); refuse →
+    /// it is signed out (and wiped).
+    pub fn device_relist_answer(self: &Arc<Self>, dev: &PeerId, approve: bool) -> Result<Value> {
+        anyhow::ensure!(self.is_primary(), crate::i18n::user_err("err.primary_only"));
+        let req = self.relist_pending.lock().remove(dev).ok_or_else(|| crate::i18n::user_err("err.device_not_found"))?;
+        let d = *dev;
+        if approve {
+            anyhow::ensure!(dv::verify_accept(&self.me, &d, &req.proof), crate::i18n::user_err("err.device_not_found"));
+            let mut e = DeviceEntry::new(d, req.name.clone(), req.kind, caps_for(req.kind), now_ms());
+            e.proof = req.proof.clone();
+            self.publish_own_list(move |b| {
+                b.revoked.retain(|r| r.device != e.device);
+                if !b.devices.iter().any(|x| x.device == e.device) {
+                    b.devices.push(e.clone());
+                }
+            })?;
+            tracing::info!("own device {d:?} listed again (approved by the user)");
+            // restored with nothing (no friends, no groups): the account's contacts, chats,
+            // groups and history come back from this (approved) device, as for a new link
+            if self.history_plan().is_none() && self.store.no_account_state() {
+                tracing::info!("restored account: copying the account and its history from {d:?}");
+                let plan = super::sync::HistoryPlan { source: d.to_base32(), ..Default::default() };
+                self.store.kv_set_json("link.history", &plan)?;
+                if let Some(pc) = self.peer(&d) {
+                    self.maybe_request_history(&pc);
+                }
+            }
+        } else {
+            self.publish_own_list(|b| {
+                b.devices.retain(|e| e.device != d);
+                b.revoked.retain(|r| r.device != d);
+                b.revoked.push(dv::Revoked { device: d, at: 0, wipe: true });
+                while b.revoked.len() > dv::MAX_REVOKED {
+                    b.revoked.remove(0);
+                }
+            })?;
+            if let Some(pc) = self.peer(&d) {
+                let _ = pc.ctl.try_send(self.revoked_notice(&d));
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    pc.conn.close(3u32.into(), b"revoked");
+                });
+            }
+            self.remember_revoked(&d);
+            self.forget_revoked(&d);
+            tracing::info!("own device {d:?} refused by the user: signed out");
+        }
+        Ok(self.devices_json())
     }
 
     /// A signed list arrived from `from_account` (`own`: from one of my devices, which
@@ -401,8 +610,15 @@ impl Node {
             tracing::debug!("dropping the device list of {:?}: not someone we know", body.account);
             return Ok(false);
         }
-        let cached = self.store.device_list_get(&body.account).and_then(|(v, b)| SignedDeviceList::decode(&b).ok().map(|c| (v, c.digest())));
+        let cached_raw = self.store.device_list_get(&body.account);
+        let cached = cached_raw.as_ref().and_then(|(v, b)| SignedDeviceList::decode(b).ok().map(|c| (v.to_owned(), c.digest())));
         if !l.newer_than(body.version, cached) {
+            // an older list of my own account (signed with the account key, so it speaks
+            // for the account): a main device restored with the recovery phrase learns from
+            // it which devices were signed out before — they never come back
+            if body.account == self.me && self.is_primary() {
+                self.adopt_old_revocations(&body);
+            }
             return Ok(false);
         }
         // a newer list of my own account that I (the main device) didn't sign: another device
@@ -451,7 +667,25 @@ impl Node {
             self.refresh_sync_enabled();
             self.emit_devices();
             if !body.is_active(&self.device) && !self.is_primary() {
-                self.self_revoke(body.revoked.iter().any(|r| r.device == self.device && r.wipe), false);
+                if let Some(r) = body.revoked.iter().find(|r| r.device == self.device) {
+                    // really signed out by the main device
+                    self.self_revoke(r.wipe, false);
+                } else {
+                    // only missing (a main device restored with the recovery phrase starts a
+                    // fresh list): never a reason to sign this device out — ask to be listed
+                    tracing::warn!("this device is missing from the account's new device list: asking to be listed again");
+                    // (the list it held before goes along, now and on later hellos, so the
+                    // new main device knows who was signed out)
+                    let prev = cached_raw.map(|(_, b)| b).filter(|b| SignedDeviceList::decode(b).ok().and_then(|l| l.validate().ok()).is_some_and(|o| o.is_active(&self.device)));
+                    if let Some(prev) = prev {
+                        let _ = self.store.kv_set(PREV_LIST_KEY, &prev);
+                    }
+                    if let Some(pc) = self.peers.read().get(&self.me).cloned() {
+                        self.ask_to_be_listed(&pc);
+                    }
+                }
+            } else if body.is_active(&self.device) {
+                let _ = self.store.kv_del(PREV_LIST_KEY);
             }
         } else {
             self.emit("contact_devices", json!({"peer": body.account.to_base32(), "devices": self.contact_devices_json(&body.account)}));
@@ -471,6 +705,47 @@ impl Node {
             }
         }
         Ok(true)
+    }
+
+    /// Main device: revocations in an older list of my account that my list doesn't have
+    /// (the account was restored here with the recovery phrase, which starts a fresh list)
+    /// are taken over — a device signed out before stays out, even if it asked to be
+    /// listed again in the meantime.
+    fn adopt_old_revocations(&self, old: &DeviceListBody) {
+        let Some(cur) = self.own_list() else { return };
+        let add: Vec<dv::Revoked> = old.revoked.iter().filter(|r| r.device != self.device && !cur.is_revoked(&r.device)).cloned().collect();
+        if add.is_empty() {
+            return;
+        }
+        let Some(me) = self.self_ref.lock().as_ref().and_then(|w| w.upgrade()) else { return };
+        tracing::warn!("taking over {} revocation(s) from an older list of this account", add.len());
+        let devs: Vec<PeerId> = add.iter().map(|r| r.device).collect();
+        let res = me.publish_own_list(|b| {
+            b.devices.retain(|e| !devs.contains(&e.device));
+            for r in &add {
+                b.revoked.retain(|x| x.device != r.device);
+                b.revoked.push(r.clone());
+            }
+            while b.revoked.len() > dv::MAX_REVOKED {
+                b.revoked.remove(0);
+            }
+        });
+        for d in &devs {
+            self.relist_pending.lock().remove(d);
+            self.remember_revoked(d);
+            self.forget_revoked(d);
+            if let Some(pc) = self.peer(d) {
+                let _ = pc.ctl.try_send(self.revoked_notice(d));
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                    pc.conn.close(3u32.into(), b"revoked");
+                });
+            }
+        }
+        if let Ok(body) = res {
+            let version = body.version;
+            tokio::spawn(async move { me.rekey_after_revoke(version).await });
+        }
     }
 
     /// "Lan vừa thêm một thiết bị mới. Mã bảo mật đã thay đổi." in the direct chat with a
@@ -758,4 +1033,63 @@ mod tests {
         assert!(n.store.outbox_page(&phone, 0, 10).unwrap().is_empty());
         n.shutdown();
     }
+
+    /// D1/D2: an own device missing from my list (account restored with the recovery phrase)
+    /// is never listed again on its own — the user approves (listed) or refuses (signed
+    /// out); a device signed out long ago (no longer named in the 32-entry revoked list) is
+    /// told it was signed out, with a notice only the account key can sign.
+    #[tokio::test]
+    async fn missing_devices_wait_for_the_user_and_old_revocations_hold() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        assert!(n.is_primary());
+        n.ensure_own_list();
+        let me = n.me;
+        let mk = || {
+            let id = Identity::generate();
+            let proof = dv::sign_accept(&id, &me);
+            (id.peer_id(), DeviceAcceptMsg { proof, name: "Điện thoại".into(), kind: dv::KIND_PHONE })
+        };
+        // a device the list doesn't know: the user is asked, nothing is listed
+        let (a, ma) = mk();
+        assert_eq!(n.accept_decision(&a), AcceptDecision::AskUser);
+        n.note_relist_request(&a, &ma);
+        assert!(!n.own_list().unwrap().is_active(&a), "listed without the user's approval");
+        let reqs = n.device_relist_requests();
+        assert_eq!(reqs.as_array().unwrap().len(), 1);
+        assert_eq!(reqs[0]["device"], a.to_base32());
+        assert_eq!(reqs[0]["name"], "Điện thoại");
+        // nothing pending → nothing to approve
+        let (x, _) = mk();
+        assert!(n.device_relist_answer(&x, true).is_err());
+        // approved → listed, with its acceptance proof
+        n.device_relist_answer(&a, true).unwrap();
+        let l = n.own_list().unwrap();
+        assert!(l.devices.iter().any(|e| e.device == a && e.proven_for(&me)));
+        assert!(n.device_relist_requests().as_array().unwrap().is_empty());
+        assert_eq!(n.accept_decision(&a), AcceptDecision::Nothing);
+        // refused → signed out (and named in the list's revocations)
+        let (b, mb) = mk();
+        n.note_relist_request(&b, &mb);
+        n.device_relist_answer(&b, false).unwrap();
+        let l = n.own_list().unwrap();
+        assert!(!l.is_active(&b) && l.revoked.iter().any(|r| r.device == b && r.wipe));
+        assert_eq!(n.accept_decision(&b), AcceptDecision::SignedOut);
+        // `b`'s revocation drops off the list after MAX_REVOKED newer ones: still signed out
+        for _ in 0..dv::MAX_REVOKED {
+            let (c, mc) = mk();
+            n.note_relist_request(&c, &mc);
+            n.device_relist_answer(&c, false).unwrap();
+        }
+        assert!(!n.own_list().unwrap().is_revoked(&b), "still named: the test proves nothing");
+        assert_eq!(n.accept_decision(&b), AcceptDecision::SignedOut);
+        // the notice it gets is signed by the account key, for that device only
+        let PeerMsg::Ext { kind, body } = n.revoked_notice(&b) else { panic!() };
+        assert_eq!(kind, ext::DEVICE_REVOKED);
+        let m: DeviceRevokedMsg = proto::ext_body(&body).unwrap();
+        assert!(m.device == b && me.verify(&revoked_notice_bytes(&me, &b), &m.sig));
+        assert!(!me.verify(&revoked_notice_bytes(&me, &a), &m.sig));
+        n.shutdown();
+    }
+
 }

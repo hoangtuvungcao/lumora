@@ -226,6 +226,7 @@ class _Rail extends StatelessWidget {
                 tooltip: sp.name,
                 badge: sp.channels.fold(0, (a, c) => a + c.unread) > 0 ? -1 : 0,
                 onTap: () => nav.go(Section.space, space: sp.id),
+                onMenu: (at) => showSpaceMenu(context, sp, at: at),
                 plain: true,
                 child: GroupAvatar(gid: sp.id, name: sp.name, size: 46),
               ),
@@ -258,7 +259,9 @@ class _Rail extends StatelessWidget {
 }
 
 class _RailButton extends StatefulWidget {
-  const _RailButton({required this.selected, required this.tooltip, required this.onTap, required this.child, this.badge = 0, this.plain = false});
+  const _RailButton({required this.selected, required this.tooltip, required this.onTap, required this.child, this.badge = 0, this.plain = false, this.onMenu});
+  /// Long-press / right-click (at: the pointer, null on a long press).
+  final void Function(Offset? at)? onMenu;
   final bool selected;
   final String tooltip;
   final VoidCallback onTap;
@@ -289,6 +292,8 @@ class _RailButtonState extends State<_RailButton> {
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
           onTap: widget.onTap,
+          onLongPress: widget.onMenu == null ? null : () => widget.onMenu!(null),
+          onSecondaryTapUp: widget.onMenu == null ? null : (d) => widget.onMenu!(d.globalPosition),
           child: SizedBox(
             height: 56,
             child: Stack(alignment: Alignment.center, children: [
@@ -342,7 +347,7 @@ class _RailButtonState extends State<_RailButton> {
   }
 }
 
-/// Discord-like bottom-left user panel.
+/// Bottom-left user panel.
 class _UserPanel extends StatelessWidget {
   const _UserPanel();
 
@@ -403,13 +408,52 @@ class _MobileShell extends StatefulWidget {
 }
 
 class _MobileShellState extends State<_MobileShell> {
-  late int _tab = switch (context.read<NavStore>().section) {
-    Section.friends => 1,
-    Section.space => 2,
-    Section.remote => 3,
-    Section.settings => 4,
-    _ => 0,
-  };
+  static const _tabs = [Section.chats, Section.friends, Section.space, Section.remote, Section.settings];
+  late final NavStore _nav;
+  late int _tab;
+  late int _seenGo;
+
+  static int? _tabOf(Section s) {
+    final i = _tabs.indexOf(s);
+    return i < 0 ? null : i;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _nav = context.read<NavStore>();
+    _tab = _tabOf(_nav.section) ?? 0;
+    _seenGo = _nav.goSeq;
+    _nav.addListener(_follow);
+  }
+
+  @override
+  void dispose() {
+    _nav.removeListener(_follow);
+    super.dispose();
+  }
+
+  /// Follow explicit `NavStore.go(...)` calls (notifications, links, menus).
+  /// Chat opens don't bump `goSeq`: they push their own page and must not
+  /// switch the tab underneath.
+  void _follow() {
+    if (!mounted || _nav.goSeq == _seenGo) return;
+    _seenGo = _nav.goSeq;
+    final section = _nav.section;
+    final nav = Navigator.of(context);
+    if (section == Section.network) {
+      // no Network tab on phones: show it as its own page, keep the tab
+      _nav.section = _tabs[_tab];
+      pushNetworkScreen(context);
+      return;
+    }
+    final tab = _tabOf(section);
+    if (tab == null) return; // no such tab on phones (Files)
+    // the chosen tab must be the one in front (chats push their own page);
+    // a plain "back to chats" leaves pushed pages alone
+    if (section != Section.chats) nav.popUntil((r) => r.isFirst);
+    if (tab != _tab) setState(() => _tab = tab);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -446,7 +490,10 @@ class _MobileShellState extends State<_MobileShell> {
       body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: pages)),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: (i) {
+          setState(() => _tab = i);
+          _nav.go(_tabs[i]);
+        },
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: [
           dest(AppIcons.chat, AppIcons.chatActive, s('chats'), count: unread),

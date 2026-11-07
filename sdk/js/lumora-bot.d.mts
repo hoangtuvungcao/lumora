@@ -191,9 +191,9 @@ export interface Job {
 // ----------------------------------------------------------------------------- options
 
 export interface BotOptions {
-  /** Display name for a bot made without BotFather (testing). Not needed with a token. */
+  /** Display name for a bot made without Bot Studio (testing). Not needed with a token. */
   name?: string;
-  /** BotFather token (default: `$LUMORA_BOT_TOKEN`). */
+  /** Bot Studio token (default: `$LUMORA_BOT_TOKEN`). */
   token?: string;
   /** Identity, messages, storage and downloads (default `./lumora-bot`). */
   dataDir?: string;

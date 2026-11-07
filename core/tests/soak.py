@@ -89,7 +89,7 @@ def main():
             for _ in range(a.file_mb):
                 f.write(os.urandom(1 << 20))
         want = sha(src)
-        B.call("set_storage_policy", auto_direct=8 << 30)
+        B.call("set_storage_policy", auto_download={"wifi": {"video": 8 << 30}})
         r0 = max(rss_mb(A.p.pid), 1), max(rss_mb(B.p.pid), 1)
         t0 = time.time()
         fm = A.call("send_file", conv=dm, path=src, timeout=120)

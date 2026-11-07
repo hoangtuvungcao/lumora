@@ -17,13 +17,20 @@ import '../widgets/common.dart';
 import '../widgets/peer_avatar.dart';
 
 /// "Always download" sentinel for the auto-download limits (1 PiB).
-const kAutoAlways = 1 << 50;
+const kAutoAlways = kAutoDownloadAlways;
 
 const _gb = 1 << 30;
 const _mb = 1 << 20;
 const _maxCacheOptions = [1 * _gb, 2 * _gb, 5 * _gb, 10 * _gb, 20 * _gb, 0];
 const _mediaDayOptions = [7, 30, 90, 0];
-const _autoOptions = [0, 5 * _mb, 25 * _mb, 100 * _mb, kAutoAlways];
+
+/// Auto-download choices per kind of media.
+const _autoOptions = {
+  'photo': [0, 1 * _mb, 5 * _mb, 10 * _mb, 25 * _mb, kAutoAlways],
+  'video': [0, 5 * _mb, 10 * _mb, 25 * _mb, 50 * _mb, 100 * _mb, kAutoAlways],
+  'file': [0, 1 * _mb, 5 * _mb, 10 * _mb, 25 * _mb, 50 * _mb, 100 * _mb, kAutoAlways],
+  'voice': [0, 1 * _mb, 5 * _mb, 25 * _mb, kAutoAlways],
+};
 const _communityDayOptions = [7, 30, 90, 0];
 
 /// Free and total bytes of the disk holding [dir] (desktop only; null if unknown).
@@ -180,24 +187,7 @@ class _StorageSettingsState extends State<StorageSettings> {
           onChanged: (x) => _set('media_days', x),
         ),
       ]),
-      _Section(title: s('st_auto_download'), footer: s('st_auto_hint'), children: [
-        _PickRow<int>(
-          icon: AppIcons.chat,
-          title: s('st_auto_direct'),
-          value: policy.autoDirect,
-          options: _autoOptions,
-          label: (x) => _autoLabel(s, x),
-          onChanged: (x) => _set('auto_direct', x),
-        ),
-        _PickRow<int>(
-          icon: AppIcons.friends,
-          title: s('st_auto_group'),
-          value: policy.autoGroup,
-          options: _autoOptions,
-          label: (x) => _autoLabel(s, x),
-          onChanged: (x) => _set('auto_group', x),
-        ),
-      ]),
+      _Section(title: s('st_auto_download'), footer: s('ad_hint'), children: [_AutoDownloadRows(policy: policy.autoDownload)]),
       _Section(title: s('st_history'), children: [
         _PickRow<int>(
           icon: AppIcons.timerReset,
@@ -218,14 +208,84 @@ class _StorageSettingsState extends State<StorageSettings> {
     ]);
   }
 
-  static String _autoLabel(S s, int x) {
-    if (x <= 0) return s('st_auto_off');
-    if (x >= kAutoAlways) return s('st_auto_always');
-    return s('st_auto_upto', {'size': '${x ~/ _mb} MB'});
+}
+
+String _autoLabel(S s, int x) {
+  if (x <= 0) return s('st_auto_off');
+  if (x >= kAutoAlways) return s('st_auto_always');
+  return s('st_auto_upto', {'size': x % _mb == 0 ? '${x ~/ _mb} MB' : s.bytes(x)});
+}
+
+/// "Automatic downloads": Wi-Fi / mobile data / roaming, then a limit per kind of media.
+class _AutoDownloadRows extends StatefulWidget {
+  const _AutoDownloadRows({required this.policy});
+  final AutoDownload policy;
+  @override
+  State<_AutoDownloadRows> createState() => _AutoDownloadRowsState();
+}
+
+class _AutoDownloadRowsState extends State<_AutoDownloadRows> {
+  String _net = 'wifi';
+
+  Future<void> _set(String kind, int bytes) async {
+    try {
+      await context.read<NetStore>().setAutoDownload(_net, kind, bytes);
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final l = widget.policy.of(_net);
+    Widget row(String kind, IconData icon) => _PickRow<int>(
+          key: ValueKey('auto_${_net}_$kind'),
+          icon: icon,
+          title: s('ad_$kind'),
+          hint: kind == 'file' && l.fileGroup < l.file ? s('ad_file_group_hint', {'size': _autoLabel(s, l.fileGroup)}) : null,
+          value: l[kind],
+          options: _autoOptions[kind]!,
+          label: (x) => _autoLabel(s, x),
+          onChanged: (x) => _set(kind, x),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+        child: SegmentedButton<String>(
+          key: const ValueKey('auto_network'),
+          showSelectedIcon: false,
+          segments: [
+            ButtonSegment(value: 'wifi', label: _SegLabel(s('ad_wifi'))),
+            ButtonSegment(value: 'cell', label: _SegLabel(s('ad_cell_short'))),
+            ButtonSegment(value: 'roaming', label: _SegLabel(s('ad_roaming'))),
+          ],
+          selected: {_net},
+          onSelectionChanged: (v) => setState(() => _net = v.first),
+        ),
+      ),
+      Padding(
+        key: const ValueKey('auto_net_hint'),
+        padding: const EdgeInsets.fromLTRB(6, 4, 6, 2),
+        child: Text(s('ad_${_net}_hint'), style: context.tt.bodySmall?.copyWith(color: context.lc.muted)),
+      ),
+      row('photo', AppIcons.image),
+      row('video', AppIcons.video),
+      row('voice', AppIcons.voiceWave),
+      row('file', AppIcons.file),
+    ]);
   }
 }
 
 // ---------------------------------------------------------------- pieces
+
+/// One segment label: a single line that shrinks rather than wraps on a narrow phone.
+class _SegLabel extends StatelessWidget {
+  const _SegLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => FittedBox(fit: BoxFit.scaleDown, child: Text(text, maxLines: 1, softWrap: false));
+}
 
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.children, this.footer});
@@ -417,6 +477,7 @@ class _ActionCard extends StatelessWidget {
 /// Title + hint with a dropdown (beside it on wide layouts, below on phones).
 class _PickRow<T> extends StatelessWidget {
   const _PickRow({
+    super.key,
     required this.icon,
     required this.title,
     this.hint,
@@ -436,10 +497,11 @@ class _PickRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final opts = options.contains(value) ? options : [...options, value];
-    final drop = DropdownButton<T>(
+    // (stacked under the title on a phone: starts where the title starts)
+    DropdownButton<T> dropdown(bool wide) => DropdownButton<T>(
       value: value,
       isDense: true,
-      alignment: AlignmentDirectional.centerEnd,
+      alignment: wide ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
       underline: const SizedBox.shrink(),
       borderRadius: BorderRadius.circular(Radii.md),
       icon: const Padding(padding: EdgeInsets.only(left: 4), child: Icon(AppIcons.chevronDown, size: 16, color: LC.primary)),
@@ -457,6 +519,7 @@ class _PickRow<T> extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 10, 4, 10),
       child: LayoutBuilder(builder: (context, c) {
         final wide = c.maxWidth >= 480;
+        final drop = dropdown(wide);
         return Row(crossAxisAlignment: wide ? CrossAxisAlignment.center : CrossAxisAlignment.start, children: [
           Padding(padding: EdgeInsets.only(top: wide ? 0 : 2, right: 14), child: Icon(icon, size: 20, color: context.lc.muted)),
           Expanded(

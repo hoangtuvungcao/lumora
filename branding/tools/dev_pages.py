@@ -240,7 +240,7 @@ EXAMPLES = [
      ("Lệnh, nút bấm, dữ liệu nút theo tiền tố và regex, sửa tin nhắn khi bấm nút, nhắc lại tin nhắn.",
       "Commands, buttons, callbacks by prefix and regex, editing the message on press, echo.")),
     ("group-helper", "group_helper_bot.py", "group-helper-bot.mjs", "users", "fi-cyan", ("Bot quản lý nhóm", "Group helper bot"),
-     ("Chào thành viên mới, nút nội quy, tự bật chế độ chậm khi có người spam, lệnh chỉ dành cho quản trị viên nhóm (cấm, xóa tin, chế độ chậm).",
+     ("Chào thành viên mới, nút nội quy, tự bật chế độ chậm khi có người spam, lệnh chỉ dành cho quản trị viên nhóm (cấm, xoá tin, chế độ chậm).",
       "Welcomes new members, a rules button, automatic slow mode on spam, group-admin-only commands (ban, purge, slow mode).")),
     ("team-tasks", "team_tasks_bot.py", "team-tasks-bot.mjs", "checks", "fi-gold", ("Bot việc nhóm", "Team tasks bot"),
      ("Danh sách việc bằng /todo, nhắc hẹn bằng /remind, chúc mừng khi xong việc, danh sách stand-up lúc 9:00 mỗi ngày.",
@@ -299,9 +299,9 @@ def build(head_for, foot, I, code):
     build_overview(head_for, foot, I, code, version)
     for slug, nav, icon, badge, lead, desc in [
         ("quickstart", "quickstart", "sparkles", ("5 phút", "5 minutes"),
-         ("Từ token BotFather đến lệnh đầu tiên của bot trong 5 phút.", "From a BotFather token to your bot's first command in 5 minutes."),
-         ("Tạo bot Lumora đầu tiên trong 5 phút: lấy token từ BotFather, cài SDK Python hoặc JavaScript, chạy và gửi /start.",
-          "Build your first Lumora bot in 5 minutes: get a token from BotFather, install the Python or JavaScript SDK, run it and send /start.")),
+         ("Từ token Xưởng Bot đến lệnh đầu tiên của bot trong 5 phút.", "From a Bot Studio token to your bot's first command in 5 minutes."),
+         ("Tạo bot Lumora đầu tiên trong 5 phút: lấy token từ Xưởng Bot, cài SDK Python hoặc JavaScript, chạy và gửi /start.",
+          "Build your first Lumora bot in 5 minutes: get a token from Bot Studio, install the Python or JavaScript SDK, run it and send /start.")),
         ("guides", "guides", "compass", ("Hướng dẫn theo tính năng", "Feature guides"),
          ("Ví dụ chép-dán cho từng tính năng, Python và JavaScript.", "Copy-paste examples for every feature, in Python and JavaScript."),
          ("Hướng dẫn tạo bot Lumora: lệnh, nút bấm, nhóm và chế độ riêng tư, quyền, lưu trữ, tệp, danh sách việc, nhắc hẹn, gửi theo lịch, xử lý lỗi.",
@@ -455,7 +455,7 @@ await bot.run();'''
               f'<div role="tabpanel" id="panel-{n}-1" aria-labelledby="tab-{n}-1" class="tabs__panel">{code(js, "js")}</div></div>')
     docs = [
         ("/developers/quickstart/", "sparkles", "fi-violet", ("Bắt đầu nhanh", "Quickstart"),
-         ("Token BotFather → chạy → lệnh đầu tiên trong 5 phút.", "BotFather token → run → first command in 5 minutes.")),
+         ("Token Xưởng Bot → chạy → lệnh đầu tiên trong 5 phút.", "Bot Studio token → run → first command in 5 minutes.")),
         ("/developers/guides/", "compass", "fi-cyan", ("Hướng dẫn", "Guides"),
          ("Nút bấm, nhóm, quyền, lưu trữ, tệp, danh sách việc, nhắc hẹn, gửi theo lịch, lỗi.",
           "Buttons, groups, permissions, storage, files, checklists, reminders, broadcasts, errors.")),
@@ -520,10 +520,10 @@ await bot.run();'''
       <div class="grid-2 grid-2--gap dev-intro">
         <div>
           <h2 class="sub-h">{bi("Một bot, vài dòng mã", "A bot in a few lines")}</h2>
-          <p class="sub-p">{bi("Bot là một tài khoản Lumora do đoạn mã của bạn điều khiển. Người dùng tìm bot bằng @tên, trò chuyện như với bạn bè; tin nhắn được mã hóa đầu cuối. Không cần thuê máy chủ, không tốn phí: bot chạy ngay trên máy tính của bạn qua Lumora Bot Runner.",
+          <p class="sub-p">{bi("Bot là một tài khoản Lumora do đoạn mã của bạn điều khiển. Người dùng tìm bot bằng @tên, trò chuyện như với bạn bè; tin nhắn được mã hoá đầu cuối. Không cần thuê máy chủ, không tốn phí: bot chạy ngay trên máy tính của bạn qua Lumora Bot Runner.",
                                 "A bot is a Lumora account controlled by your code. People find it by @username and chat with it like with a friend; messages are end-to-end encrypted. No server to rent, no fees: the bot runs on your own computer through Lumora Bot Runner.")}</p>
           <ol class="flow-list">
-            <li>{bi("Tạo bot với @BotFather trong ứng dụng và lấy token.", "Create the bot with @BotFather in the app and get a token.")}</li>
+            <li>{bi("Tạo bot trong Xưởng Bot của ứng dụng và lấy token.", "Create the bot in the app's Bot Studio and get a token.")}</li>
             <li>{bi("Cài SDK Python hoặc JavaScript và tải Lumora Bot Runner.", "Install the Python or JavaScript SDK and get Lumora Bot Runner.")}</li>
             <li>{bi("Đặt token vào LUMORA_BOT_TOKEN, chạy bot, gửi /start.", "Put the token in LUMORA_BOT_TOKEN, run the bot, send /start.")}</li>
           </ol>
@@ -542,8 +542,8 @@ await bot.run();'''
         <span class="feature__icon fi-gold">{I("key-off")}</span>
         <div>
           <h3>{bi("Giữ token bí mật", "Keep your token secret")}</h3>
-          <p class="sub-p">{bi("Ai có token là điều khiển được bot của bạn. Đừng đưa token vào mã nguồn công khai. Nếu lỡ lộ, thu hồi trong BotFather (/mybots → Thu hồi mã) và chạy token mới với một thư mục dữ liệu mới.",
-                               "Whoever has the token controls your bot. Never put it in public code. If it leaks, revoke it in BotFather (/mybots → Revoke token) and run the new token with a new data folder.")}</p>
+          <p class="sub-p">{bi("Ai có token là điều khiển được bot của bạn. Đừng đưa token vào mã nguồn công khai. Nếu lỡ lộ, thu hồi trong Xưởng Bot (/mybots → Thu hồi mã) và chạy token mới với một thư mục dữ liệu mới.",
+                               "Whoever has the token controls your bot. Never put it in public code. If it leaks, revoke it in Bot Studio (/mybots → Revoke token) and run the new token with a new data folder.")}</p>
         </div>
       </div>
 
@@ -562,11 +562,11 @@ await bot.run();'''
   </section>
 '''
     head = head_for("developers", "/developers/", "Nhà phát triển — Tạo bot cho Lumora",
-                    "Tạo bot cho Lumora: BotFather, Lumora Bot Runner và SDK Python/JavaScript. Nút bấm, nhóm, tệp, danh sách việc, nhắc hẹn. Không cần thuê máy chủ, miễn phí.",
+                    "Tạo bot cho Lumora: Xưởng Bot, Lumora Bot Runner và SDK Python/JavaScript. Nút bấm, nhóm, tệp, danh sách việc, nhắc hẹn. Không cần thuê máy chủ, miễn phí.",
                     og_title="Tạo bot cho Lumora — Lumora Developers", dev_js=True)
     head = head.replace('data-page="developers"',
                         'data-page="developers" data-title-en="Developers — Build a Lumora bot" '
-                        'data-desc-en="Build Lumora bots with BotFather, Lumora Bot Runner and the Python/JavaScript SDK: buttons, groups, files, checklists, reminders. No server to rent, free."', 1)
+                        'data-desc-en="Build Lumora bots with Bot Studio, Lumora Bot Runner and the Python/JavaScript SDK: buttons, groups, files, checklists, reminders. No server to rent, free."', 1)
     main = f'''<main id="main">
   <section class="page-head page-head--docs">
     <div class="container">

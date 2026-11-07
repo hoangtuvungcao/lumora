@@ -1,4 +1,4 @@
-//! "BotFather": users create child bots inside the app (like Telegram's @BotFather).
+//! Bot Studio (internal name `botfather`): users create child bots inside the app.
 //!
 //! A bot is its own identity. Its *token* bundles the bot's secret key plus an ownership
 //! proof signed by the creator, so every client can show "Bot by @owner" and nobody can

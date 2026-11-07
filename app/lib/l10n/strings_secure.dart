@@ -64,7 +64,7 @@ const Map<String, List<String>> kSecureStrings = {
   'phrase_done': ['Xong', 'Done'],
 
   // ------------------------------------------------------- startup lock
-  'sec_locked_sub': ['Nhập mật khẩu để mở dữ liệu trên máy này.', 'Enter your password to open your data on this device.'],
+  'sec_locked_sub': ['Nhập mật khẩu để mở dữ liệu trên thiết bị này.', 'Enter your password to open your data on this device.'],
   'sec_password_hint': ['Mật khẩu của bạn', 'Your password'],
 
   // ------------------------------------------------- forgot data password
@@ -75,18 +75,18 @@ const Map<String, List<String>> kSecureStrings = {
   'sec_fp_file_sub': ['Chọn tệp sao lưu và nhập mật khẩu của tệp', 'Pick your backup file and enter its password'],
   'sec_fp_retry': ['Thử lại', 'Try again'],
   'sec_fp_retry_sub': ['Có thể bạn sẽ nhớ ra — quay lại và nhập lần nữa', 'It may come back to you — go back and try once more'],
-  'sec_fp_more': ['Tin nhắn cũ trên máy này thì sao?', 'What happens to messages on this device?'],
+  'sec_fp_more': ['Tin nhắn cũ trên thiết bị này thì sao?', 'What happens to messages on this device?'],
   'sec_fp_phrase_title': ['Nhập cụm từ khôi phục', 'Enter your recovery phrase'],
   'sec_fp_phrase_head': ['Gõ 24 từ theo đúng thứ tự, hoặc dán cả cụm.', 'Type the 24 words in order, or paste the whole phrase.'],
   'sec_fp_file_title': ['Khôi phục từ tệp', 'Restore from a file'],
 
   // ------------------------------------------------- passphrase dialog
-  'sec_pp_sub': ['Bạn sẽ nhập mật khẩu này mỗi lần mở Lumora trên máy này.', 'You’ll enter it each time Lumora opens on this device.'],
+  'sec_pp_sub': ['Bạn sẽ nhập mật khẩu này mỗi lần mở Lumora trên thiết bị này.', 'You’ll enter it each time Lumora opens on this device.'],
   'sec_pp_note': ['Nếu quên, chỉ cụm từ khôi phục hoặc tệp sao lưu giúp bạn vào lại.', 'If you forget it, only your recovery phrase or a backup file can get you back in.'],
   'sec_pp_save': ['Lưu mật khẩu', 'Save passphrase'],
 
   // ------------------------------------------------------------- backup
-  'sec_bk_sub': ['Một tệp được khoá bằng mật khẩu, dùng khi chuyển sang máy mới.', 'A password-locked file for moving to a new device.'],
+  'sec_bk_sub': ['Một tệp được khoá bằng mật khẩu, dùng khi chuyển sang thiết bị mới.', 'A password-locked file for moving to a new device.'],
 
   // ------------------------------------------------------------ restore
   'sec_restore_sub': ['Chọn cách bạn đã cất giữ tài khoản.', 'Choose how you saved your account.'],

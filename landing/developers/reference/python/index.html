@@ -111,10 +111,10 @@
 <p>A Lumora bot.</p>
 <p><strong>Parameters</strong></p>
 <ul>
-<li><code>name</code>: Display name for a bot made without BotFather (testing). Not needed with a token.</li>
+<li><code>name</code>: Display name for a bot made without Bot Studio (testing). Not needed with a token.</li>
 <li><code>data_dir</code>: Folder for the bot's identity, messages, storage and downloads. Keep it private and back it up; one folder per bot.</li>
 <li><code>binary</code>: Path to <code>lumorad</code> (default: <code>$LUMORAD</code>, then <code>lumorad</code> on <code>PATH</code>).</li>
-<li><code>token</code>: BotFather token (default: <code>$LUMORA_BOT_TOKEN</code>). Never hard-code it in public code.</li>
+<li><code>token</code>: Bot Studio token (default: <code>$LUMORA_BOT_TOKEN</code>). Never hard-code it in public code.</li>
 <li><code>about</code>: Short description shown on the bot's profile.</li>
 <li><code>lan</code>: Also find users on the local network.</li>
 <li><code>public_directory</code>: Let people find the bot by ID / <code>@name</code> (turn off for tests).</li>
@@ -963,7 +963,7 @@ Conversation ids are returned unchanged.</p>
 <p>True for group / community channel conversations (<code>g:…</code>).</p>
 <h4 id="is-blocked-command"><code>is_blocked_command(cmd: str)</code></h4>
 <p>True when <code>cmd</code> is a core command bots may not use (remote control, recovery
-phrase, backups, passwords, calls, BotFather management).</p>
+phrase, backups, passwords, calls, Bot Studio management).</p>
 <h2 id="constants">Constants</h2>
 <div class="table-wrap"><table class="table table--api">
 <thead>
@@ -1050,6 +1050,8 @@ phrase, backups, passwords, calls, BotFather management).</p>
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

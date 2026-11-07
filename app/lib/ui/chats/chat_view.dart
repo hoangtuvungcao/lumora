@@ -8,6 +8,7 @@ import '../../l10n/strings.dart';
 import '../../state/app_lock.dart';
 import '../../state/moderation.dart';
 import '../../state/stores.dart';
+import '../../state/community.dart';
 import '../lock/app_lock_screen.dart' show LockedChatGate, toggleChatLock;
 import 'delete_dialogs.dart';
 import 'report_dialogs.dart';
@@ -21,6 +22,8 @@ import 'attachments.dart';
 import 'chat_info.dart';
 import '../settings/blocked_screen.dart';
 import '../groups/group_safety.dart';
+import '../calls/group_call.dart' show GroupCallBanner;
+import '../groups/community/community_gate.dart';
 import 'forward_sheet.dart';
 import 'wallpaper.dart';
 import 'composer.dart';
@@ -78,13 +81,19 @@ class _ChatViewState extends State<ChatView> {
 
   void _toggleSelect(Message m) => setState(() => _selected.contains(m.id) ? _selected.remove(m.id) : _selected.add(m.id));
 
-  Future<void> _forward(List<Message> msgs) async {
+  Future<void> _forward(List<Message> all) async {
     final s = S.read(context);
     final chat = context.read<ChatStore>();
-    final to = await pickConversation(context, title: s('forward_to'));
+    // self-destructing messages are never forwarded
+    final msgs = all.where((m) => !m.selfDestructs && !m.deleted).toList();
+    if (msgs.isEmpty) {
+      toast(context, s('ttl_no_forward'));
+      return;
+    }
+    final to = await pickForwardTarget(context, title: s('forward_to'));
     if (to == null) return;
     for (final m in msgs) {
-      await chat.forward(m, to);
+      await chat.forward(m, to.conv, hideSender: to.hideSender);
     }
     if (mounted) {
       setState(_selected.clear);
@@ -146,6 +155,8 @@ class _ChatViewState extends State<ChatView> {
       // event says so live)
       final gid = widget.conv.substring(2).split('#').first;
       context.read<LumoraApi>().groupInfo(gid).then((g) => _chats.onGroup(gid, member: g.myRole != 'none')).catchError((_) {});
+      // who has read what so far (kept across restarts by the core)
+      _chats.loadGroupReads(widget.conv);
     }
     context.read<ChatStore>().loadWallpaper(widget.conv);
     _thread.addListener(_onThread);
@@ -276,6 +287,8 @@ class _ChatViewState extends State<ChatView> {
                   )
                 : _ChatHeader(key: const ValueKey('hdr'), conv: widget.conv, channelName: widget.channelName, embedded: widget.embedded),
           ),
+        // a plain group call that didn't ring me: "Join"
+        if (!widget.bare && widget.conv.startsWith('g:')) GroupCallBanner(conv: widget.conv),
         if (!widget.bare)
           _PinnedBar(
             conv: widget.conv,
@@ -362,7 +375,7 @@ class _ChatViewState extends State<ChatView> {
           child: _BotStartOr(
             conv: widget.conv,
             thread: _thread,
-            child: Composer(conv: widget.conv, controller: _composer, onSent: _toBottom),
+            child: CommunityComposerGate(conv: widget.conv, child: Composer(conv: widget.conv, controller: _composer, onSent: _toBottom)),
           ),
         ),
         ),
@@ -397,14 +410,15 @@ class _ChatViewState extends State<ChatView> {
     final isGroup = widget.conv.startsWith('g:');
     _hidden = isGroup ? context.select<ModerationStore, Set<String>>((x) => x.hiddenMembers) : const {};
     return ListenableBuilder(
-      listenable: _thread,
+      // (groups: my permissions — pin — can change while the chat is open)
+      listenable: isGroup ? Listenable.merge([_thread, CommunityStore.of(context.read<LumoraApi>())]) : _thread,
       builder: (context, _) {
         if (!_thread.loaded) return const _Skeleton();
         final entries = _entries(_thread.messages, _thread.hasMore);
         final actions = BubbleActions(
           onReply: _composer.reply,
           onEdit: _composer.edit,
-          onDelete: (m) => askDeleteMessage(context, widget.conv, m),
+          onDelete: (m) => askDeleteMessage(context, widget.conv, m, moderator: canModerateMessages(context, widget.conv)),
           onReport: isGroup
               ? (m) => reportGroupContent(context,
                   gid: widget.conv.substring(2).split('#').first, peer: m.author, name: context.read<ContactsStore>().nameOf(m.author), message: m)
@@ -417,6 +431,7 @@ class _ChatViewState extends State<ChatView> {
           onSelect: _toggleSelect,
           onVote: (m, i) => context.read<ChatStore>().vote(widget.conv, m, i, me),
           selecting: _selecting,
+          canPin: !isGroup || convCan(context, widget.conv, Perm.pin),
         );
         return Scrollbar(
           controller: _scroll,
@@ -477,15 +492,14 @@ class _ChatHeader extends StatelessWidget {
     final c = context.select<ChatStore, Conversation?>((ch) => ch.convs[conv]);
     final peer = conv.startsWith('d:') ? conv.substring(2) : null;
     final contact = peer == null ? null : context.select<ContactsStore, Contact?>((x) => x[peer]);
-    final calls = context.read<CallStore>();
-    final title = channelName != null ? channelName! : (conv == 's:me' ? s('saved_messages') : (c?.title ?? contact?.displayName ?? ''));
+    final title = channelName != null ? channelName! : (conv == 's:me' ? s('saved_messages') : (c?.title.isNotEmpty == true ? c!.title : (contact?.displayName ?? (peer != null ? context.read<ContactsStore>().nameOf(peer) : (c?.title ?? '')))));
     final desktop = isDesktop(context);
 
     Widget subtitle;
     if (conv == 's:me') {
       subtitle = Text(s('saved_messages_hint'));
     } else if (channelName != null) {
-      subtitle = Text(s('channel_e2e'));
+      subtitle = ChannelTopic(conv: conv, fallback: s('channel_e2e'));
     } else if (contact != null && contact.isBot) {
       final owner = contact.bot!.owner;
       subtitle = Row(
@@ -538,7 +552,8 @@ class _ChatHeader extends StatelessWidget {
         children: [
           const Icon(AppIcons.lock, size: 12, color: LC.success),
           const SizedBox(width: 4),
-          Flexible(child: Text(s('group_e2e'))),
+          // a direct chat with someone not in my contacts is not a group
+          Flexible(child: Text(s(peer != null ? 'e2e_short' : 'group_e2e'))),
         ],
       );
     }
@@ -583,8 +598,8 @@ class _ChatHeader extends StatelessWidget {
       subtitle: subtitle,
       actions: [
         if (channelName == null && conv != 's:me' && !narrow) ...[
-          ToolButton(icon: AppIcons.call, tooltip: s('voice_call'), onPressed: () => calls.start(conv)),
-          ToolButton(icon: AppIcons.video, tooltip: s('video_call'), onPressed: () => calls.start(conv, video: true)),
+          ToolButton(icon: AppIcons.call, tooltip: s('voice_call'), onPressed: () => Flows.call(context, conv)),
+          ToolButton(icon: AppIcons.video, tooltip: s('video_call'), onPressed: () => Flows.call(context, conv, video: true)),
         ],
         PopupMenuButton<String>(
           tooltip: s('more'),
@@ -849,7 +864,7 @@ class _SelectionBar extends StatelessWidget {
   }
 }
 
-/// Telegram-style pinned message bar under the header.
+/// Pinned message bar under the header.
 class _PinnedBar extends StatelessWidget {
   const _PinnedBar({required this.conv, required this.index, required this.onTap});
   final String conv;

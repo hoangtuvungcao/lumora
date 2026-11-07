@@ -22,6 +22,7 @@ import 'message_bubble.dart' show canEditMessage;
 import 'task_sheets.dart';
 import 'emoji_picker.dart';
 import 'forward_sheet.dart';
+import '../groups/community/community_gate.dart' show PermGate;
 import '../widgets/peer_avatar.dart';
 import '../../core/text_fold.dart';
 
@@ -295,6 +296,9 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
   List<GroupMember> _members = const [];
   List<String> _groupBots = const [];
 
+  /// `@all` needs the `mention_everyone` permission (the core strips it otherwise).
+  bool _mayMentionAll = false;
+
   /// Bot commands available here: the bot's own commands in a 1-1 chat,
   /// `group_commands` of the group's bots in groups.
   List<(String, String, String?)> _botCommands() {
@@ -332,6 +336,7 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
         setState(() {
           _members = g.members;
           _groupBots = g.bots.map((b) => b.$1).toList();
+          _mayMentionAll = g.can(Perm.mentionEveryone);
         });
       }
     } catch (_) {}
@@ -503,7 +508,7 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
     final me = context.read<SessionStore>().me?.peer;
     final contacts = context.read<ContactsStore>();
     final out = <(String, String?)>[];
-    if ('all'.startsWith(q) || 'moi'.startsWith(q)) out.add(('all', null));
+    if (_mayMentionAll && ('all'.startsWith(q) || 'moi'.startsWith(q))) out.add(('all', null));
     for (final m in _members) {
       if (m.peer == me) continue;
       final name = contacts[m.peer]?.displayName ?? m.name;
@@ -895,8 +900,11 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            _RoundIcon(icon: AppIcons.add, tooltip: s('attach'), onTap: _attachMenu),
-                            const SizedBox(width: 6),
+                            PermGate(
+                              conv: widget.conv,
+                              perm: Perm.sendMedia,
+                              child: Padding(padding: const EdgeInsets.only(right: 6), child: _RoundIcon(icon: AppIcons.add, tooltip: s('attach'), onTap: _attachMenu)),
+                            ),
                             Expanded(
                               child: Container(
                                 decoration: BoxDecoration(color: lc.surface2, borderRadius: BorderRadius.circular(22)),

@@ -32,27 +32,90 @@ class CallLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Android picture-in-picture comes from the system (MainActivity →
+    // AndroidBridge.pip, never set off Android), not from the window size: a
+    // small desktop window, split screen or a foldable's cover screen keeps
+    // the full call screen and its hang-up.
+    return ValueListenableBuilder<bool>(
+      valueListenable: AndroidBridge.pip,
+      builder: (context, pip, _) => _layer(context, pip: pip),
+    );
+  }
+
+  Widget _layer(BuildContext context, {required bool pip}) {
     final phase = context.select<CallStore, CallPhase?>((c) => c.call?.phase);
     final minimized = context.select<CallStore, bool>((c) => c.minimized);
     final ready = context.select<SessionStore, bool>((s) => s.phase == SessionPhase.ready);
     if (phase == null || !ready) return const SizedBox.shrink();
     if (phase == CallPhase.incoming) return const Positioned.fill(child: LayerHost(key: ValueKey('incoming'), child: IncomingCallOverlay()));
     // Android picture-in-picture (Lumora left during a video call): a tiny window — the
-    // other person's video only, no controls.
-    final size = MediaQuery.sizeOf(context);
+    // other person's video only, no controls (the system's PiP window has its own).
     final video = context.select<CallStore, bool>((c) => c.call?.video ?? false);
-    if (video && phase == CallPhase.active && size.shortestSide > 0 && size.shortestSide < 260) {
-      return const Positioned.fill(child: _PipVideo());
+    if (pip && video && phase == CallPhase.active) {
+      return const Positioned.fill(child: _PipVideo(key: ValueKey('pip_video')));
     }
-    // A minimised video call: a small floating video window (Messenger-style), voice: the pill.
+    // A minimised video call: a small floating video window, voice: the pill.
     if (minimized && video && phase == CallPhase.active) return const _FloatingVideo();
     // Below the status bar: Android hands touches there to the system (pull-down
     // shade), so the pill and its hang-up button could not be tapped on phones.
-    if (minimized) return Positioned(top: math.max(12, MediaQuery.paddingOf(context).top + 6), left: 0, right: 0, child: const Center(child: _CallPill()));
+    // Desktop: the pill has its own strip above the app ([CallPillFrame]) — floating, it
+    // covered what sits at the top of the content (a voice channel's "N in voice" line).
+    if (minimized && isDesktop(context)) return const SizedBox.shrink();
+    if (minimized) return Positioned(top: math.max(12, MediaQuery.paddingOf(context).top + 6), left: 12, right: 12, child: const Center(child: _CallPill()));
     // Back on the call screen (nothing open on it): back to the app, the call
     // goes on in the pill — not Lumora sent to the background.
     return const Positioned.fill(child: LayerHost(key: ValueKey('call'), onBack: _minimizeCall, child: CallScreen()));
   }
+}
+
+/// Desktop: while a voice call is minimised its pill sits in a strip of its own
+/// above the app, which moves down to make room — it never covers content.
+/// (Phones keep the floating pill below the status bar, [CallLayer].)
+class CallPillFrame extends StatelessWidget {
+  const CallPillFrame({super.key, required this.child});
+  final Widget child;
+
+  static const double height = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    final phase = context.select<CallStore, CallPhase?>((c) => c.call?.phase);
+    final minimized = context.select<CallStore, bool>((c) => c.minimized);
+    final video = context.select<CallStore, bool>((c) => c.call?.video ?? false);
+    final ready = context.select<SessionStore, bool>((s) => s.phase == SessionPhase.ready);
+    // the same cases as CallLayer's pill (a minimised active video call floats instead)
+    final shown = ready && minimized && phase != null && phase != CallPhase.incoming && !(video && phase == CallPhase.active) && isDesktop(context);
+    // the child keeps its tree depth either way (the app below never loses its state)
+    return Column(children: [
+      AnimatedSize(
+        duration: Motion.normal,
+        curve: Motion.curve,
+        alignment: Alignment.topCenter,
+        child: !shown
+            ? const SizedBox(width: double.infinity)
+            : Container(
+                key: const ValueKey('call_pill_strip'),
+                width: double.infinity,
+                height: height + MediaQuery.paddingOf(context).top,
+                padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
+                decoration: BoxDecoration(color: context.lc.surface, border: Border(bottom: BorderSide(color: context.lc.divider))),
+                alignment: Alignment.center,
+                child: const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: _CallPill(dense: true)),
+              ),
+      ),
+      Expanded(child: MediaQuery.removePadding(context: context, removeTop: shown, child: child)),
+    ]);
+  }
+}
+
+/// The name of a group call: the group's, or for a community voice room
+/// "channel · community".
+String groupCallTitle(BuildContext context, CallState call) {
+  final t = context.read<ChatStore>().convs[call.conv]?.title ?? '';
+  if (t.isNotEmpty && !call.room) return t;
+  final ch = context.read<SpacesStore>().channelOf(call.conv);
+  if (ch != null) return '${ch.$2.name} · ${ch.$1.name}';
+  return t;
 }
 
 bool _minimizeCall(BuildContext context) {
@@ -317,9 +380,8 @@ class CallScreen extends StatelessWidget {
     if (call == null) return const SizedBox.shrink();
     final me = context.read<SessionStore>().me;
     final contacts = context.read<ContactsStore>();
-    final chat = context.read<ChatStore>();
     final group = call.conv.startsWith('g:');
-    final title = group ? (chat.convs[call.conv]?.title ?? '') : contacts.nameOf(call.peer);
+    final title = group ? groupCallTitle(context, call) : contacts.nameOf(call.peer);
     final active = call.phase == CallPhase.active;
     final beauty = context.select<Settings, int>((x) => x.videoBeauty) > 0;
     final cam = _cameraOf(context);
@@ -843,27 +905,32 @@ class _Tile extends StatelessWidget {
 }
 
 class _CallPill extends StatelessWidget {
-  const _CallPill();
+  const _CallPill({this.dense = false});
+
+  /// In the desktop strip ([CallPillFrame]): flat and slimmer.
+  final bool dense;
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
     final store = context.watch<CallStore>();
     final call = store.call!;
     final contacts = context.read<ContactsStore>();
-    final name = call.conv.startsWith('g:') ? (context.read<ChatStore>().convs[call.conv]?.title ?? '') : contacts.nameOf(call.peer);
+    final name = call.conv.startsWith('g:') ? groupCallTitle(context, call) : contacts.nameOf(call.peer);
     return Material(
       color: LC.success,
       borderRadius: BorderRadius.circular(24),
-      elevation: 6,
+      elevation: dense ? 0 : 6,
       child: InkWell(
+        key: const ValueKey('call_pill'),
         borderRadius: BorderRadius.circular(24),
         onTap: () => store.setMinimized(false),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+          padding: dense ? const EdgeInsets.fromLTRB(14, 4, 4, 4) : const EdgeInsets.fromLTRB(14, 8, 8, 8),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             const Icon(AppIcons.call, color: Colors.white, size: 18),
             const SizedBox(width: 8),
-            Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            // a long name ("channel · community") shortens, the hang-up stays on screen
+            Flexible(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
             const SizedBox(width: 8),
             if (call.startedAt != null)
               ElapsedText(since: call.startedAt!, format: s.duration, style: const TextStyle(color: Colors.white70))
@@ -1150,7 +1217,7 @@ class _RemoteVideo extends StatelessWidget {
 }
 
 class _PipVideo extends StatelessWidget {
-  const _PipVideo();
+  const _PipVideo({super.key});
   @override
   Widget build(BuildContext context) => const _RemoteVideo();
 }

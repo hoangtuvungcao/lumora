@@ -14,6 +14,7 @@ import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/peer_avatar.dart';
+import 'story_audience.dart';
 import 'wallpaper.dart';
 
 const _storyBgs = ['aurora', 'sunset', 'ocean', 'mint', 'sakura', 'lavender'];
@@ -318,9 +319,28 @@ class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStat
           top: false,
           child: mine
               ? Row(children: [
-                  const Icon(AppIcons.show, color: Colors.white70, size: 18),
-                  const SizedBox(width: 6),
-                  Text(s('n_views', {'n': st.views}), style: const TextStyle(color: Colors.white)),
+                  // live: `story_view` events raise the count while it is open
+                  Builder(builder: (context) {
+                    final views = context.select<StoryStore, int>((x) => x.stories.where((e) => e.id == st.id).firstOrNull?.views ?? st.views);
+                    return InkWell(
+                      key: const ValueKey('story_views'),
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () async {
+                        _progress.stop();
+                        await showStoryViewers(context, st.id);
+                        if (mounted) _progress.forward();
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(AppIcons.show, color: Colors.white70, size: 18),
+                          const SizedBox(width: 6),
+                          Text(s('n_views', {'n': views}), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                          const Icon(AppIcons.chevronRight, color: Colors.white70, size: 16),
+                        ]),
+                      ),
+                    );
+                  }),
                   const Spacer(),
                   IconButton(
                     tooltip: s('story_archive'),
@@ -374,10 +394,7 @@ class _StoryViewerState extends State<StoryViewer> with SingleTickerProviderStat
         child: Focus(
           autofocus: true,
           child: Center(
-            child: AspectRatio(
-              aspectRatio: width > 700 ? 9 / 16 : MediaQuery.sizeOf(context).aspectRatio,
-              child: ClipRRect(borderRadius: BorderRadius.circular(width > 700 ? Radii.lg : 0), child: content),
-            ),
+            child: _StoryFrame(child: ClipRRect(borderRadius: BorderRadius.circular(width > 700 ? Radii.lg : 0), child: content)),
           ),
         ),
       ),
@@ -400,6 +417,19 @@ class _StoryComposerState extends State<StoryComposer> {
   String _bg = 'aurora';
   String? _imagePath;
   bool _busy = false;
+  String _audience = kStoryFriends;
+
+  @override
+  void initState() {
+    super.initState();
+    final st = context.read<StoryStore>();
+    if (!st.audienceLoaded) st.loadAudience();
+  }
+
+  Future<void> _pickAudience() async {
+    final a = await showStoryAudienceSheet(context, _audience);
+    if (a != null && mounted) setState(() => _audience = a);
+  }
 
   @override
   void dispose() {
@@ -410,7 +440,7 @@ class _StoryComposerState extends State<StoryComposer> {
   Future<void> _post() async {
     setState(() => _busy = true);
     try {
-      await context.read<StoryStore>().post(text: _text.text.trim().isEmpty ? null : _text.text.trim(), imagePath: _imagePath, bg: _bg);
+      await context.read<StoryStore>().post(text: _text.text.trim().isEmpty ? null : _text.text.trim(), imagePath: _imagePath, bg: _bg, audience: _audience);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) toastError(context, e);
@@ -425,8 +455,7 @@ class _StoryComposerState extends State<StoryComposer> {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Center(
-          child: AspectRatio(
-            aspectRatio: MediaQuery.sizeOf(context).width > 700 ? 9 / 16 : MediaQuery.sizeOf(context).aspectRatio,
+          child: _StoryFrame(
             child: Stack(fit: StackFit.expand, children: [
               WallpaperBackground(spec: WallpaperSpec.parse(_bg)!),
               if (_imagePath != null) Image(image: ResizeImage(FileImage(File(_imagePath!)), width: 1080), fit: BoxFit.cover),
@@ -472,6 +501,12 @@ class _StoryComposerState extends State<StoryComposer> {
               Positioned(
                 left: 12,
                 right: 12,
+                bottom: 56,
+                child: Align(alignment: Alignment.centerLeft, child: _AudienceChip(audience: _audience, onTap: _busy ? null : _pickAudience)),
+              ),
+              Positioned(
+                left: 12,
+                right: 12,
                 bottom: 12,
                 child: Row(children: [
                   for (final b in _storyBgs)
@@ -502,6 +537,48 @@ class _StoryComposerState extends State<StoryComposer> {
   }
 }
 
+
+/// The story card: a 9:16 card on wide screens; the whole screen on phones, so
+/// an open keyboard (reply / composer text) shortens it instead of narrowing it
+/// and pushing the bottom row out of the screen.
+class _StoryFrame extends StatelessWidget {
+  const _StoryFrame({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) =>
+      MediaQuery.sizeOf(context).width > 700 ? AspectRatio(aspectRatio: 9 / 16, child: child) : SizedBox.expand(child: child);
+}
+
+/// "Bạn bè ▾" / "Bạn thân ▾" over the composer: who the new Khoảnh khắc goes to.
+class _AudienceChip extends StatelessWidget {
+  const _AudienceChip({required this.audience, required this.onTap});
+  final String audience;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final close = audience == kStoryClose;
+    return Material(
+      key: const ValueKey('story_audience_chip'),
+      color: close ? LC.success.withValues(alpha: 0.85) : Colors.black.withValues(alpha: 0.35),
+      shape: const StadiumBorder(side: BorderSide(color: Colors.white54)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(close ? AppIcons.sparkle : AppIcons.friends, color: Colors.white, size: 16),
+            const SizedBox(width: 6),
+            Text(close ? s('mo_aud_close') : s('mo_aud_friends'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 2),
+            const Icon(AppIcons.chevronDown, color: Colors.white, size: 16),
+          ]),
+        ),
+      ),
+    );
+  }
+}
 
 Future<bool> confirmStoryDelete(BuildContext context) {
   final s = S.read(context);
@@ -641,6 +718,94 @@ class _ArchiveTile extends StatelessWidget {
             ),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+/// Who saw my story [id] and when (from the core; reloads as new views come in).
+Future<void> showStoryViewers(BuildContext context, String id) => showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      constraints: const BoxConstraints(maxWidth: 480),
+      builder: (_) => _StoryViewersSheet(id: id),
+    );
+
+class _StoryViewersSheet extends StatefulWidget {
+  const _StoryViewersSheet({required this.id});
+  final String id;
+  @override
+  State<_StoryViewersSheet> createState() => _StoryViewersSheetState();
+}
+
+class _StoryViewersSheetState extends State<_StoryViewersSheet> {
+  List<StoryView>? _list;
+  late final StoryStore _store = context.read<StoryStore>();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _store.viewTick.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    _store.viewTick.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final l = await _store.viewers(widget.id);
+      if (mounted) setState(() => _list = l.reversed.toList()); // newest first
+    } catch (_) {
+      if (mounted) setState(() => _list ??= const []);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final contacts = context.watch<ContactsStore>();
+    final list = _list;
+    final now = DateTime.now();
+    String when(int ts) {
+      if (ts <= 0) return '';
+      final ago = now.difference(DateTime.fromMillisecondsSinceEpoch(ts));
+      if (ago.inMinutes < 1) return s('story_viewed_now');
+      return ago.inHours > 0 ? s('hours_ago', {'n': ago.inHours}) : s('minutes_ago', {'n': ago.inMinutes});
+    }
+
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.7),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+            child: Row(children: [
+              Expanded(child: Text(s('story_viewers'), style: context.tt.titleMedium)),
+              if (list != null) Text(s('n_views', {'n': list.length}), style: context.tt.bodySmall),
+            ]),
+          ),
+          if (list == null)
+            const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+          else if (list.isEmpty)
+            Padding(padding: const EdgeInsets.all(24), child: Text(s('story_no_viewers'), textAlign: TextAlign.center, style: context.tt.bodySmall))
+          else
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                for (final v in list)
+                  ListTile(
+                    leading: PeerAvatar(peer: v.peer, size: 36, presence: false),
+                    title: Text(contacts[v.peer] != null || v.name.isEmpty ? contacts.nameOf(v.peer) : v.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: v.ts > 0 ? Text(when(v.ts), style: context.tt.bodySmall) : null,
+                  ),
+              ]),
+            ),
+          const SizedBox(height: 8),
+        ]),
       ),
     );
   }

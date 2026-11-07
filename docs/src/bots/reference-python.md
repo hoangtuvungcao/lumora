@@ -38,10 +38,10 @@ A Lumora bot.
 
 **Parameters**
 
-- `name`: Display name for a bot made without BotFather (testing). Not needed with a token.
+- `name`: Display name for a bot made without Bot Studio (testing). Not needed with a token.
 - `data_dir`: Folder for the bot's identity, messages, storage and downloads. Keep it private and back it up; one folder per bot.
 - `binary`: Path to `lumorad` (default: `$LUMORAD`, then `lumorad` on `PATH`).
-- `token`: BotFather token (default: `$LUMORA_BOT_TOKEN`). Never hard-code it in public code.
+- `token`: Bot Studio token (default: `$LUMORA_BOT_TOKEN`). Never hard-code it in public code.
 - `about`: Short description shown on the bot's profile.
 - `lan`: Also find users on the local network.
 - `public_directory`: Let people find the bot by ID / `@name` (turn off for tests).
@@ -882,7 +882,7 @@ True for group / community channel conversations (`g:…`).
 #### `is_blocked_command(cmd: str)` {#is-blocked-command}
 
 True when `cmd` is a core command bots may not use (remote control, recovery
-phrase, backups, passwords, calls, BotFather management).
+phrase, backups, passwords, calls, Bot Studio management).
 
 ## Constants {#constants}
 

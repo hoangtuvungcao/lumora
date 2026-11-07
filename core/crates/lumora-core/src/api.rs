@@ -65,6 +65,10 @@ async fn dispatch(node: &Arc<Node>, r: &Value) -> Result<Value> {
 
 async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
     let cmd = s(r, "cmd")?;
+    // Community 2.0: roles, channel settings, timeouts, invites (node/community.rs)
+    if let Some(v) = crate::node::community_api(node, cmd, r).await? {
+        return Ok(v);
+    }
     Ok(match cmd {
         "ping" => json!("pong"),
         "set_lang" => {
@@ -115,8 +119,12 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.devices_json()
         }
         "device_revoke" => node.device_revoke(&peer(r, "device")?, b(r, "wipe_media").or_else(|| b(r, "wipe")).unwrap_or(false)).await?,
-        "device_logout" => node.device_logout(b(r, "primary_ok").unwrap_or(false), r.get("passphrase").and_then(|x| x.as_str()).map(str::to_owned)).await?,
+        "device_logout" => node.device_logout(b(r, "primary_ok").unwrap_or(false), r.get("passphrase").and_then(|x| x.as_str()).map(str::to_owned), b(r, "wipe").unwrap_or(false)).await?,
         "device_promote" => node.device_promote(s(r, "phrase")?, r.get("passphrase").and_then(|x| x.as_str())).await?,
+        // main device: own devices missing from the list (after a restore with the recovery
+        // phrase) that asked to be listed again — the user approves or refuses each one
+        "device_relist_requests" => node.device_relist_requests(),
+        "device_relist" => node.device_relist_answer(&peer(r, "device")?, b(r, "approve").unwrap_or(false))?,
         "contact_devices" => node.contact_devices_json(&peer(r, "peer")?),
         // main device: invite a new device (it scans this QR / types this code)
         "link_invite" => node.link_invite().await?,
@@ -153,10 +161,17 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
         // the app's view of the device: metered network / battery saver → no birthday
         // spraying for relay → direct upgrades (relayed calls stay relayed)
         "set_network_hint" => {
-            let metered = r.get("metered").and_then(|x| x.as_bool()).unwrap_or(false);
+            // `network`: "wifi" | "cell" | "roaming" (roaming or a metered Wi-Fi); older apps
+            // send only `metered`
+            let net = r.get("network").and_then(|x| x.as_str()).unwrap_or("");
+            let roaming = net == "roaming" || r.get("roaming").and_then(|x| x.as_bool()).unwrap_or(false);
+            let metered = roaming || net == "cell" || r.get("metered").and_then(|x| x.as_bool()).unwrap_or(false);
             let low_battery = r.get("low_battery").and_then(|x| x.as_bool()).unwrap_or(false);
             node.set_power_saving(metered || low_battery);
-            json!({"power_saving": metered || low_battery})
+            // auto-download follows the mobile-data / roaming limits
+            node.set_metered(metered);
+            node.set_roaming(roaming);
+            json!({"power_saving": metered || low_battery, "metered": metered, "network": node.net_class().name()})
         }
         // Bonjour/DNS-SD: what to advertise (iOS does it from Swift) and sightings to add
         "lan_advert" => json!({
@@ -175,7 +190,8 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
                 list.into_iter()
                     .map(|c| {
                         let p = PeerId::from_str_any(&c.peer).ok();
-                        let online = p.map(|p| node.is_online(&p)).unwrap_or(false);
+                        // (only friends ever show online — "who sees me online")
+                        let online = p.map(|p| node.shows_online(&p)).unwrap_or(false);
                         // linked device + friend's app too old for multi-device: our messages
                         // go through the main device ("Gửi qua thiết bị chính của bạn")
                         let bridged = p.map(|p| !node.is_primary() && !node.speaks_multidevice(&p)).unwrap_or(false);
@@ -195,6 +211,20 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             let sid: u32 = s(r, "short_id")?.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse().map_err(|_| crate::i18n::user_err("err.invalid_id"))?;
             let pool = node.net.nostr.read().clone().ok_or_else(|| crate::i18n::user_err("err.lookup_off"))?;
             Value::Array(pool.lookup_short_id(sid).await.into_iter().map(|(p, n)| json!({"peer": p.to_base32(), "name": n})).collect())
+        }
+        // recovery from friends after a restore with the recovery phrase (node/recovery.rs)
+        "recovery_offers" => node.recovery_offers(),
+        "recovery_accept" => {
+            node.recovery_accept(&peer(r, "peer")?)?;
+            node.recovery_offers()
+        }
+        "recovery_decline" => {
+            node.recovery_decline(&peer(r, "peer")?)?;
+            node.recovery_offers()
+        }
+        "recovery_dismiss" => {
+            node.recovery_dismiss()?;
+            node.recovery_offers()
         }
         "accept_contact" => {
             node.accept_contact(&peer(r, "peer")?).await?;
@@ -234,6 +264,38 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
                 node.olm_drop_sessions(&d);
             }
             Value::Null
+        }
+        // test builds only: the next message this node sends is signed `ago_ms` in the past
+        #[cfg(debug_assertions)]
+        "debug_backdate_next" => {
+            node.debug_backdate_next(r.get("ago_ms").and_then(|x| x.as_u64()).unwrap_or(0));
+            Value::Null
+        }
+        // test builds only: send an edit / delete in a 1-1 chat without this side's checks
+        // (the receiver must refuse what isn't allowed)
+        #[cfg(debug_assertions)]
+        "debug_action_unchecked" => {
+            let target = id16(r, "msg_id")?;
+            let action = match s(r, "kind")? {
+                "edit" => MsgAction::Edit { target, text: s(r, "text")?.into() },
+                "delete" => MsgAction::Delete { target },
+                _ => anyhow::bail!("kind: edit | delete"),
+            };
+            node.debug_direct_action_unchecked(s(r, "conv")?, target, action).await?;
+            Value::Null
+        }
+        // test builds only: what still waits in the outbox (diagnosing a stuck drain)
+        "debug_outbox" if cfg!(debug_assertions) => {
+            let out: Vec<Value> = node
+                .store
+                .outbox_dump()
+                .into_iter()
+                .map(|(to, p, attempts)| {
+                    let what = crate::proto::from_slice_capped::<crate::proto::PeerMsg>(&p).map(|m| format!("{m:?}").chars().take(160).collect::<String>()).unwrap_or_else(|_| "?".into());
+                    json!({"to": crate::store::b32_pub(&to), "msg": what, "attempts": attempts})
+                })
+                .collect();
+            json!(out)
         }
         "verify_contact" => {
             let p = peer(r, "peer")?;
@@ -318,7 +380,7 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             Value::Null
         }
         "pinned_messages" => Value::Array(node.store.pinned(s(r, "conv")?)?.iter().map(|m| node.msg_json(m)).collect()),
-        "forward_message" => node.forward(&id16(r, "msg_id")?, s(r, "to_conv")?).await?,
+        "forward_message" => node.forward(&id16(r, "msg_id")?, s(r, "to_conv")?, b(r, "hide_sender").unwrap_or(false)).await?,
         "profile" => node.profile(),
         "set_profile" => {
             node.set_profile(r.get("name").and_then(|x| x.as_str()), r.get("bio").and_then(|x| x.as_str()),
@@ -383,7 +445,7 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             Value::Null
         }
         "delete_message" => {
-            // for_everyone (default true): delete on both sides (1-1: any message; groups: own or as admin)
+            // for_everyone (default true): delete on both sides (1-1: own messages only; groups: own or as admin)
             // for_everyone=false: "delete for me" — removed on your devices (all devices of
             // this account), together with the copy Lumora downloaded; others keep it
             if b(r, "for_everyone").unwrap_or(true) {
@@ -481,30 +543,45 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
         "spaces" => {
             // communities (kind 1) in the shape the UI's Space model expects
             let convs = node.store.conversations()?;
+            // only communities I'm still in: left / removed ones stay as state, not as a space
+            let me = node.me.to_base32();
+            let in_it = |g: &Value| g["members"].as_array().is_some_and(|m| m.iter().any(|x| x["peer"].as_str() == Some(me.as_str())));
             Value::Array(
                 node.groups_list()
                     .into_iter()
-                    .filter(|g| g["kind"].as_u64() == Some(1))
+                    .filter(|g| g["kind"].as_u64() == Some(1) && in_it(g))
                     .map(|g| {
                         let chans: Vec<Value> = g["channels"].as_array().cloned().unwrap_or_default().into_iter().map(|c| {
                             let conv = c["conv"].as_str().unwrap_or("").to_string();
                             let unread = convs.iter().find(|x| x.id == conv).map(|x| x.unread).unwrap_or(0);
-                            json!({"id": c["name"], "name": c["name"], "voice": c["voice"], "conv": conv, "unread": unread, "participants": []})
+                            {
+                                // voice: who is in the room right now (accounts)
+                                let (parts, muted): (Vec<Value>, Vec<Value>) = if c["voice"].as_bool() == Some(true) {
+                                    let v = node.voice_participants(&conv);
+                                    (v.iter().map(|(a, _)| json!(a.to_base32())).collect(), v.iter().filter(|(_, m)| *m).map(|(a, _)| json!(a.to_base32())).collect())
+                                } else {
+                                    (vec![], vec![])
+                                };
+                                // (Community 2.0: the stable key, the shown name and the settings;
+                                // only channels I may see — group_info already filtered them)
+                                json!({"id": c["id"], "name": c["name"], "voice": c["voice"], "conv": conv, "unread": unread, "participants": parts, "muted": muted,
+                                       "topic": c["topic"], "category": c["category"], "position": c["position"], "private": c["private"],
+                                       "allow_roles": c["allow_roles"], "announce": c["announce"]})
+                            }
                         }).collect();
-                        json!({"id": g["gid"], "name": g["name"], "members": g["members"].as_array().map(|m| m.len()).unwrap_or(0), "channels": chans})
+                        json!({"id": g["gid"], "name": g["name"], "members": g["members"].as_array().map(|m| m.len()).unwrap_or(0), "channels": chans,
+                               "has_cover": g["has_cover"], "cover_rev": g["cover_rev"], "my_role": g["my_role"], "owner": g["owner"]})
                     })
                     .collect(),
             )
         }
-        "voice_join" => node.call_start(s(r, "conv")?, false).await?,
+        "voice_join" => node.voice_join(s(r, "conv")?).await?,
         "voice_leave" => {
-            let conv = s(r, "conv")?.to_string();
-            let ids: Vec<[u8; 16]> = node.remote.calls.lock().values().filter(|c| c.conv == conv).map(|c| c.id).collect();
-            for id in ids {
-                node.end_call(&id, false);
-            }
+            node.voice_leave(s(r, "conv")?);
             Value::Null
         }
+        // who is in a voice channel (same shape as the `voice` event)
+        "voice_state" => node.voice_json(s(r, "conv")?),
         "create_group" => {
             let members: Vec<PeerId> = r
                 .get("members")
@@ -550,7 +627,12 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.send_voice(s(r, "conv")?, s(r, "path")?, r.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as u32, wave).await?
         }
         "send_contact" => node.send_contact_card(s(r, "conv")?, peer(r, "peer")?).await?,
-        "post_story" => node.post_story(r.get("text").and_then(|x| x.as_str()).unwrap_or(""), r.get("image_path").and_then(|x| x.as_str()), r.get("bg").and_then(|x| x.as_str()).unwrap_or("aurora")).await?,
+        "post_story" => {
+            // audience: "friends" (all friends minus the hidden list, default) | "close"
+            let audience = crate::node::StoryAudience::parse(r.get("audience").and_then(|x| x.as_str()).unwrap_or("friends"))?;
+            node.post_story_to(r.get("text").and_then(|x| x.as_str()).unwrap_or(""), r.get("image_path").and_then(|x| x.as_str()), r.get("bg").and_then(|x| x.as_str()).unwrap_or("aurora"), audience)
+                .await?
+        }
         "stories" => Value::Array(node.store.stories()?),
         "story_archive" => Value::Array(node.store.story_archive()?),
         "story_delete" => {
@@ -562,7 +644,10 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.story_seen(id16(r, "story_id")?).await?;
             Value::Null
         }
-        "story_viewers" => json!(node.store.story_viewers(&id16(r, "story_id")?)),
+        // [{peer, ts}] oldest first
+        "story_viewers" => Value::Array(
+            node.store.story_viewers(&id16(r, "story_id")?).into_iter().map(|(peer, ts)| json!({"peer": peer, "ts": ts})).collect(),
+        ),
         "press_button" => {
             node.press_button(id16(r, "msg_id")?, r.get("data").and_then(|x| x.as_str()).unwrap_or("")).await?;
             Value::Null
@@ -638,6 +723,17 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.group_settings(id16(r, "gid")?, r.get("slow_mode_s").and_then(|x| x.as_u64()).map(|x| x as u32), b(r, "admins_only")).await?;
             Value::Null
         }
+        "group_reads" => {
+            // every member's read mark in a group chat: {member: read up to (hlc)}
+            let conv = s(r, "conv")?;
+            let mut m = serde_json::Map::new();
+            for (p, upto) in node.store.group_reads(conv) {
+                if p != node.me {
+                    m.insert(p.to_base32(), json!(upto));
+                }
+            }
+            Value::Object(m)
+        }
         "seen_by" => {
             let m = node.store.message(&id16(r, "msg_id")?).ok_or_else(|| crate::i18n::user_err("err.message_not_found"))?;
             json!(node.store.group_seen_by(&m.conv, m.hlc))
@@ -686,10 +782,23 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             Value::Null
         }
         "group_meta" => {
-            node.group_meta(id16(r, "gid")?, r.get("avatar").and_then(|x| x.as_str()), r.get("description").and_then(|x| x.as_str())).await?;
+            // avatar ≤ 96 KB, cover (banner) ≤ 300 KB: base64 JPEG, "" removes; parts not given stay
+            node.group_meta(
+                id16(r, "gid")?,
+                r.get("avatar").and_then(|x| x.as_str()),
+                r.get("description").and_then(|x| x.as_str()),
+                r.get("cover").and_then(|x| x.as_str()),
+            )
+            .await?;
             Value::Null
         }
         "group_avatar" => json!({"avatar": node.group_avatar(&id16(r, "gid")?).map(|a| data_encoding::BASE64.encode(&a))}),
+        "group_cover" => json!({"cover": node.group_cover(&id16(r, "gid")?).map(|c| data_encoding::BASE64.encode(&c))}),
+        // owner only: deletes the group / community for every member
+        "group_dissolve" => {
+            node.group_dissolve(id16(r, "gid")?).await?;
+            Value::Null
+        }
         "set_wallpaper" => {
             // conv id or "default"; wallpaper = preset name ("aurora", "midnight", ...), "color:#RRGGBB",
             // "image:<base64>" (≤ 1.5 MB) or "" to reset. Stored locally (encrypted DB), never sent.
@@ -709,6 +818,7 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             node.group_leave(id16(r, "gid")?).await?;
             Value::Null
         }
+        "group_upgrade_rules" => node.group_upgrade_rules(id16(r, "gid")?).await?,
         "send_file" => node.send_file_args(s(r, "conv")?, s(r, "path")?, r).await?,
         "accept_file" => {
             let dir = r.get("dir").and_then(|d| d.as_str()).map(std::path::PathBuf::from);
@@ -833,6 +943,9 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
                 "discoverable_by_id": g("privacy.discoverable", "1") != "0",
                 // "Help friends connect": relay for friends stuck behind hard NATs
                 "help_friends": node.peer_relay_enabled(),
+                // "Giúp bạn bè khôi phục lịch sử": hand our 1-1 history back to a friend who
+                // restored the account from the recovery phrase (synced across my devices)
+                "help_restore": node.help_restore_enabled(),
                 "echo_cancel": g("audio.aec", "1") != "0",
                 "noise_suppression": g("audio.ns", "1") != "0",
                 // camera effects: 0 = off, 1..3 = Nhẹ / Vừa / Mạnh
@@ -845,6 +958,20 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
                 "relay_delay_ms": node.net.cfg.read().relay_delay_ms,
                 "p2p_only": node.net.cfg.read().relay_delay_ms >= 600_000,
                 "downloads_dir": node.downloads_dir().to_string_lossy(),
+                // per network (wifi / cell / roaming) and kind: photo, video, voice, file, file_group (bytes)
+                "auto_download": node.storage_policy().auto_download,
+                "metered": node.is_metered(),
+                "network": node.net_class().name(),
+                // Khoảnh khắc audience: friends who never get mine / my close friends (synced)
+                "story_hidden": node.story_list(crate::node::STORY_HIDDEN_KEY),
+                "story_close": node.story_list(crate::node::STORY_CLOSE_KEY),
+                // privacy choices (synced): calls everyone|friends|nobody, adding me to
+                // groups and seeing me online friends|nobody; muted chats that still notify
+                // @mentions and replies
+                "who_can_call": node.who_can_call(),
+                "who_can_add": node.who_can_add(),
+                "who_sees_online": node.who_sees_online(),
+                "mentions_only": node.mentions_only(),
             })
         }
         "settings_set" => {
@@ -856,7 +983,20 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             };
             setb("read_receipts", "privacy.read_receipts")?;
             setb("typing", "privacy.typing")?;
+            node.set_privacy_choices(r)?;
+            if let Some(v) = r.get("auto_download").filter(|v| v.is_object()) {
+                let mut p = node.storage_policy();
+                p.auto_download.merge(v);
+                node.set_storage_policy(&p)?;
+            }
+            if let Some(v) = r.get("story_hidden") {
+                node.set_story_list(crate::node::STORY_HIDDEN_KEY, v)?;
+            }
+            if let Some(v) = r.get("story_close") {
+                node.set_story_list(crate::node::STORY_CLOSE_KEY, v)?;
+            }
             setb("store_forward", "privacy.store_forward")?;
+            setb("help_restore", "privacy.help_restore")?;
             if let Some(v) = b(r, "help_friends") {
                 node.set_help_friends(v)?;
             }
@@ -934,6 +1074,9 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             if let Some(v) = g("auto_direct") { p.auto_direct = v; }
             if let Some(v) = g("auto_group") { p.auto_group = v; }
             if let Some(v) = g("community_days") { p.community_days = v; }
+            if let Some(v) = r.get("auto_download").filter(|v| v.is_object()) {
+                p.auto_download.merge(v);
+            }
             node.set_storage_policy(&p)?;
             node.clean_media(None)?;
             serde_json::to_value(p)?

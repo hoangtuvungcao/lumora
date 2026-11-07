@@ -16,8 +16,13 @@ void openDiagnostics(BuildContext context) {
   if (isDesktop(context)) {
     context.read<NavStore>().go(Section.network);
   } else {
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: SafeArea(child: NetworkScreen()))));
+    pushNetworkScreen(context);
   }
+}
+
+/// Phones have no Network tab: the screen is its own page.
+void pushNetworkScreen(BuildContext context) {
+  Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: SafeArea(child: NetworkScreen()))));
 }
 
 class NetworkScreen extends StatefulWidget {

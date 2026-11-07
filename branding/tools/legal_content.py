@@ -24,13 +24,13 @@ PRIVACY = {
         "In short: we don't collect your data. This page explains exactly what that means.",
     ),
     "desc": (
-        "Lumora không cần tài khoản, không thu thập dữ liệu. Tin nhắn được mã hoá đầu cuối và lưu trên máy của bạn.",
+        "Lumora không cần tài khoản, không thu thập dữ liệu. Tin nhắn được mã hoá đầu cuối và lưu trên thiết bị của bạn.",
         "Lumora needs no account and collects no data. Messages are end-to-end encrypted and stored on your device.",
     ),
     "summary": [
         ("Không cần tài khoản, số điện thoại hay email.", "No account, phone number or email needed."),
         ("Chỉ bạn và người nhận đọc được tin nhắn.", "Only you and the recipient can read your messages."),
-        ("Lịch sử trò chuyện nằm trên máy của bạn, được mã hoá.", "Your chat history stays on your device, encrypted."),
+        ("Lịch sử trò chuyện nằm trên thiết bị của bạn, được mã hoá.", "Your chat history stays on your device, encrypted."),
         ("Người lạ không thấy được địa chỉ IP của bạn.", "Strangers can't see your IP address."),
         ("Không quảng cáo, không theo dõi, không bán dữ liệu.", "No ads, no tracking, no selling of data."),
     ],
@@ -40,14 +40,14 @@ PRIVACY = {
              "Lumora has no account system. You don't need a phone number, email or password to use it, so we don't know who you are and keep no records about you."),
         ]},
         {"id": "messages", "t": ("Tin nhắn, cuộc gọi và tệp", "Messages, calls and files"), "p": [
-            ("Tin nhắn, cuộc gọi và tệp được mã hoá đầu cuối ngay trên máy của bạn trước khi gửi đi. Chỉ máy của người nhận mở ra được. Chúng tôi không đọc, không lưu và không có cách nào xem nội dung.",
+            ("Tin nhắn, cuộc gọi và tệp được mã hoá đầu cuối ngay trên thiết bị của bạn trước khi gửi đi. Chỉ thiết bị của người nhận mở ra được. Chúng tôi không đọc, không lưu và không có cách nào xem nội dung.",
              "Messages, calls and files are end-to-end encrypted on your device before they're sent. Only the recipient's device can open them. We don't read them, don't store them and have no way to see their content."),
-            ("Những gì bạn gửi đi sẽ nằm trên máy của người nhận. Tính năng \"xoá cho mọi người\" sẽ xoá tin trên máy của họ, nhưng không thể ngăn việc ai đó đã chụp màn hình hay lưu lại trước đó.",
+            ("Những gì bạn gửi đi sẽ nằm trên thiết bị của người nhận. Tính năng \"xoá cho mọi người\" sẽ xoá tin nhắn trên thiết bị của họ, nhưng không thể ngăn việc ai đó đã chụp màn hình hay lưu lại trước đó.",
              "What you send ends up on the recipient's device. \"Delete for everyone\" removes it from their device, but it can't undo a screenshot or a copy they made before."),
         ]},
-        {"id": "device", "t": ("Dữ liệu nằm trên máy của bạn", "Your data stays on your device"), "p": [
-            ("Lịch sử trò chuyện và danh bạ được lưu trên chính thiết bị của bạn, trong một cơ sở dữ liệu được mã hoá. Không có máy chủ trung tâm hay \"đám mây\" nào giữ tin nhắn của bạn, nên chúng tôi cũng không có bản sao để khôi phục hộ bạn.",
-             "Your chat history and contacts are stored on your own device, in an encrypted database. No central server or \"cloud\" keeps your messages, so we have no copy to restore for you either."),
+        {"id": "device", "t": ("Dữ liệu nằm trên thiết bị của bạn", "Your data stays on your device"), "p": [
+            ("Lịch sử trò chuyện và danh sách bạn bè được lưu trên chính thiết bị của bạn, trong một cơ sở dữ liệu được mã hoá. Không có máy chủ trung tâm hay \"đám mây\" nào giữ tin nhắn của bạn, nên chúng tôi cũng không có bản sao để khôi phục hộ bạn.",
+             "Your chat history and friends list are stored on your own device, in an encrypted database. No central server or \"cloud\" keeps your messages, so we have no copy to restore for you either."),
             ("Ảnh, video và tệp bạn nhận được lưu thành tệp bình thường (không mã hoá) để bạn mở bằng ứng dụng khác. Trên máy tính, chúng nằm trong thư mục Tải xuống/Lumora (Downloads/Lumora) và vẫn còn đó khi bạn gỡ ứng dụng, nên hãy tự xoá nếu không cần nữa. Trên Android, chúng nằm trong thư mục riêng của Lumora và bị xoá cùng ứng dụng, nên hãy lưu ra ngoài những tệp bạn muốn giữ.",
              "Photos, videos and files you receive are saved as normal (unencrypted) files so you can open them with other apps. On computers they go to the Downloads/Lumora folder and stay there when you uninstall the app, so delete them yourself if you no longer need them. On Android they are kept in Lumora's own folder and are deleted with the app, so save the files you want to keep somewhere else."),
             ("Vì vậy, hãy chép lại cụm từ khôi phục và tạo tệp sao lưu có mật khẩu trong phần Cài đặt, rồi cất ở nơi an toàn.",
@@ -58,26 +58,26 @@ PRIVACY = {
              "Messages and calls go straight between devices, so the people you connect with directly can see your IP address, as with direct calls in other apps. The address only reveals an approximate area (city, internet provider), not your street address or identity. The people who can see it are:"),
             {"li": [
                 ("bạn bè của bạn và các thiết bị của chính bạn;", "your friends and your own devices;"),
-                ("thành viên các nhóm riêng tư bạn đang tham gia; trong nhóm công khai, chỉ chủ nhóm và quản trị viên;", "members of private groups you are in; in public groups, only the owner and admins;"),
+                ("thành viên các nhóm riêng tư bạn đang tham gia; trong nhóm công khai, chỉ trưởng nhóm và quản trị viên;", "members of private groups you are in; in public groups, only the group owner and admins;"),
                 ("bot bạn dùng;", "bots you use;"),
-                ("người mà chính bạn liên hệ trước, ví dụ khi bạn gửi lời mời kết bạn;", "people you contact first yourself, for example when you send a friend request;"),
+                ("người mà chính bạn tìm đến trước, ví dụ khi bạn gửi lời mời kết bạn;", "people you contact first yourself, for example when you send a friend request;"),
                 ("người xem hoặc điều khiển máy của bạn từ xa, sau khi bạn đồng ý (hoặc khi bạn đã bật truy cập bằng mật khẩu hay \"Luôn cho phép thiết bị này\").",
                  "someone viewing or controlling your computer remotely, after you accept (or when you have turned on password access or \"Always allow this device\")."),
             ]},
-            ("Người lạ không lấy được địa chỉ IP của bạn qua Lumora. Lời mời kết bạn của họ vẫn đến được với bạn, nhưng theo đường gián tiếp và được mã hoá (qua các máy chủ Nostr công cộng nói ở mục dưới). Máy của bạn không cho họ biết địa chỉ và không gửi gì cho họ cho đến khi bạn đồng ý.",
+            ("Người lạ không lấy được địa chỉ IP của bạn qua Lumora. Lời mời kết bạn của họ vẫn đến được với bạn, nhưng theo đường gián tiếp và được mã hoá (qua các máy chủ Nostr công cộng nói ở mục dưới). Thiết bị của bạn không cho họ biết địa chỉ và không gửi gì cho họ cho đến khi bạn đồng ý.",
              "Strangers can't get your IP address from Lumora. Their friend requests still reach you, but indirectly and encrypted (through the public Nostr relays described below). Your device doesn't tell them your address and sends them nothing until you accept."),
             ("Thông tin công khai giúp người khác tìm thấy bạn không chứa địa chỉ IP. Địa chỉ để kết nối với bạn được mã hoá riêng, và chỉ bạn bè của bạn mở ra được.",
              "The public information that lets people find you contains no IP address. The address used to reach you is encrypted separately, and only your friends can open it."),
-            ("Trong cùng mạng Wi-Fi hay mạng nội bộ, các thiết bị khác thấy có một thiết bị Lumora và địa chỉ của nó trong mạng đó, nhưng không biết đó là bạn: dấu hiệu nhận ra thiết bị đổi mỗi ngày, và chỉ người đã quen bạn mới nhận ra. Bạn có thể tắt \"Tìm bạn trong cùng mạng Wi-Fi\" ở Cài đặt › Quyền riêng tư.",
+            ("Trong cùng mạng Wi-Fi hay mạng nội bộ, các thiết bị khác thấy có một thiết bị Lumora và địa chỉ của nó trong mạng đó, nhưng không biết đó là bạn: dấu hiệu nhận ra thiết bị đổi mỗi ngày, và chỉ người đã quen bạn mới nhận ra. Bạn có thể tắt \"Tìm bạn bè trong cùng mạng Wi-Fi\" ở Cài đặt › Quyền riêng tư.",
              "On the same Wi-Fi or local network, other devices can see that a Lumora device is there and its address on that network, but not that it is you: its identifying sign changes every day, and only people who already know you recognise it. You can turn off \"Find friends on the same Wi-Fi\" in Settings › Privacy."),
-            ("Lumora không chia sẻ loại địa chỉ được tạo từ phần cứng của máy (loại có thể dùng để nhận ra thiết bị về lâu dài), và ưu tiên dùng địa chỉ tạm thời.",
+            ("Lumora không chia sẻ loại địa chỉ được tạo từ phần cứng của thiết bị (loại có thể dùng để nhận ra thiết bị về lâu dài), và ưu tiên dùng địa chỉ tạm thời.",
              "Lumora never shares the kind of address that is built from your device's hardware (which could identify the device over time), and prefers temporary addresses."),
         ]},
         {"id": "services", "t": ("Dịch vụ công cộng mà ứng dụng dùng", "Public services the app uses"), "p": [
             ("Lumora không có máy chủ riêng để chuyển hay lưu tin nhắn. Để các thiết bị tìm thấy nhau và kết nối thẳng, ứng dụng dùng một số dịch vụ công cộng do bên thứ ba vận hành. Các dịch vụ này có thể thấy địa chỉ IP của bạn và thời điểm kết nối, nhưng không bao giờ thấy nội dung tin nhắn, cuộc gọi hay tệp:",
              "Lumora has no server of its own that carries or stores messages. To let devices find each other and connect directly, the app uses some public services run by third parties. These services may see your IP address and when you connect, but never the content of your messages, calls or files:"),
             {"li": [
-                ("Máy chủ Nostr công cộng: giúp các thiết bị tìm thấy nhau bằng ID 9 số hoặc @tên, và chuyển các tín hiệu kết nối, lời mời kết bạn đã được mã hoá. Tắt được bằng \"Danh bạ công khai\".",
+                ("Máy chủ Nostr công cộng: giúp các thiết bị tìm thấy nhau bằng ID 9 số hoặc @tên, và chuyển các tín hiệu kết nối, lời mời kết bạn đã được mã hoá. Tắt được bằng \"Danh sách công khai\".",
                  "Public Nostr relays: help devices find each other by 9-digit ID or @username, and pass along encrypted connection signals and friend requests. Can be turned off with \"Public directory\"."),
                 ("Máy chủ STUN của Google, Cloudflare và Nextcloud: cho thiết bị biết địa chỉ công cộng của chính nó để kết nối thẳng. Luôn được dùng.",
                  "STUN servers run by Google, Cloudflare and Nextcloud: tell your device its own public address so it can connect directly. Always used."),
@@ -88,7 +88,7 @@ PRIVACY = {
                 ("Bản đồ OpenStreetMap: chỉ khi bạn mở bản đồ của một vị trí được chia sẻ, ứng dụng tải ảnh bản đồ từ OpenStreetMap; máy chủ bản đồ thấy địa chỉ IP của bạn và khu vực bạn đang xem.",
                  "OpenStreetMap: only when you open the map of a shared location, the app loads map images from OpenStreetMap; the map server sees your IP address and the area you are viewing."),
             ]},
-            ("Ba tuỳ chọn \"Danh bạ công khai\", \"Tìm bạn qua các thiết bị khác\" và \"Tự mở đường qua modem Wi-Fi\" nằm ở Cài đặt › Nâng cao › Mạng. Tắt chúng có thể làm việc tìm nhau và kết nối chậm hơn hoặc khó hơn.",
+            ("Ba tuỳ chọn \"Danh sách công khai\", \"Tìm bạn qua các thiết bị khác\" và \"Tự mở đường qua modem Wi-Fi\" nằm ở Cài đặt › Nâng cao › Mạng. Tắt chúng có thể làm việc tìm nhau và kết nối chậm hơn hoặc khó hơn.",
              "The three options \"Public directory\", \"Find friends via other devices\" and \"Open a path via the Wi-Fi router\" are in Settings › Advanced › Network. Turning them off can make finding each other and connecting slower or harder."),
         ]},
         {"id": "friends-help", "t": ("Bạn bè giúp nhau kết nối", "Friends help each other connect"), "p": [
@@ -98,9 +98,9 @@ PRIVACY = {
              "When the recipient is offline, mutual friends may hold your locked messages until they come online. You can turn off \"Deliver via friends when offline\" in Settings › Privacy."),
         ]},
         {"id": "public", "t": ("Những gì là công khai", "What is public"), "p": [
-            ("Nếu bạn chọn đặt @tên người dùng, hoặc tạo nhóm công khai, thì @tên đó cùng tên hiển thị (với nhóm là tên và mô tả nhóm) sẽ có trong danh bạ công khai để người khác tìm thấy bạn. Việc này hoàn toàn tuỳ chọn, và bạn có thể bỏ @tên bất cứ lúc nào.",
+            ("Nếu bạn chọn đặt @tên người dùng, hoặc tạo nhóm công khai, thì @tên đó cùng tên hiển thị (với nhóm là tên và mô tả nhóm) sẽ có trong danh sách công khai để người khác tìm thấy bạn. Việc này hoàn toàn tuỳ chọn, và bạn có thể bỏ @tên bất cứ lúc nào.",
              "If you choose to set an @username, or create a public group, that @username and your display name (for a group: its name and description) appear in a public directory so others can find you. This is entirely optional, and you can remove your @username at any time."),
-            ("ID 9 số của bạn cũng có trong danh bạ công khai để người khác tìm và gửi lời mời kết bạn. Nếu không muốn, hãy tắt \"Cho người lạ tìm thấy tôi bằng ID\" trong Cài đặt › Quyền riêng tư: bạn bè vẫn liên lạc được, còn người khác cần mã QR hoặc đường dẫn của bạn (hoặc @tên, nếu bạn đã đặt).",
+            ("ID 9 số của bạn cũng có trong danh sách công khai để người khác tìm và gửi lời mời kết bạn. Nếu không muốn, hãy tắt \"Cho người lạ tìm thấy tôi bằng ID\" trong Cài đặt › Quyền riêng tư: bạn bè vẫn liên lạc được, còn người khác cần mã QR hoặc đường dẫn của bạn (hoặc @tên, nếu bạn đã đặt).",
              "Your 9-digit ID is also listed in the public directory so others can find you and send a friend request. If you'd rather not, turn off \"Let strangers find me by ID\" in Settings › Privacy: friends still reach you, and others need your QR code or link (or your @username, if you set one)."),
             ("Tin nhắn trong nhóm công khai được mã hoá như mọi tin nhắn khác, nhưng ai tham gia nhóm cũng đọc được.",
              "Messages in a public group are encrypted like any other message, but everyone who joins the group can read them."),
@@ -200,4 +200,90 @@ TERMS = {
     ],
 }
 
-PAGES = {"privacy": PRIVACY, "terms": TERMS}
+CONTACT = "trong20843@gmail.com"
+
+CHILD_SAFETY = {
+    "prefix": "cs",
+    "icon": "shield",
+    "title": ("Tiêu chuẩn an toàn trẻ em", "Child safety standards"),
+    "lead": (
+        "Lumora không dung thứ cho bất kỳ hình thức xâm hại hay bóc lột tình dục trẻ em nào (CSAE), kể cả tài liệu xâm hại tình dục trẻ em (CSAM).",
+        "Lumora has zero tolerance for child sexual abuse and exploitation (CSAE), including child sexual abuse material (CSAM).",
+    ),
+    "desc": (
+        "Cam kết của Lumora chống xâm hại và bóc lột trẻ em: cách báo cáo, chặn và liên hệ.",
+        "Lumora's commitment against child sexual abuse and exploitation: how to report, block and reach us.",
+    ),
+    "summary": [
+        ("Cấm tuyệt đối nội dung và hành vi xâm hại, bóc lột tình dục trẻ em.", "Content and conduct that sexually abuses or exploits children is strictly forbidden."),
+        ("Báo cáo và chặn ngay trong ứng dụng, ở mọi cuộc trò chuyện.", "Report and block right in the app, in every conversation."),
+        ("Quản trị viên nhóm và cộng đồng được xoá thành viên và cấm vĩnh viễn.", "Group and community admins can remove and permanently ban members."),
+        ("Liên hệ trực tiếp: " + CONTACT, "Direct contact: " + CONTACT),
+    ],
+    "sections": [
+        {"id": "policy", "t": ("Chính sách", "Policy"), "p": [
+            ("Nghiêm cấm dùng Lumora để tạo, chia sẻ, tìm kiếm hay lưu trữ tài liệu xâm hại tình dục trẻ em; để dụ dỗ, tiếp cận (grooming), tống tiền tình dục hay buôn bán trẻ em; hoặc bất kỳ hành vi nào gây hại cho trẻ em. Vi phạm có thể dẫn tới việc bị chặn, bị cấm khỏi nhóm và cộng đồng, và được báo cho cơ quan chức năng.",
+             "Using Lumora to create, share, seek or store child sexual abuse material; to groom, sexually extort or traffic children; or for any conduct that harms children is forbidden. Violations can lead to blocking, bans from groups and communities, and reports to the authorities."),
+        ]},
+        {"id": "report", "t": ("Cách báo cáo trong ứng dụng", "How to report in the app"), "p": [
+            {"li": [
+                ("Cuộc trò chuyện 1-1: mở menu ⋮ của cuộc trò chuyện → Báo cáo. Người đó bị chặn ngay; bạn có thể xoá luôn cuộc trò chuyện.",
+                 "1-1 chat: open the chat's ⋮ menu → Report. The person is blocked at once; you can also delete the chat."),
+                ("Nhóm và cộng đồng: nhấn giữ tin nhắn → Báo cáo, hoặc mở thông tin nhóm → Báo cáo. Báo cáo đến trưởng nhóm (hoặc chủ cộng đồng) và quản trị viên, những người có thể xoá tin nhắn, xoá thành viên và cấm vĩnh viễn.",
+                 "Groups and communities: long-press the message → Report, or open the group info → Report. The report goes to the group or community owner and admins, who can delete messages, remove members and ban them for good."),
+                ("Chặn một người bất kỳ lúc nào trong trang thông tin của họ.", "Block anyone at any time from their info page."),
+            ]},
+            ("Tin nhắn được mã hoá đầu cuối và truyền trực tiếp giữa các thiết bị, nên chúng tôi không đọc được nội dung. Nếu bạn gặp nội dung xâm hại trẻ em, hãy báo cáo trong ứng dụng, giữ bằng chứng trên thiết bị của bạn và báo ngay cho cơ quan chức năng.",
+             "Messages are end-to-end encrypted and travel directly between devices, so we cannot read them. If you come across child abuse content, report it in the app, keep the evidence on your device and tell the authorities right away."),
+        ]},
+        {"id": "authorities", "t": ("Báo cho cơ quan chức năng", "Telling the authorities"), "p": [
+            ("Tại Việt Nam: gọi Tổng đài quốc gia bảo vệ trẻ em 111 (miễn phí, 24/7) hoặc báo công an nơi gần nhất. Ở nước khác: liên hệ cảnh sát địa phương hoặc gửi báo cáo tới [NCMEC CyberTipline](https://report.cybertip.org/).",
+             "In Vietnam: call the national child protection hotline 111 (free, 24/7) or the nearest police. Elsewhere: contact local police or report to the [NCMEC CyberTipline](https://report.cybertip.org/)."),
+            ("Chúng tôi hợp tác với cơ quan chức năng trong phạm vi những gì chúng tôi có. Lumora không có máy chủ lưu tin nhắn hay danh tính người dùng.",
+             "We cooperate with the authorities within what we hold. Lumora has no server that stores messages or user identities."),
+        ]},
+        {"id": "contact", "t": ("Liên hệ về an toàn trẻ em", "Child safety contact"), "p": [
+            ("Người phụ trách: Nguyễn Văn Trọng — email " + CONTACT + ". Chúng tôi phản hồi các báo cáo về an toàn trẻ em trong thời gian sớm nhất.",
+             "Point of contact: Nguyễn Văn Trọng — email " + CONTACT + ". We respond to child safety reports as quickly as we can."),
+        ]},
+    ],
+}
+
+DELETE_ACCOUNT = {
+    "prefix": "da",
+    "icon": "shield",
+    "title": ("Xoá tài khoản Lumora", "Delete your Lumora account"),
+    "lead": (
+        "Tài khoản Lumora chỉ nằm trên thiết bị của bạn. Xoá nó ngay trong ứng dụng; chúng tôi không giữ bản sao nào.",
+        "Your Lumora account lives only on your devices. Delete it right in the app; we keep no copy.",
+    ),
+    "desc": (
+        "Cách xoá tài khoản Lumora và toàn bộ dữ liệu của bạn.",
+        "How to delete your Lumora account and all your data.",
+    ),
+    "summary": [
+        ("Xoá trong ứng dụng: Cài đặt → Bảo mật → Xoá tài khoản.", "In the app: Settings → Security → Delete account."),
+        ("Xoá trên thiết bị chính sẽ đăng xuất và xoá dữ liệu trên mọi thiết bị đã liên kết.", "Deleting on the main device signs out and wipes every linked device."),
+        ("Chúng tôi không có máy chủ lưu tài khoản, nên không còn gì để xoá thêm.", "We have no server holding accounts, so nothing else is left to delete."),
+    ],
+    "sections": [
+        {"id": "steps", "t": ("Các bước", "Steps"), "p": [
+            {"li": [
+                ("Mở Lumora → Cài đặt → Bảo mật → Xoá tài khoản.", "Open Lumora → Settings → Security → Delete account."),
+                ("Nhập mật khẩu tài khoản (nếu đã đặt) và xác nhận.", "Enter your account password (if you set one) and confirm."),
+                ("Tin nhắn, bạn bè, nhóm, tệp đã tải và khoá mã hoá trên thiết bị này bị xoá; các thiết bị đã liên kết cũng bị đăng xuất và xoá dữ liệu.", "Messages, friends, groups, downloaded files and encryption keys on this device are deleted; linked devices are signed out and wiped too."),
+                ("Gỡ ứng dụng nếu bạn muốn.", "Uninstall the app if you like."),
+            ]},
+        ]},
+        {"id": "data", "t": ("Dữ liệu nào bị xoá", "What is deleted"), "p": [
+            ("Toàn bộ dữ liệu của bạn chỉ nằm trên thiết bị của bạn, nên sau khi xoá thì không còn ở đâu nữa. Lưu ý: những tin nhắn bạn đã gửi vẫn còn trên thiết bị của người nhận, như với mọi ứng dụng nhắn tin. Nếu bạn còn giữ 24 từ khôi phục hoặc tệp sao lưu, hãy huỷ chúng để không ai khôi phục lại được tài khoản.",
+             "All your data lives only on your devices, so once deleted it is gone. Note: messages you sent remain on the recipients' devices, as with any messaging app. If you still have your 24-word recovery phrase or a backup file, destroy them so nobody can restore the account."),
+        ]},
+        {"id": "help", "t": ("Cần hỗ trợ", "Need help"), "p": [
+            ("Không mở được ứng dụng? Gỡ cài đặt ứng dụng sẽ xoá dữ liệu trên thiết bị đó. Mọi câu hỏi: " + CONTACT + ".",
+             "Can't open the app? Uninstalling it deletes the data on that device. Any questions: " + CONTACT + "."),
+        ]},
+    ],
+}
+
+PAGES = {"privacy": PRIVACY, "terms": TERMS, "child-safety": CHILD_SAFETY, "delete-account": DELETE_ACCOUNT}

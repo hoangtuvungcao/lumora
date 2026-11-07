@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
+import '../../core/links.dart';
 import '../flows.dart';
 import '../profile/profile_screen.dart';
 import 'attachments.dart';
@@ -24,14 +26,30 @@ import 'emoji_picker.dart';
 /// Checklist / reminder messages (structured, not editable as text).
 bool _isTask(Message m) => m.kind == 'checklist' || m.kind == 'reminder';
 
+/// How long after sending a message may still be edited (the core refuses
+/// later edits, on send and on receive).
+const kEditWindow = Duration(hours: 48);
+
 /// Only plain text messages can be edited: the body of a voice note,
 /// location, contact card, sticker or call record is data, and replacing it
-/// with typed text would destroy the message.
-bool canEditMessage(Message m) => m.mine && m.kind == 'text' && !m.isFile && !m.isPoll;
+/// with typed text would destroy the message. Only my own, within 48 hours
+/// of its (signed) time.
+bool canEditMessage(Message m, {DateTime? now}) =>
+    m.mine &&
+    !m.deleted &&
+    m.kind == 'text' &&
+    !m.isFile &&
+    !m.isPoll &&
+    (now ?? DateTime.now()).millisecondsSinceEpoch - m.ts <= kEditWindow.inMilliseconds;
+
+/// The placeholder of a message deleted for everyone: recalled by its
+/// author, or removed by a group admin.
+String deletedMessageText(S s, Message m) => m.removedByAdmin ? s('msg_removed_by_admin') : s('msg_recalled_by_author');
 
 /// What "Copy" puts on the clipboard: the words a person sees, never the
 /// message's JSON. Null = nothing sensible to copy.
 String? copyableText(Message m) {
+  if (m.selfDestructs || m.deleted) return null; // (no copies of a self-destructing message)
   switch (m.kind) {
     case 'text':
       return m.isFile || m.isPoll ? null : m.body;
@@ -64,7 +82,11 @@ class BubbleActions {
     required this.onVote,
     this.onReport,
     this.selecting = false,
+    this.canPin = true,
   });
+
+  /// Pin / unpin is offered (groups: the `pin` permission).
+  final bool canPin;
 
   /// Group messages of others: report to the group's admins (null: not offered).
   final void Function(Message m)? onReport;
@@ -276,10 +298,10 @@ class _MessageTileState extends State<MessageTile> {
 
   List<(String, IconData, String)> _items(S s) => [
         ('reply', AppIcons.reply, s('reply')),
-        ('forward', AppIcons.forward, s('forward')),
-        (m.pinned ? 'unpin' : 'pin', m.pinned ? AppIcons.unpin : AppIcons.pin, m.pinned ? s('unpin_message') : s('pin_message')),
+        if (!m.selfDestructs) ('forward', AppIcons.forward, s('forward')),
+        if (widget.actions.canPin) (m.pinned ? 'unpin' : 'pin', m.pinned ? AppIcons.unpin : AppIcons.pin, m.pinned ? s('unpin_message') : s('pin_message')),
         if (copyableText(m) != null) ('copy', AppIcons.copy, s('copy_text')),
-        if (m.conv != 's:me') ('save', AppIcons.saveMessage, s('save_message')),
+        if (m.conv != 's:me' && !m.selfDestructs) ('save', AppIcons.saveMessage, s('save_message')),
         if (m.kind == 'sticker' && !m.mine && stickerHashOf(m) != null) ('save_sticker', AppIcons.sticker, s('save_to_pack')),
         if (widget.isGroup && m.mine) ('seen', AppIcons.checkDouble, s('seen_by')),
         ('select', AppIcons.checkCircle, s('select')),
@@ -516,21 +538,21 @@ class _Bubble extends StatelessWidget {
         const SizedBox(width: 3),
       ],
       Text(time, style: TextStyle(fontSize: 11, color: metaColor, fontFeatures: const [FontFeature.tabularFigures()])),
-      if (mine) ...[const SizedBox(width: 3), _Ticks(status: m.status, color: metaColor)],
+      if (mine) ...[const SizedBox(width: 3), _Ticks(status: m.status, color: metaColor, conv: m.conv, hlc: m.hlc)],
     ]);
 
     Widget content;
     var media = false;
     final ref = m.isFile ? FileRef.parse(m.body) : null;
     // 1-3 emoji and nothing else: big (animated when available), no bubble.
-    final jumbo = !m.deleted && !m.isFile && m.kind != 'sticker' && !m.isPoll && !_isTask(m) && reply == null && m.replyTo == null && m.forwardedFrom == null
+    final jumbo = !m.deleted && !m.isFile && m.kind != 'sticker' && !m.isPoll && !_isTask(m) && reply == null && m.replyTo == null && m.forwardedFrom == null && m.restoredFrom == null
         ? jumboEmojis(m.body)
         : null;
     if (m.deleted) {
       content = Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(AppIcons.block, size: 15, color: metaColor),
         const SizedBox(width: 6),
-        Flexible(child: Text(s('message_recalled'), style: TextStyle(color: metaColor, fontStyle: FontStyle.italic))),
+        Flexible(child: Text(deletedMessageText(s, m), style: TextStyle(color: metaColor, fontStyle: FontStyle.italic))),
         const SizedBox(width: 8),
         meta,
       ]);
@@ -672,6 +694,26 @@ class _Bubble extends StatelessWidget {
                 ),
               ]),
             ),
+          if (m.restoredFrom != null)
+            Padding(
+              key: ValueKey('restored_from_${m.id}'),
+              padding: EdgeInsets.only(bottom: 4, left: m.isFile ? 6 : 0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(AppIcons.history, size: 14, color: mine ? Colors.white70 : context.lc.muted),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    s(m.restoredUnverified ? 'rc_restored_unverified' : 'rc_restored_from', {
+                      'name': () {
+                        final c = m.restoredPeer == null ? null : context.read<ContactsStore>()[m.restoredPeer!];
+                        return c != null && c.displayName.isNotEmpty ? c.displayName : m.restoredFrom!;
+                      }(),
+                    }),
+                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: mine ? Colors.white70 : context.lc.muted),
+                  ),
+                ),
+              ]),
+            ),
           if (m.pinned)
             Padding(
               padding: const EdgeInsets.only(bottom: 2),
@@ -689,7 +731,7 @@ class _Bubble extends StatelessWidget {
   Widget _whiteMeta(BuildContext context, Message m, S s, String time) => Row(mainAxisSize: MainAxisSize.min, children: [
         if (m.edited) ...[Text(s('edited'), style: const TextStyle(fontSize: 11, color: Colors.white)), const SizedBox(width: 4)],
         Text(time, style: const TextStyle(fontSize: 11, color: Colors.white)),
-        if (m.mine) ...[const SizedBox(width: 3), _Ticks(status: m.status, color: Colors.white)],
+        if (m.mine) ...[const SizedBox(width: 3), _Ticks(status: m.status, color: Colors.white, conv: m.conv, hlc: m.hlc)],
       ]);
 
   static bool _isEmojiOnly(String t) {
@@ -718,7 +760,7 @@ class _ReplyQuote extends StatelessWidget {
     final text = r == null
         ? s('original_unavailable')
         : (r.deleted
-            ? s('message_recalled')
+            ? deletedMessageText(s, r)
             : (r.isFile
                 ? '📎 ${FileRef.parse(r.body)?.name ?? ''}'
                 : r.kind == 'checklist'
@@ -758,14 +800,19 @@ class _ReplyQuote extends StatelessWidget {
 }
 
 class _Ticks extends StatelessWidget {
-  const _Ticks({required this.status, required this.color});
+  const _Ticks({required this.status, required this.color, this.conv = '', this.hlc = 0});
   final MessageStatus status;
   final Color color;
+  final String conv;
+  final int hlc;
 
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
-    final (icon, tip, c) = switch (status) {
+    // groups: a member's read receipt (`group_read`) turns my message "read" live
+    final group = conv.startsWith('g:') && hlc > 0 && (status == MessageStatus.sent || status == MessageStatus.delivered);
+    final seen = context.select<ChatStore, bool>((c) => group && c.groupSeen(conv, hlc));
+    final (icon, tip, c) = switch (seen ? MessageStatus.read : status) {
       MessageStatus.pending => (AppIcons.clock, s('status_pending'), color),
       MessageStatus.sent => (AppIcons.check, s('status_sent'), color),
       MessageStatus.delivered => (AppIcons.checkDouble, s('status_delivered'), color),
@@ -918,11 +965,18 @@ String systemText(BuildContext context, Message m) {
   const known = {
     'sys.group_created', 'sys.member_added', 'sys.member_removed', 'sys.member_left', 'sys.group_renamed',
     'sys.role_admin', 'sys.role_member', 'sys.you_removed', 'sys.you_added', 'sys.contact_device_added',
+    'sys.call_missed_busy', 'sys.group_restored',
   };
   if (!known.contains(st.code)) return st.text.isNotEmpty ? st.text : m.body;
   if (st.code == 'sys.contact_device_added') {
     // the friend's current name (alias) when we know them, else the name the core stored
     final p = st.args['peer'];
+    final c = p == null ? null : contacts[p];
+    return s(st.code, {'name': c != null && c.displayName.isNotEmpty ? c.displayName : (st.args['name'] ?? '')});
+  }
+  if (st.code == 'sys.call_missed_busy') {
+    // a direct chat: the caller is the friend in it — shown by their current name
+    final p = st.args['peer'] ?? (m.conv.startsWith('d:') ? m.conv.substring(2) : null);
     final c = p == null ? null : contacts[p];
     return s(st.code, {'name': c != null && c.displayName.isNotEmpty ? c.displayName : (st.args['name'] ?? '')});
   }
@@ -976,11 +1030,11 @@ class _TailPainter extends CustomPainter {
 
 // **bold** _italic_ ~~strike~~ `code` ```block``` ||spoiler|| links @mentions
 final _fmtRe = RegExp(
-  r'```\n?([\s\S]+?)```|`([^`\n]+)`|\*\*(.+?)\*\*|~~(.+?)~~|\|\|(.+?)\|\||(?<![\p{L}\p{N}_])_(.+?)_(?![\p{L}\p{N}_])|(https?://[^\s]+)|(@[\p{L}\p{N}_.·]+)',
+  r'```\n?([\s\S]+?)```|`([^`\n]+)`|\*\*(.+?)\*\*|~~(.+?)~~|\|\|(.+?)\|\||(?<![\p{L}\p{N}_])_(.+?)_(?![\p{L}\p{N}_])|(https?://[^\s]+|lumora://[^\s]+)|(@[\p{L}\p{N}_.·]+)',
   unicode: true,
 );
 
-/// Message text with Telegram-style formatting, tappable links, highlighted
+/// Message text with rich formatting, tappable links, highlighted
 /// @mentions, tap-to-reveal spoilers and a text-only link preview card.
 class RichMessageText extends StatelessWidget {
   const RichMessageText({super.key, required this.text, required this.color, required this.mine, this.mentionsMe = false});
@@ -1053,7 +1107,7 @@ class RichMessageText extends StatelessWidget {
     final uri = Uri.tryParse(firstUrl);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
       GestureDetector(onTap: () => openLink(context, firstUrl!), child: rich),
-      if (uri != null && uri.host.isNotEmpty)
+      if (uri != null && uri.host.isNotEmpty && (uri.isScheme('http') || uri.isScheme('https')))
         GestureDetector(
           onTap: () => openLink(context, firstUrl!),
           child: Container(
@@ -1247,6 +1301,9 @@ class PollView extends StatelessWidget {
 }
 
 Future<void> openLink(BuildContext context, String url) async {
+  // a Lumora link (invite to a group, add a friend, …) opens right here, with
+  // its own preview and button — never a browser round trip
+  if (LumoraLink.find(url) != null) return Flows.openDeepLink(context, url);
   final s = S.read(context);
   final ok = await confirm(context, title: s('open_link'), body: url, action: s('open'));
   if (!ok) return;
@@ -1266,11 +1323,10 @@ class _GlassMeta extends StatelessWidget {
 }
 
 
-/// "Seen by" sheet for group messages.
+/// "Seen by" sheet for group messages (reloads when a member's read receipt
+/// for this chat arrives while it is open).
 Future<void> showSeenBy(BuildContext context, Message m) async {
-  final s = S.read(context);
   final api = context.read<LumoraApi>();
-  final contacts = context.read<ContactsStore>();
   List<String> peers = const [];
   try {
     peers = await api.seenBy(m.id);
@@ -1279,16 +1335,62 @@ Future<void> showSeenBy(BuildContext context, Message m) async {
   await showModalBottomSheet<void>(
     context: context,
     constraints: const BoxConstraints(maxWidth: 480),
-    builder: (c) => SafeArea(
+    builder: (c) => _SeenBySheet(message: m, initial: peers),
+  );
+}
+
+class _SeenBySheet extends StatefulWidget {
+  const _SeenBySheet({required this.message, required this.initial});
+  final Message message;
+  final List<String> initial;
+  @override
+  State<_SeenBySheet> createState() => _SeenBySheetState();
+}
+
+class _SeenBySheetState extends State<_SeenBySheet> {
+  late List<String> _peers = widget.initial;
+  late final ChatStore _chat = context.read<ChatStore>();
+  late final LumoraApi _api = context.read<LumoraApi>();
+  late final Map<String, int> _reads = Map.of(_chat.groupReads[widget.message.conv] ?? const {});
+
+  @override
+  void initState() {
+    super.initState();
+    _chat.groupReadTick.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    _chat.groupReadTick.removeListener(_changed);
+    super.dispose();
+  }
+
+  /// Only this chat's receipts reload the list.
+  void _changed() {
+    final now = _chat.groupReads[widget.message.conv] ?? const {};
+    if (mapEquals(now, _reads)) return;
+    _reads
+      ..clear()
+      ..addAll(now);
+    _api.seenBy(widget.message.id).then((p) {
+      if (mounted) setState(() => _peers = p);
+    }).catchError((_) {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    final contacts = context.read<ContactsStore>();
+    return SafeArea(
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 8), child: Text(s('seen_by_n', {'n': peers.length}), style: c.tt.titleMedium)),
-        if (peers.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(s('nobody_seen'), textAlign: TextAlign.center, style: c.tt.bodySmall)),
-        for (final p in peers)
+        Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 8), child: Text(s('seen_by_n', {'n': _peers.length}), style: context.tt.titleMedium)),
+        if (_peers.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text(s('nobody_seen'), textAlign: TextAlign.center, style: context.tt.bodySmall)),
+        for (final p in _peers)
           ListTile(leading: PeerAvatar(peer: p, size: 36, presence: false), title: Text(contacts.nameOf(p))),
         const SizedBox(height: 8),
       ]),
-    ),
-  );
+    );
+  }
 }
 
 

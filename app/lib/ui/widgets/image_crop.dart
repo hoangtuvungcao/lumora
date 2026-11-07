@@ -21,6 +21,9 @@ import 'common.dart';
 
 enum CropShape { circle, square, cover, free }
 
+/// Largest group cover the core accepts (`group_meta` cover, decoded).
+const kGroupCoverMaxBytes = 300 * 1024;
+
 class CropSpec {
   const CropSpec(this.shape, {required this.outWidth, required this.outHeight, required this.maxBytes});
   final CropShape shape;
@@ -40,6 +43,9 @@ class CropSpec {
   static const avatar = CropSpec(CropShape.circle, outWidth: 256, outHeight: 256, maxBytes: 96 * 1024);
   static const groupAvatar = CropSpec(CropShape.square, outWidth: 256, outHeight: 256, maxBytes: 96 * 1024);
   static const cover = CropSpec(CropShape.cover, outWidth: 1280, outHeight: 720, maxBytes: 320 * 1024);
+
+  /// Group / community banner: the core takes at most 300 KB (307200 bytes).
+  static const groupCover = CropSpec(CropShape.cover, outWidth: 1280, outHeight: 720, maxBytes: kGroupCoverMaxBytes);
   static const wallpaper = CropSpec(CropShape.free, outWidth: 1920, outHeight: 1920, maxBytes: 1536 * 1024);
 }
 

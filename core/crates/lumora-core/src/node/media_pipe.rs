@@ -1134,6 +1134,10 @@ pub fn start_call_media(node: &Arc<Node>, c: &Arc<Call>) {
     if c.media_started.swap(true, Ordering::SeqCst) {
         return;
     }
+    // unit tests never open this machine's microphone / camera
+    if cfg!(test) {
+        return;
+    }
     if c.video && c.cam.load(Ordering::Relaxed) {
         toggle_call_camera(node, c, true);
     }
@@ -1161,13 +1165,21 @@ pub fn start_call_media(node: &Arc<Node>, c: &Arc<Call>) {
             let _ = enc.set_expected_loss(10);
             let seq = AtomicU16::new(0);
             let mut ticks = 0u32;
+            // who is talking: decided on the clean microphone signal, told to the others
+            let mut vad = super::voice::Vad::default();
+            let mut talking = false;
             while !c.stop.load(Ordering::Relaxed) {
                 ticks = ticks.wrapping_add(1);
                 if ticks.is_multiple_of(25) {
                     apply_settings(&cap);
                 }
                 let Ok(Some(frame)) = cap.next_frame(Duration::from_millis(100)) else { continue };
-                if !c.mic.load(Ordering::Relaxed) {
+                let mic = c.mic.load(Ordering::Relaxed);
+                if vad.step(mic.then_some(&frame[..])) != talking {
+                    talking = !talking;
+                    node.set_speaking(&c, node.device, talking);
+                }
+                if !mic {
                     continue;
                 }
                 let Ok(pkt) = enc.encode(&frame) else { continue };

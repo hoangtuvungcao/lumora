@@ -14,12 +14,15 @@ import '../../platform/android_bridge.dart';
 import 'background_sheet.dart';
 import '../../platform/tones.dart';
 import '../../state/app_lock.dart';
+import '../../state/community_defaults.dart';
+import '../../state/devices_store.dart';
 import '../../state/settings.dart';
 import '../../state/stores.dart';
 import '../files/files_screen.dart';
 import '../lock/app_lock_screen.dart';
 import '../onboarding/forgot_passphrase.dart' show AsideDataGroup;
 import 'backup_file.dart';
+import 'delete_account.dart';
 import '../devices/my_devices.dart';
 import 'blocked_screen.dart';
 import 'profile_editor.dart';
@@ -27,14 +30,18 @@ import 'security_checkup.dart';
 import 'storage_screen.dart';
 import '../profile/profile_screen.dart';
 import '../network/network_screen.dart';
+import '../remote/remote_home.dart' show newRemotePassword;
 import '../bots/botfather.dart';
 import '../calls/call_effects.dart' show BeautySettingsRow;
+import '../chats/story_audience.dart' show StoryPrivacyRows;
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
 import '../widgets/logo.dart';
 import '../../platform/apple_services.dart';
 import 'video_codec_info.dart';
+import 'privacy_choices.dart';
+import 'friend_recovery.dart' show HelpRestoreRow;
 import '../widgets/core_events.dart';
 
 enum SettingsPage { profile, devices, appearance, privacy, bots, remote, storage, security, language, advanced, about }
@@ -324,16 +331,46 @@ class _Privacy extends StatelessWidget {
       const _AppLockGroup(),
       const IpPrivacyCard(),
       const _FindByIdGroup(),
+      const PrivacyChoicesGroup(),
       _Group(title: s('messages'), children: [
         SwitchRow(icon: AppIcons.checkDouble, title: s('read_receipts'), subtitle: s('read_receipts_hint'), value: st.readReceipts, onChanged: (v) => st.update((x) => x.readReceipts = v)),
         SwitchRow(icon: AppIcons.more, title: s('typing_indicators'), subtitle: s('typing_indicators_hint'), value: st.typingIndicators, onChanged: (v) => st.update((x) => x.typingIndicators = v)),
-        SwitchRow(icon: AppIcons.link, title: s('link_previews'), subtitle: s('link_previews_hint'), value: st.linkPreviews, onChanged: (v) => st.update((x) => x.linkPreviews = v)),
+        ListTile(
+          key: const ValueKey('default_ttl'),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const RowIcon(AppIcons.timer),
+          title: Text(s('default_ttl'), style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+          subtitle: Text('${_ttlName(s, st.defaultTtlMs)} · ${s('default_ttl_hint')}', style: context.tt.bodySmall),
+          trailing: const Icon(AppIcons.chevronRight, size: 18),
+          onTap: () async {
+            final v = await _pickOption<int>(context, title: s('default_ttl'), hint: s('default_ttl_hint'), current: st.defaultTtlMs, options: {
+              for (final o in kTtlOptions) o: (_ttlName(s, o), o == 0 ? AppIcons.timerOff : AppIcons.timer),
+            });
+            if (v != null) st.update((x) => x.defaultTtlMs = v);
+          },
+        ),
+        ListTile(
+          key: const ValueKey('community_retention'),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const RowIcon(AppIcons.history),
+          title: Text(s('community_retention'), style: context.tt.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+          subtitle: Text('${s('retention_${_retentionMode(st.communityRetention)}')} · ${s('community_retention_hint')}', style: context.tt.bodySmall),
+          trailing: const Icon(AppIcons.chevronRight, size: 18),
+          onTap: () async {
+            final v = await _pickOption<String>(context, title: s('community_retention'), hint: s('community_retention_hint'), current: _retentionMode(st.communityRetention), options: {
+              for (final m in CommunityDefaults.modes) m: (s('retention_$m'), m == 'forever' ? AppIcons.history : AppIcons.timer),
+            });
+            if (v != null) st.update((x) => x.communityRetention = v);
+          },
+        ),
       ]),
+      _Group(title: s('mo_settings_title'), children: const [StoryPrivacyRows()]),
       const _Group(children: [BlockedRow(), BlockedGroupsRow(), HiddenMembersRow()]),
       _Group(title: s('discovery'), children: [
         SwitchRow(icon: AppIcons.lan, title: s('lan_discovery'), subtitle: s('lan_discovery_hint'), value: st.lanDiscovery, onChanged: (v) => st.update((x) => x.lanDiscovery = v)),
         SwitchRow(icon: AppIcons.package, title: s('store_forward'), subtitle: s('store_forward_hint'), value: st.storeForward, onChanged: (v) => st.update((x) => x.storeForward = v)),
         SwitchRow(icon: AppIcons.peerToPeer, title: s('help_friends'), subtitle: s('help_friends_hint'), value: st.helpFriends, onChanged: (v) => st.update((x) => x.helpFriends = v)),
+        const HelpRestoreRow(),
       ]),
       _Group(title: s('calls'), children: [
         SwitchRow(icon: AppIcons.voice, title: s('echo_cancel'), subtitle: s('echo_cancel_hint'), value: st.echoCancel, onChanged: (v) => st.update((x) => x.echoCancel = v)),
@@ -761,13 +798,24 @@ class _RemoteSettings extends StatelessWidget {
           onChanged: (v) => prefs.update((x) => x.remoteClipboard = v),
         );
       }),
+      SwitchRow(
+        key: const ValueKey('refuse_incoming'),
+        icon: AppIcons.block,
+        title: s('refuse_incoming'),
+        subtitle: s('refuse_incoming_hint'),
+        value: !st.allowIncoming,
+        onChanged: (v) => r.setAllowIncoming(!v).catchError((_) {
+          if (context.mounted) toast(context, S.read(context)('err_internal'));
+        }),
+      ),
+      const _CoreSwitch(key: ValueKey('wake_for_friends'), name: 'wake_for_friends', kv: 'remote.wake_for_friends', icon: AppIcons.power, title: 'wake_for_friends', hint: 'wake_for_friends_hint'),
       ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 4),
         leading: const RowIcon(AppIcons.password),
         title: Text(s('new_password')),
         subtitle: Text(st.password, style: const TextStyle(fontFamily: 'monospace')),
         trailing: const Icon(AppIcons.refresh),
-        onTap: r.refreshPassword,
+        onTap: () => newRemotePassword(context),
       ),
       ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -832,6 +880,14 @@ class _Security extends StatelessWidget {
           subtitle: Text(s('sign_out_hint')),
           onTap: () => signOutHere(context),
         ),
+        ListTile(
+          key: const ValueKey('delete_account'),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const RowIcon(AppIcons.delete, color: LC.danger),
+          title: Text(s('da_row'), style: const TextStyle(color: LC.danger)),
+          subtitle: Text(s(context.select<DevicesStore, bool>((d) => d.isPrimary) ? 'da_row_hint' : 'da_row_hint_linked')),
+          onTap: () => showDeleteAccountDialog(context),
+        ),
       ]),
     ]);
   }
@@ -854,8 +910,22 @@ class _Language extends StatelessWidget {
 }
 
 /// Settings → Advanced: network (relays editor for power users) + diagnostics.
-class _Advanced extends StatelessWidget {
+class _Advanced extends StatefulWidget {
   const _Advanced();
+  @override
+  State<_Advanced> createState() => _AdvancedState();
+}
+
+class _AdvancedState extends State<_Advanced> {
+  /// "Pure P2P" is on (from the core): the bridge wait is off then.
+  final _p2pOnly = ValueNotifier(false);
+
+  @override
+  void dispose() {
+    _p2pOnly.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
@@ -882,9 +952,31 @@ class _Advanced extends StatelessWidget {
       ]),
       _Group(title: s('vc_title'), children: const [VideoCodecInfo()]),
       _Group(title: s('network'), children: [
+        // (these three are read when the core starts: it can't switch them live)
         SwitchRow(title: s('opt_auto_ports'), subtitle: s('upnp_hint'), value: st.upnp, onChanged: (v) => st.update((x) => x.upnp = v)),
         SwitchRow(title: s('opt_peer_search'), subtitle: s('dht_hint'), value: st.dht, onChanged: (v) => st.update((x) => x.dht = v)),
         SwitchRow(title: s('opt_directory'), subtitle: s('nostr_hint'), value: st.nostr, onChanged: (v) => st.update((x) => x.nostr = v)),
+        Padding(
+          key: const ValueKey('restart_hint'),
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Row(children: [
+            Icon(AppIcons.info, size: 15, color: context.lc.muted),
+            const SizedBox(width: 6),
+            Expanded(child: Text(s('passphrase_restart_hint'), style: context.tt.bodySmall)),
+          ]),
+        ),
+        _CoreSwitch(
+          key: const ValueKey('p2p_only'),
+          name: 'p2p_only',
+          icon: AppIcons.peerToPeer,
+          title: 'p2p_only',
+          hint: 'p2p_only_hint',
+          onValue: (v) => _p2pOnly.value = v,
+          // back from "pure P2P": the bridge wait chosen below applies again
+          afterSet: (v) async {
+            if (!v) await context.read<LumoraApi>().settingsSet({'relay_delay_ms': st.relayDelayMs});
+          },
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
           child: Row(children: [
@@ -897,7 +989,11 @@ class _Advanced extends StatelessWidget {
             Text('${(st.relayDelayMs / 1000).toStringAsFixed(1)} s', style: const TextStyle(fontWeight: FontWeight.w600)),
           ]),
         ),
-        Slider(value: st.relayDelayMs.toDouble(), min: 0, max: 10000, divisions: 20, onChanged: (v) => st.update((x) => x.relayDelayMs = v.round())),
+        // (no bridge at all in "pure P2P" mode: the wait doesn't apply)
+        ValueListenableBuilder<bool>(
+          valueListenable: _p2pOnly,
+          builder: (_, p2p, _) => Slider(value: st.relayDelayMs.toDouble(), min: 0, max: 10000, divisions: 20, onChanged: p2p ? null : (v) => st.update((x) => x.relayDelayMs = v.round())),
+        ),
       ]),
       _Group(title: s('custom_relays'), children: [
         Theme(
@@ -1003,4 +1099,100 @@ bool isValidBridgeUrl(String v) {
   if (u.scheme == 'wss') return true;
   if (u.scheme == 'ws' && !kReleaseMode) return u.host == 'localhost' || u.host == '127.0.0.1' || u.host == '::1';
   return false;
+}
+
+/// Self-destruct timer choices (the composer's list).
+const kTtlOptions = [0, 30000, 300000, 3600000, 86400000, 604800000];
+
+String _ttlName(S s, int ms) => ms == 30000 ? s('ttl_sec', {'n': 30}) : s.ttlLabel(ms);
+
+String _retentionMode(String m) => CommunityDefaults.modes.contains(m) ? m : 'forever';
+
+/// A bottom sheet of [options] (value -> (label, icon)); null when dismissed.
+Future<T?> _pickOption<T>(BuildContext context, {required String title, String? hint, required T current, required Map<T, (String, IconData)> options}) =>
+    showModalBottomSheet<T>(
+      context: context,
+      constraints: const BoxConstraints(maxWidth: 480),
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 4), child: Text(title, style: ctx.tt.titleMedium)),
+          if (hint != null) Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 8), child: Text(hint, style: ctx.tt.bodySmall)),
+          for (final e in options.entries)
+            ListTile(
+              leading: Icon(e.value.$2),
+              title: Text(e.value.$1),
+              trailing: e.key == current ? const Icon(AppIcons.check, color: LC.primary) : null,
+              onTap: () => Navigator.pop(ctx, e.key),
+            ),
+        ]),
+      ),
+    );
+
+/// A switch for a preference the core keeps (`settings_get` / `settings_set`
+/// [name]). Hidden until the core says its value (an older core without it
+/// hides the row); follows a change made on another of my devices ([kv]).
+class _CoreSwitch extends StatefulWidget {
+  const _CoreSwitch({super.key, required this.name, this.kv, required this.icon, required this.title, required this.hint, this.onValue, this.afterSet});
+  final String name;
+  final String? kv;
+  final IconData icon;
+  final String title;
+  final String hint;
+  final ValueChanged<bool>? onValue;
+  final Future<void> Function(bool v)? afterSet;
+  @override
+  State<_CoreSwitch> createState() => _CoreSwitchState();
+}
+
+class _CoreSwitchState extends State<_CoreSwitch> {
+  bool? _on;
+  CoreEventWatch? _synced;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    final kv = widget.kv;
+    if (kv != null) _synced = CoreEventWatch.settings(context.read<LumoraApi>(), {kv}, _load);
+  }
+
+  @override
+  void dispose() {
+    _synced?.cancel();
+    super.dispose();
+  }
+
+  void _load() {
+    context.read<LumoraApi>().settingsGet().then((v) {
+      final on = v[widget.name];
+      if (mounted && on is bool) _show(on);
+    }).catchError((_) {});
+  }
+
+  void _show(bool on) {
+    setState(() => _on = on);
+    widget.onValue?.call(on);
+  }
+
+  Future<void> _set(bool v) async {
+    final s = S.read(context);
+    final api = context.read<LumoraApi>();
+    _show(v);
+    try {
+      await api.settingsSet({widget.name: v});
+      await widget.afterSet?.call(v);
+    } catch (_) {
+      if (!mounted) return;
+      _show(!v);
+      toast(context, s('err_internal'));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final on = _on;
+    if (on == null) return const SizedBox.shrink();
+    final s = S.of(context);
+    return SwitchRow(icon: widget.icon, title: s(widget.title), subtitle: s(widget.hint), value: on, onChanged: _set);
+  }
 }

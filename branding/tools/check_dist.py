@@ -50,7 +50,7 @@ for sym_bad in [s for s in re.findall(r'<symbol [^>]*>', SPRITE) if 'viewBox="0 
 if (D / 'assets/img/icons.svg').stat().st_size > 60_000: errors.append('icons.svg: over 60 KB')
 
 # The only external site public pages may link to: the official binaries-only release repo.
-OFFICIAL_EXTERNAL = ('https://github.com/hoangtuvungcao/get_lumora/',)
+OFFICIAL_EXTERNAL = ('https://github.com/hoangtuvungcao/get_lumora/', 'https://report.cybertip.org/')  # (+ the child-safety page's official reporting line)
 
 pages = {}
 for f in sorted(D.rglob('*.html')):
@@ -121,6 +121,7 @@ bad = [
 ]
 public_bad = [r'P2P', r'\brelay', r'\bNAT\b', r'\bSTUN\b', r'khoá công khai|khóa công khai|public key|key pair', r'\bNostr', r'\bDHT\b',
               r'\bQUIC\b', r'\bUPnP\b', r'Telegram', r'Discord', r'Zalo', r'WhatsApp', r'Messenger', r'TeamViewer', r'AnyDesk',
+              r'Viber', r'Slack', r'BotFather', r'(?i)5865F2', r'X-Telegram',
               r'cứ yên tâm', r'Vẫn chạy', r'Run anyway', r'right-click → Open', r'chuột phải → Mở',
               r'recovery_phrase', r'export_backup', r'remote_status', r'remote_set\b', r'remote_new_password']
 # Pages that must name things the rest of the site avoids:
@@ -141,6 +142,8 @@ for f in sorted(D.rglob('*')):
         for m in re.finditer(pat, t):
             if name == 'email' and re.search(r'\.(svg|png|woff2|js|py)$', m.group(0)): continue
             if name == 'email' and m.group(0).startswith('@'): continue
+            # the public contact the owner chose for Google Play (child safety, account deletion)
+            if name == 'email' and m.group(0) == 'trong20843@gmail.com': continue
             errors.append(f'{f.relative_to(D)}: {name}: {m.group(0)}')
     rel = f.relative_to(D).as_posix()
     for pat in public_bad:
@@ -197,9 +200,38 @@ if STRINGS.exists():
             named.add(name)
             if f"'{name}'" not in labels:
                 errors.append(f'privacy: names setting "{name}" that is not an app label')
-    for must in ('Giúp bạn bè kết nối', 'Help friends connect', 'Gửi qua bạn bè khi ngoại tuyến', 'Tìm bạn trong cùng mạng Wi-Fi'):
+    for must in ('Giúp bạn bè kết nối', 'Help friends connect', 'Gửi qua bạn bè khi ngoại tuyến', 'Tìm bạn bè trong cùng mạng Wi-Fi'):
         if must not in named:
             errors.append(f'privacy: does not say how to turn off "{must}"')
+
+# Both languages complete: every data-i18n / data-i18n-html / data-i18n-attr key on a page has a
+# non-empty English string (app.js EN, legal.js, open.js) without Vietnamese letters and not just a
+# copy of the Vietnamese; developer pages pair every <span class="l-vi"> with a <span class="l-en">.
+VI_LETTERS = re.compile('[ăĂđĐơƠưƯảẢạẠằẰắẮẳẲẵẴặẶầẦấẤẩẨẫẪậẬẻẺẽẼẹẸềỀếẾểỂễỄệỆỉỈĩĨịỊỏỎọỌồỒốỐổỔỗỖộỘờỜớỚởỞỡỠợỢủỦũŨụỤừỪứỨửỬữỮựỰỳỲỷỶỹỸỵỴ]')
+EN_NAMES_OK = {'a11y.lang', 'cs.s4.p1'}  # the language switch reads "Tiếng Việt"; a named contact person
+EN_STR = {}
+for js in ('app.js', 'legal.js', 'open.js'):
+    p = D / 'assets' / 'js' / js
+    m = re.search(r'(?:var EN|LUMORA_I18N)\s*=\s*\{(.*?)\n\s*\};', p.read_text(encoding='utf-8'), re.S) if p.exists() else None
+    if not m:
+        errors.append(f'{js}: English strings not found'); continue
+    for k, v in re.findall(r'"([\w.\-]+)"\s*:\s*"((?:[^"\\]|\\.)*)"', m.group(1)):
+        EN_STR[k] = v
+import html as _html
+for f in sorted(D.rglob('*.html')):
+    t = f.read_text(encoding='utf-8'); rel = f.relative_to(D)
+    keys = [(m.group(2), _html.unescape(re.sub(r'<[^>]+>', '', m.group(3))).strip())
+            for m in re.finditer(r'<(\w+)[^>]*\bdata-i18n(?:-html)?="([^"]+)"[^>]*>(.*?)</\1>', t, re.S)]
+    keys += [(p.split(':')[1], None) for m in re.finditer(r'data-i18n-attr="([^"]+)"', t) for p in m.group(1).split(';')]
+    for k, vi in keys:
+        en = EN_STR.get(k)
+        if en is None: errors.append(f'{rel}: no English text for "{k}"'); continue
+        if not en.strip(): errors.append(f'{rel}: empty English text for "{k}"')
+        if VI_LETTERS.search(en) and k not in EN_NAMES_OK: errors.append(f'{rel}: English text for "{k}" has Vietnamese: {en[:60]}')
+        if vi is not None and not vi: errors.append(f'{rel}: empty Vietnamese text for "{k}"')
+        if vi and vi == en and VI_LETTERS.search(vi): errors.append(f'{rel}: "{k}" is not translated')
+    nvi, nen = t.count('<span class="l-vi"'), t.count('<span class="l-en"')
+    if nvi != nen: errors.append(f'{rel}: {nvi} Vietnamese spans but {nen} English spans')
 
 print('\n'.join(errors) if errors else 'ALL CHECKS PASSED')
 print(len(pages), 'html pages checked')

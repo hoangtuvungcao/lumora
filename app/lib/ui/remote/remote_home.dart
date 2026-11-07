@@ -177,8 +177,9 @@ class _AllowCardState extends State<_AllowCard> {
                       icon: Icon(_show ? AppIcons.hide : AppIcons.show, color: Colors.white),
                     ),
                     IconButton(
+                      key: const ValueKey('new_remote_password'),
                       tooltip: s('new_password'),
-                      onPressed: remote.refreshPassword,
+                      onPressed: () => newRemotePassword(context),
                       icon: const Icon(AppIcons.refresh, color: Colors.white),
                     ),
                     IconButton(
@@ -546,5 +547,17 @@ class _RecentDevicesState extends State<_RecentDevices> {
         ],
       ),
     );
+  }
+}
+
+/// "New password" (Remote screen, Settings › Remote access): the core makes
+/// a new temporary password; the old one stops working.
+Future<void> newRemotePassword(BuildContext context) async {
+  final s = S.read(context);
+  try {
+    await context.read<RemoteStore>().refreshPassword();
+    if (context.mounted) toast(context, s('remote_password_new_done'));
+  } catch (e) {
+    if (context.mounted) toastError(context, e);
   }
 }

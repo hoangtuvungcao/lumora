@@ -47,7 +47,7 @@ void main() {
     final d0 = key.currentState!.drafts.single;
     expect(d0.error, isNotNull, reason: 'assets=${d0.assets} bytes=${d0.bytes?.length}');
     expect(find.byKey(const ValueKey('pe-open-external')), findsOneWidget);
-    expect(find.text('Máy này chưa xem được ảnh HEIC (ảnh iPhone)'), findsOneWidget);
+    expect(find.text('Thiết bị này chưa xem được ảnh HEIC (ảnh iPhone)'), findsOneWidget);
 
     // Viewer stand-in (shown by the media viewer's errorBuilder).
     await tester.pumpWidget(LumoraApp(services: sv, home: Scaffold(body: PhotoDecodeFallback(path: bogus.path))));

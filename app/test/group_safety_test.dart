@@ -110,7 +110,7 @@ void main() {
     final info = await t.runAsync(() => sv.api.groupInfo(conv.substring(2)));
     expect(info!.slowModeS, 20, reason: 'the suggested value goes to group_settings');
     expect(find.textContaining('đang gửi quá nhiều tin'), findsNothing, reason: 'banner closes once done');
-    expect(find.text('Đã bật chế độ chậm: 20 giây giữa hai tin'), findsOneWidget);
+    expect(find.text('Đã bật chế độ chậm: 20 giây giữa hai tin nhắn'), findsOneWidget);
 
     // The core throttles per author; the app does not show a repeat either.
     _mock(sv).simulateGroupFlood(conv, admin: true, suggest: 20);
@@ -159,7 +159,7 @@ void main() {
     final st = ApiException('Bạn đang có 10 tin.', cmd: 'post_story', code: 'err.story_limit');
     toast(ctx, '$st');
     await settle(t);
-    expect(find.text('You already have many stories up. Delete one before adding another.'), findsOneWidget);
+    expect(find.text('You already have many moments up. Delete one before adding another.'), findsOneWidget);
     await _done(t, sv);
   });
 }

@@ -1078,7 +1078,7 @@ class _TabIcon extends StatelessWidget {
 }
 
 /// Desktop: a floating emoji panel above [child] (the composer's emoji
-/// button), like Telegram Desktop. Clicks outside close it.
+/// button), as on desktop chat apps. Clicks outside close it.
 class EmojiPopoverAnchor extends StatefulWidget {
   const EmojiPopoverAnchor({super.key, required this.open, required this.onClose, required this.builder, required this.child});
   final bool open;

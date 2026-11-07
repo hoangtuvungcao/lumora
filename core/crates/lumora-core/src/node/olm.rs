@@ -44,7 +44,9 @@ pub struct OlmState {
     /// Undecryptable reliable messages: (device, delivery id) → attempts. After a few
     /// attempts the message is acknowledged anyway (an old sender re-sends the same
     /// ciphertext forever; a current one re-encrypts every re-send).
-    fails: Mutex<lru::LruCache<(PeerId, [u8; 16]), FailCount>>,
+    /// Per device (bounded number of devices, bounded messages each): a big backlog of one
+    /// device can't push the "since when" out of the table, so giving up still happens.
+    fails: Mutex<HashMap<PeerId, DevFails>>,
     /// Last unsolicited key hand-out per device (session repair, rate-limited).
     repaired: Mutex<HashMap<PeerId, Instant>>,
 }
@@ -55,14 +57,28 @@ impl Default for OlmState {
             account: Mutex::new(None),
             sessions: Mutex::new(HashMap::new()),
             requested: Mutex::new(HashMap::new()),
-            fails: Mutex::new(lru::LruCache::new(std::num::NonZeroUsize::new(4096).unwrap())),
+            fails: Mutex::new(HashMap::new()),
             repaired: Mutex::new(HashMap::new()),
         }
     }
 }
 
-/// (failed deliveries of one message, since when)
-type FailCount = (u8, Instant);
+/// Undecryptable messages from one device: since when it has been failing (kept while the
+/// failures go on, whatever happens to the per-message counters) and failed deliveries per
+/// message.
+pub(super) struct DevFails {
+    first: Instant,
+    last: Instant,
+    msgs: lru::LruCache<[u8; 16], u8>,
+}
+
+/// Devices tracked at once / messages per device (a friend's or my own device) / messages
+/// per device of anyone else (a stranger can't make the table grow to 1024 × 2048).
+const FAIL_DEVICES: usize = 1024;
+const FAIL_MSGS_PER_DEVICE: usize = 2048;
+const FAIL_MSGS_PER_STRANGER: usize = 64;
+/// A device that hasn't failed for this long starts a fresh streak.
+const FAIL_STREAK_GAP: Duration = Duration::from_secs(3600);
 
 /// Give up on an undecryptable reliable message after this many deliveries...
 pub(super) const OLM_MAX_FAILS: u8 = 4;
@@ -174,11 +190,47 @@ impl Node {
 
     /// Count a failed decryption of reliable message `id`; true = give up (acknowledge).
     pub(super) fn olm_give_up(&self, dev: &PeerId, id: [u8; 16]) -> bool {
+        self.olm_give_up_at(dev, id, Instant::now())
+    }
+
+    /// [`Self::olm_give_up`] at time `now`: this message failed [`OLM_MAX_FAILS`] times and the
+    /// device's messages have been failing for [`OLM_GIVE_UP_AFTER`].
+    pub(super) fn olm_give_up_at(&self, dev: &PeerId, id: [u8; 16], now: Instant) -> bool {
+        let cap = self.olm_fail_cap(dev);
         let mut f = self.olm.fails.lock();
-        let (n, first) = f.get(&(*dev, id)).copied().unwrap_or((0, Instant::now()));
-        let n = n.saturating_add(1);
-        f.put((*dev, id), (n, first));
-        n >= OLM_MAX_FAILS && first.elapsed() >= OLM_GIVE_UP_AFTER
+        if f.get(dev).is_some_and(|d| now.saturating_duration_since(d.last) > FAIL_STREAK_GAP) {
+            f.remove(dev);
+        }
+        if !f.contains_key(dev) && f.len() >= FAIL_DEVICES {
+            // full: ended streaks go first, then the newest streak (a flood of new failing
+            // devices only pushes out each other, never a device failing for long)
+            f.retain(|_, d| now.saturating_duration_since(d.last) <= FAIL_STREAK_GAP);
+            if f.len() >= FAIL_DEVICES {
+                if let Some(k) = f.iter().max_by_key(|(_, d)| d.first).map(|(k, _)| *k) {
+                    f.remove(&k);
+                }
+            }
+        }
+        let d = f.entry(*dev).or_insert_with(|| DevFails {
+            first: now,
+            last: now,
+            msgs: lru::LruCache::new(std::num::NonZeroUsize::new(cap).unwrap()),
+        });
+        d.last = now;
+        let n = d.msgs.get(&id).copied().unwrap_or(0).saturating_add(1);
+        d.msgs.put(id, n);
+        n >= OLM_MAX_FAILS && now.saturating_duration_since(d.first) >= OLM_GIVE_UP_AFTER
+    }
+
+    /// Failed messages tracked for one device: many for friends / my own devices, few for
+    /// anyone else.
+    fn olm_fail_cap(&self, dev: &PeerId) -> usize {
+        let acct = self.account_of(dev);
+        if acct == self.me || self.store.is_friend(&acct) {
+            FAIL_MSGS_PER_DEVICE
+        } else {
+            FAIL_MSGS_PER_STRANGER
+        }
     }
 
     fn olm_keys_msg(&self) -> Option<PeerMsg> {
@@ -294,6 +346,63 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use vodozemac::olm::{Account, OlmMessage, SessionConfig};
+
+    /// O1: a big backlog of undecryptable messages (from one device or many) can't evict
+    /// the "failing since" clock: after 10 min a message that failed 4 times is given up.
+    #[tokio::test]
+    async fn give_up_survives_a_big_backlog() {
+        use super::*;
+        let tmp = tempfile::tempdir().unwrap();
+        let n = Node::start(NodeConfig {
+            data_dir: tmp.path().join("data"),
+            enable_lan: false,
+            enable_upnp: false,
+            enable_dht: false,
+            enable_nostr: false,
+            relays: Some(vec![]),
+            nostr: Some(vec![]),
+            stun: Some(vec![]),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        let dev = Identity::generate().peer_id();
+        let t0 = Instant::now();
+        let id = |i: u32| {
+            let mut b = [0u8; 16];
+            b[..4].copy_from_slice(&i.to_le_bytes());
+            b
+        };
+        // never before 10 min, however often it fails
+        for _ in 0..10 {
+            assert!(!n.olm_give_up_at(&dev, id(0), t0));
+        }
+        // a backlog far larger than the tables, from this device and from 5,000 others
+        for i in 1..10_000 {
+            n.olm_give_up_at(&dev, id(i), t0 + Duration::from_millis(i as u64));
+        }
+        for i in 0..5_000u64 {
+            n.olm_give_up_at(&Identity::generate().peer_id(), id(1), t0 + Duration::from_secs(1) + Duration::from_millis(i));
+        }
+        let later = t0 + OLM_GIVE_UP_AFTER + Duration::from_secs(20);
+        let r: Vec<bool> = (0..OLM_MAX_FAILS).map(|_| n.olm_give_up_at(&dev, id(0), later)).collect();
+        assert!(r.last().copied().unwrap(), "never gave up: {r:?}");
+        // a device whose failures stopped long ago starts over (no instant give-up)
+        let much_later = later + Duration::from_secs(2 * 3600);
+        assert!(!n.olm_give_up_at(&dev, id(7), much_later));
+        for _ in 0..5 {
+            assert!(!n.olm_give_up_at(&dev, id(7), much_later + Duration::from_secs(1)));
+        }
+        // a stranger's device keeps only a few failed messages (memory bound per peer)
+        {
+            let f = n.olm.fails.lock();
+            assert!(f.len() <= FAIL_DEVICES, "global cap");
+            assert!(f.get(&dev).unwrap().msgs.cap().get() <= FAIL_MSGS_PER_STRANGER, "stranger's per-device cap");
+            let total: usize = f.values().map(|d| d.msgs.len()).sum();
+            assert!(total <= FAIL_DEVICES * FAIL_MSGS_PER_STRANGER, "{total}");
+        }
+        n.shutdown();
+    }
 
     #[tokio::test]
     async fn ratchet_sessions_only_with_friends_own_devices_and_group_co_members() {

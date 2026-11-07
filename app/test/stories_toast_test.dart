@@ -59,20 +59,20 @@ void main() {
     });
     expect(err?.code, 'err.story_not_yours');
 
-    await t.tap(find.byTooltip('Xoá tin').first);
+    await t.tap(find.byTooltip('Xoá khoảnh khắc').first);
     await settle(t);
-    expect(find.text('Xoá tin này?'), findsOneWidget);
+    expect(find.text('Xoá khoảnh khắc này?'), findsOneWidget);
     await t.tap(find.widgetWithText(FilledButton, 'Xoá'));
     await t.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await settle(t);
     expect(find.text('Hôm nay vui quá'), findsNothing);
     expect(sv.stories.mine(me), isEmpty);
-    expect(find.text('Đã xoá tin'), findsOneWidget, reason: 'toast at the top');
-    final toastTop = t.getTopLeft(find.text('Đã xoá tin')).dy;
+    expect(find.text('Đã xoá khoảnh khắc'), findsOneWidget, reason: 'toast at the top');
+    final toastTop = t.getTopLeft(find.text('Đã xoá khoảnh khắc')).dy;
     expect(toastTop, lessThan(844 / 3), reason: 'notices slide in from the top, not over the composer');
     await t.pump(const Duration(seconds: 3));
     await settle(t);
-    expect(find.text('Đã xoá tin'), findsNothing, reason: 'toast goes away by itself');
+    expect(find.text('Đã xoá khoảnh khắc'), findsNothing, reason: 'toast goes away by itself');
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 100));
     sv.dispose();

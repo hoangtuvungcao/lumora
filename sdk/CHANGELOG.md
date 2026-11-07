@@ -47,4 +47,4 @@ versioning: [SemVer](https://semver.org/).
 ## 1.0.0
 
 - First release: commands with a menu, inline buttons and callbacks, bot admins and roles, JSON storage,
-  paced broadcasts, BotFather tokens.
+  paced broadcasts, Bot Studio tokens.

@@ -39,6 +39,7 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/api.dart';
+import '../l10n/strings.dart';
 
 class AndroidBridge with WidgetsBindingObserver {
   AndroidBridge._();
@@ -104,7 +105,13 @@ class AndroidBridge with WidgetsBindingObserver {
 
   /// Settings › Notifications › Chat bubbles (Android 11+): message
   /// notifications carry a bubble that opens the chat over other apps.
-  static bool bubbles = false; // follows Settings.chatBubbles (off by default)
+  static bool bubbles = true; // follows Settings.chatBubbles (on by default)
+
+  /// Lumora's main window is in Android picture-in-picture (a video call
+  /// left with Home): set from MainActivity.onPictureInPictureModeChanged.
+  /// The call layer shows the video only while it is true. Always false off
+  /// Android.
+  static final ValueNotifier<bool> pip = ValueNotifier<bool>(false);
 
   /// A notification, bubble or launcher shortcut asks to open this chat
   /// (wired by AppServices).
@@ -129,6 +136,21 @@ class AndroidBridge with WidgetsBindingObserver {
 
   /// Muted chats that still notify @mentions of me (Settings.mentionsOnlyChats).
   static Set<String> mentionsOnly = const {};
+
+  /// My account's peer id (wired by AppServices): a muted chat still
+  /// notifies, quietly, a direct @mention of me or a reply to my message.
+  static String Function() myPeer = _noPeer;
+  static String _noPeer() => '';
+
+  /// The message @mentions me by name or replies to my message: the core's
+  /// `to_me`, else my id in its `mentions` (an older core; `@all` never counts).
+  static bool toMe(Map<String, dynamic> ev, String me) {
+    if (ev['to_me'] == true) return true;
+    if (me.isEmpty) return false;
+    final meta = ev['meta'];
+    final list = ev['mentions'] ?? (meta is Map ? meta['mentions'] : null);
+    return list is List && list.any((p) => '$p' == me);
+  }
 
   /// How long a message notification waits for a read receipt from another of
   /// my devices (the chat open there) before it is posted.
@@ -166,10 +188,23 @@ class AndroidBridge with WidgetsBindingObserver {
 
   /// Notification keys to remove for a core event (`call` over / answered or
   /// declined elsewhere; a chat read on another device), else empty.
+  static String? _ringingCall;
+
   static List<String> cancelKeysFor(Map<String, dynamic> ev) {
     switch (ev['event']) {
       case 'call':
-        return ev['state'] == 'incoming' ? const [] : const ['call'];
+        final id = ev['call_id']?.toString() ?? '';
+        if (ev['state'] == 'incoming') {
+          _ringingCall = id; // this call owns the 'call' notification
+          return const [];
+        }
+        // (a group call that doesn't ring me — "available" — leaves a ringing one alone)
+        if (ev['state'] == 'available') return const [];
+        // only the ringing call's own end / answer removes it: a "Join" banner ending,
+        // or any other call's state, leaves the ringing one alone
+        if (_ringingCall != null && id != _ringingCall) return const [];
+        _ringingCall = null;
+        return const ['call'];
       case 'conversation':
         final id = ev['id']?.toString() ?? '';
         final unread = ev['unread'];
@@ -352,6 +387,17 @@ class AndroidBridge with WidgetsBindingObserver {
     }
   }
 
+  /// The active network as Android sees it: `{online, wifi, cell, roaming, metered}`
+  /// (automatic downloads: Wi-Fi / mobile data / roaming). null off Android.
+  static Future<Map<String, Object?>?> networkInfo() async {
+    if (!isAndroid) return null;
+    try {
+      return await _service.invokeMapMethod<String, Object?>('networkInfo');
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Android's "let Lumora run in the background" dialog (battery optimisation).
   static Future<bool> requestIgnoreBattery() async {
     if (!isAndroid) return false;
@@ -483,8 +529,9 @@ class AndroidBridge with WidgetsBindingObserver {
   /// System notification while the UI is in the background.
   Future<void> _notifyBackground(Map<String, dynamic> ev) async {
     if (!notificationsOn) return;
-    final vi = _vi;
+    final s = _vi ? S.vn : S.en;
     String? kind, key, title, body, sender, callId;
+    var quiet = false;
     switch (ev['event']) {
       case 'message':
         if (ev['mine'] == true || ev['kind'] == 'system') return;
@@ -494,8 +541,12 @@ class AndroidBridge with WidgetsBindingObserver {
         // An @mention of me: its own channel and sound, and it gets through a
         // chat muted as "Mentions only".
         final mention = _mentions.remove(ev['id']?.toString() ?? '') != null;
-        // Muted chat (or its community/group, for channel convs "group#channel").
-        if (_muted(conv) && !(mention && _mentionsOnly(conv))) return;
+        // Muted chat (or its community/group, for channel convs "group#channel"):
+        // only a direct @mention of me / a reply to my message gets through,
+        // quietly (no sound, no vibration).
+        final direct = toMe(ev, myPeer());
+        quiet = _muted(conv) && !(mention && _mentionsOnly(conv));
+        if (quiet && !direct) return;
         // Read on another of my devices right away (its chat was open there):
         // the read receipt comes within [readGrace] — then no alert here.
         if (readGrace > Duration.zero) {
@@ -505,13 +556,13 @@ class AndroidBridge with WidgetsBindingObserver {
           if (read != null && !read.isBefore(arrived)) return;
         }
         final b = ev['body'];
-        final text = b is Map ? (b['text'] ?? (b['name'] != null ? '${vi ? 'Tệp' : 'File'}: ${b['name']}' : null)) : null;
-        kind = mention ? 'mention' : 'message';
+        final text = b is Map ? (b['text'] ?? (b['name'] != null ? s('nf_file', {'name': b['name']}) : null)) : null;
+        kind = mention || direct ? 'mention' : 'message';
         key = conv;
         var author = await _nameOf(ev['author']?.toString() ?? '');
         if (author == 'Lumora' && ev['author_name'] is String) author = ev['author_name'] as String; // a group member, not a contact
         title = messageTitle(conv, author);
-        body = text?.toString() ?? (vi ? 'Tin nhắn mới' : 'New message');
+        body = text?.toString() ?? s('nf_new_message');
         sender = author;
       case 'call':
         if (ev['state'] != 'incoming') return;
@@ -520,24 +571,24 @@ class AndroidBridge with WidgetsBindingObserver {
         callId = ev['call_id']?.toString();
         title = await _nameOf(ev['from']?.toString() ?? ev['peer']?.toString() ?? '');
         body = ev['video'] == true
-            ? (vi ? 'Cuộc gọi video đến' : 'Incoming video call')
-            : (vi ? 'Cuộc gọi đến' : 'Incoming call');
+            ? s('nf_incoming_video')
+            : s('nf_incoming_call');
       case 'remote_request':
         kind = 'remote';
         key = 'remote';
-        title = vi ? 'Yêu cầu truy cập từ xa' : 'Remote access request';
+        title = s('nf_remote_title');
         final who = ev['name']?.toString() ?? '';
-        body = vi ? '$who muốn truy cập điện thoại này. Mở Lumora để trả lời.' : '$who wants to access this phone. Open Lumora to answer.';
+        body = s('nf_remote_body', {'name': who});
       case 'reminder_due':
         kind = 'reminder';
         key = 'reminder:${ev['msg_id']}';
-        title = ev['title'] == null ? (vi ? 'Nhắc hẹn' : 'Reminder') : '${vi ? 'Nhắc hẹn' : 'Reminder'}: ${ev['title']}';
+        title = ev['title'] == null ? s('nf_reminder') : s('nf_reminder_named', {'title': ev['title']});
         final note = ev['note']?.toString() ?? '';
-        body = note.isNotEmpty ? note : (vi ? 'Đến giờ hẹn rồi' : "It's time");
+        body = note.isNotEmpty ? note : s('nf_reminder_due');
       case 'friend_request':
         kind = 'friend';
         key = 'friend:${ev['peer']}';
-        title = vi ? 'Lời mời kết bạn' : 'Friend request';
+        title = s('nf_friend_title');
         final who = ev['name']?.toString() ?? '';
         final note = ev['note']?.toString() ?? '';
         body = note.isEmpty ? who : '$who: $note';
@@ -553,12 +604,12 @@ class AndroidBridge with WidgetsBindingObserver {
       // Privacy: never reveal names or message text (app lock / user choice).
       title = 'Lumora';
       body = switch (kind) {
-        'message' || 'mention' => vi ? 'Bạn có tin nhắn mới' : 'You have a new message',
-        'call' => vi ? 'Cuộc gọi đến' : 'Incoming call',
-        'remote' => vi ? 'Có yêu cầu truy cập từ xa. Mở Lumora để trả lời.' : 'Someone asked for remote access. Open Lumora to answer.',
-        'friend' => vi ? 'Bạn có lời mời kết bạn mới' : 'You have a new friend request',
-        'reminder' => vi ? 'Bạn có một nhắc hẹn' : 'You have a reminder',
-        _ => vi ? 'Bạn có thông báo mới' : 'You have a new notification',
+        'message' || 'mention' => s('nf_hidden_message'),
+        'call' => s('nf_incoming_call'),
+        'remote' => s('nf_hidden_remote'),
+        'friend' => s('nf_hidden_friend'),
+        'reminder' => s('nf_hidden_reminder'),
+        _ => s('nf_hidden_other'),
       };
       if (kind == 'message' || kind == 'mention') key = 'message';
     }
@@ -573,7 +624,7 @@ class AndroidBridge with WidgetsBindingObserver {
         'key': key,
         'title': title,
         'body': body,
-        ...soundArgs(kind),
+        ...(quiet ? const {'sound': false, 'vibrate': false} : soundArgs(kind)),
         ...chat,
         // Answer / Decline buttons hand it back (callAction)
         'callId': ?callId,
@@ -755,6 +806,10 @@ class AndroidBridge with WidgetsBindingObserver {
       final action = a['action']?.toString() ?? '';
       if (onCallAction == null || (action != 'answer' && action != 'decline')) return false;
       onCallAction!(action, a['callId']?.toString() ?? '');
+      return true;
+    }
+    if (call.method == 'pip') {
+      pip.value = isAndroid && (call.arguments as Map?)?['on'] == true;
       return true;
     }
     if (call.method != 'reminderAction') return null;

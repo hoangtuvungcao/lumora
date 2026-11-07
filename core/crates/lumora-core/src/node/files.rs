@@ -214,18 +214,286 @@ pub struct StoragePolicy {
     pub max_cache: u64,
     /// Delete downloaded media not opened for this many days (0 = never).
     pub media_days: u64,
-    /// Auto-download limit in direct chats (bytes).
+    /// Legacy single limits (builds before per-network rules): kept so older devices of the
+    /// account still read the synced policy; [`StoragePolicy::auto_download`] decides now.
     pub auto_direct: u64,
-    /// Auto-download limit in groups (bytes; thumbnails always shown).
     pub auto_group: u64,
     /// Default history window for communities, days (0 = forever).
     pub community_days: u64,
+    /// What downloads by itself, per network and kind of media (thumbnails always shown).
+    /// Lives in its own synced key [`AUTO_DL_KEY`] (an older sibling re-saving
+    /// `storage.policy` must not reset it); the copy embedded here is only read as a fallback.
+    #[serde(default)]
+    pub auto_download: AutoDownload,
+    /// Rules derived from a pre-1.0.8 policy: that build's group limit, which covered every
+    /// kind of media in groups (0 = never). `None` once the user has per-network rules.
+    #[serde(skip)]
+    pub legacy_group_cap: Option<u64>,
+}
+
+/// Synced key of [`StoragePolicy::auto_download`].
+pub const AUTO_DL_KEY: &str = "storage.auto_download";
+
+impl StoragePolicy {
+    /// The stored policy (`storage.policy`, as any build wrote it) plus the per-network
+    /// rules from their own key. Without those: the copy embedded by early 1.0.8 builds, else
+    /// rules derived from the legacy single limits — "never" (0) stays off for every network
+    /// and kind, anything else is capped at the new defaults.
+    pub fn resolve(raw: Option<Value>, own: Option<AutoDownload>) -> Self {
+        let embedded = raw.as_ref().and_then(|v| v.get("auto_download")).is_some_and(|a| a.is_object());
+        let mut p: StoragePolicy = raw.clone().and_then(|v| serde_json::from_value(v).ok()).unwrap_or_default();
+        if let Some(a) = own {
+            p.auto_download = a;
+        } else if raw.is_some() && !embedded {
+            p.auto_download = AutoDownload::from_legacy(p.auto_direct, p.auto_group);
+            p.legacy_group_cap = Some(p.auto_group);
+        }
+        p
+    }
+
+    /// Whether a received file downloads by itself.
+    pub fn allows(&self, kind: MediaKind, net: NetClass, in_group: bool, size: u64) -> bool {
+        let group_ok = match (in_group, self.legacy_group_cap) {
+            (true, Some(cap)) => cap > 0 && size <= cap,
+            _ => true,
+        };
+        group_ok && self.auto_download.allows(kind, net, in_group, size)
+    }
 }
 
 impl Default for StoragePolicy {
     fn default() -> Self {
-        StoragePolicy { max_cache: 5 << 30, media_days: 0, auto_direct: 25 << 20, auto_group: 2 << 20, community_days: 30 }
+        StoragePolicy {
+            max_cache: 5 << 30,
+            media_days: 0,
+            auto_direct: 25 << 20,
+            auto_group: 2 << 20,
+            community_days: 30,
+            auto_download: AutoDownload::default(),
+            legacy_group_cap: None,
+        }
     }
+}
+
+/// "Always download" limit (1 PiB; the app uses the same value). 0 = never by itself.
+pub const AUTO_ALWAYS: u64 = 1 << 50;
+const MB: u64 = 1 << 20;
+/// A voice message never downloads by itself above this (whatever the setting says: the
+/// size is the sender's claim, and real voice messages are far smaller).
+pub const VOICE_AUTO_MAX: u64 = 20 * MB;
+/// In groups "always" means at most this: any member can post, so a member must not be
+/// able to make everyone's phone download gigabytes.
+pub const GROUP_ALWAYS_MAX: u64 = 10 * MB;
+
+/// Which auto-download limits apply (the app's network hint).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetClass {
+    /// Wi-Fi / Ethernet, and every desktop.
+    Wifi,
+    /// Mobile data at home.
+    Cell,
+    /// Roaming abroad, or a Wi-Fi the phone reports as metered (a hotspot).
+    Roaming,
+}
+
+impl NetClass {
+    pub fn name(self) -> &'static str {
+        match self {
+            NetClass::Wifi => "wifi",
+            NetClass::Cell => "cell",
+            NetClass::Roaming => "roaming",
+        }
+    }
+}
+
+/// What a received file is, for the auto-download rules.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MediaKind {
+    Photo,
+    Video,
+    Voice,
+    File,
+}
+
+impl MediaKind {
+    /// `voice`: the file belongs to a voice MESSAGE (`Body::Voice` — decided by the message
+    /// kind, never by the file name: anyone can name a file `voice-….ogg`); everything
+    /// else by its type.
+    pub fn of(name: &str, voice: bool) -> Self {
+        if voice {
+            return MediaKind::Voice;
+        }
+        let mime = mime_of(name);
+        // an SVG is a document that can carry scripts, not a photo
+        if mime.starts_with("image/") && mime != "image/svg+xml" {
+            MediaKind::Photo
+        } else if mime.starts_with("video/") {
+            MediaKind::Video
+        } else {
+            MediaKind::File
+        }
+    }
+}
+
+/// Auto-download limits on one kind of network (bytes; 0 = off, [`AUTO_ALWAYS`] = always).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct AutoLimits {
+    pub photo: u64,
+    pub video: u64,
+    pub voice: u64,
+    /// Files in 1-1 chats.
+    pub file: u64,
+    /// Files in groups (never above `file`).
+    pub file_group: u64,
+}
+
+impl AutoLimits {
+    /// Defaults: photos and voice messages everywhere, videos and files on Wi-Fi only.
+    pub fn wifi() -> Self {
+        AutoLimits { photo: 5 * MB, video: 50 * MB, voice: AUTO_ALWAYS, file: 25 * MB, file_group: 10 * MB }
+    }
+    pub fn cell() -> Self {
+        AutoLimits { photo: 5 * MB, video: 0, voice: AUTO_ALWAYS, file: 0, file_group: 0 }
+    }
+    pub fn roaming() -> Self {
+        AutoLimits { photo: MB, video: 0, voice: 5 * MB, file: 0, file_group: 0 }
+    }
+    fn clamp(mut self) -> Self {
+        for v in [&mut self.photo, &mut self.video, &mut self.voice, &mut self.file, &mut self.file_group] {
+            *v = (*v).min(AUTO_ALWAYS);
+        }
+        self.file_group = self.file_group.min(self.file);
+        self
+    }
+    /// Apply `{photo?, video?, voice?, file?, file_group?}` (bytes). A new `file` limit
+    /// without `file_group` keeps groups at most at `group_cap`.
+    fn merge(&mut self, v: &Value, group_cap: u64) {
+        let g = |k: &str| v.get(k).and_then(|x| x.as_u64());
+        if let Some(x) = g("photo") { self.photo = x; }
+        if let Some(x) = g("video") { self.video = x; }
+        if let Some(x) = g("voice") { self.voice = x; }
+        if let Some(x) = g("file") {
+            self.file = x;
+            if g("file_group").is_none() {
+                self.file_group = x.min(group_cap);
+            }
+        }
+        if let Some(x) = g("file_group") { self.file_group = x; }
+        *self = self.clone().clamp();
+    }
+}
+
+/// Per-network auto-download rules (synced with the rest of `storage.policy`).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct AutoDownload {
+    pub wifi: AutoLimits,
+    /// Mobile data at home.
+    pub cell: AutoLimits,
+    /// Roaming, or a Wi-Fi the device reports as metered.
+    pub roaming: AutoLimits,
+}
+
+/// Lenient: missing networks / kinds keep their own network's default (a policy written by
+/// a build with fewer kinds), out-of-range values are clamped.
+impl<'de> Deserialize<'de> for AutoDownload {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        let v = Value::deserialize(d)?;
+        let mut a = AutoDownload::default();
+        a.merge(&v);
+        Ok(a)
+    }
+}
+
+impl Default for AutoDownload {
+    fn default() -> Self {
+        AutoDownload { wifi: AutoLimits::wifi(), cell: AutoLimits::cell(), roaming: AutoLimits::roaming() }
+    }
+}
+
+impl AutoDownload {
+    /// Rules for a policy saved before per-network rules: each limit is the old one (1-1
+    /// limit for every kind, group limit for group files) capped at the new default.
+    pub fn from_legacy(direct: u64, group: u64) -> Self {
+        let conv = |d: AutoLimits| {
+            AutoLimits {
+                photo: d.photo.min(direct),
+                video: d.video.min(direct),
+                voice: d.voice.min(direct),
+                file: d.file.min(direct),
+                file_group: d.file_group.min(group),
+            }
+            .clamp()
+        };
+        AutoDownload { wifi: conv(AutoLimits::wifi()), cell: conv(AutoLimits::cell()), roaming: conv(AutoLimits::roaming()) }
+    }
+
+    /// The limit for one received file (bytes).
+    pub fn limit(&self, kind: MediaKind, net: NetClass, in_group: bool) -> u64 {
+        let l = match net {
+            NetClass::Wifi => &self.wifi,
+            NetClass::Cell => &self.cell,
+            NetClass::Roaming => &self.roaming,
+        };
+        let lim = match kind {
+            MediaKind::Photo => l.photo,
+            MediaKind::Video => l.video,
+            MediaKind::Voice => l.voice,
+            MediaKind::File if in_group => l.file_group.min(l.file),
+            MediaKind::File => l.file,
+        };
+        // "always" is never applied in groups: the group limit (at least 10 MB) instead
+        let lim = if in_group && lim >= AUTO_ALWAYS { GROUP_ALWAYS_MAX.max(l.file_group.min(l.file)) } else { lim };
+        if kind == MediaKind::Voice {
+            lim.min(VOICE_AUTO_MAX)
+        } else {
+            lim
+        }
+    }
+    /// Whether a file of `size` bytes downloads by itself.
+    pub fn allows(&self, kind: MediaKind, net: NetClass, in_group: bool, size: u64) -> bool {
+        let limit = self.limit(kind, net, in_group);
+        limit > 0 && size <= limit
+    }
+    /// Apply `{wifi?: {...}, cell?: {...}, roaming?: {...}}` from the app ("mobile" = "cell").
+    pub fn merge(&mut self, v: &Value) {
+        if let Some(w) = v.get("wifi") {
+            self.wifi.merge(w, 10 * MB);
+        }
+        if let Some(c) = v.get("cell").or_else(|| v.get("mobile")) {
+            self.cell.merge(c, MB);
+        }
+        if let Some(c) = v.get("roaming") {
+            self.roaming.merge(c, MB);
+        }
+    }
+}
+
+fn load_storage_policy(store: &Store) -> StoragePolicy {
+    let raw: Option<Value> = store.kv_get_json("storage.policy");
+    let own: Option<AutoDownload> = store.kv_get_json(AUTO_DL_KEY);
+    let migrate = own.is_none() && raw.as_ref().and_then(|v| v.get("auto_download")).is_some_and(|a| a.is_object());
+    let p = StoragePolicy::resolve(raw, own);
+    if migrate {
+        // early 1.0.8 builds kept the rules inside `storage.policy`: give them their own key
+        let _ = store.kv_set_json(AUTO_DL_KEY, &p.auto_download);
+    }
+    p
+}
+
+/// Saves the policy; the per-network rules only when they changed (they are their own
+/// last-writer-wins key, so a cache change on another device can't undo a rules change).
+fn save_storage_policy(store: &Store, p: &StoragePolicy) -> Result<()> {
+    let cur = load_storage_policy(store);
+    let mut v = serde_json::to_value(p)?;
+    if p.legacy_group_cap.is_some() && p.auto_download == cur.auto_download {
+        // still the rules derived from a legacy policy: keep them derived
+        if let Some(o) = v.as_object_mut() {
+            o.remove("auto_download");
+        }
+    } else if p.auto_download != cur.auto_download || store.kv_get(AUTO_DL_KEY).is_none() {
+        store.kv_set_json(AUTO_DL_KEY, &p.auto_download)?;
+    }
+    store.kv_set_json("storage.policy", &v)
 }
 
 /// App-supplied previews for [`Node::send_file_with`] (all optional).
@@ -407,6 +675,16 @@ impl Node {
     }
 
     pub(super) fn on_file_offer(&self, from: PeerId, wire_id: [u8; 16], name: String, size: u64, hash: [u8; 32], conv: String) -> Result<()> {
+        self.on_file_offer_kind(from, wire_id, name, size, hash, conv, false)
+    }
+
+    /// The file of a voice message (`Body::Voice`): auto-download as a voice message.
+    pub(super) fn on_voice_offer(&self, from: PeerId, wire_id: [u8; 16], size: u64, hash: [u8; 32], conv: String) -> Result<()> {
+        self.on_file_offer_kind(from, wire_id, format!("voice-{}.ogg", &hex::encode(wire_id)[..8]), size, hash, conv, true)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn on_file_offer_kind(&self, from: PeerId, wire_id: [u8; 16], name: String, size: u64, hash: [u8; 32], conv: String, voice: bool) -> Result<()> {
         if self.file_row_for(&from, &wire_id).is_some() {
             return Ok(());
         }
@@ -448,12 +726,14 @@ impl Node {
                 return Ok(());
             }
         }
-        // 2) auto-download policy: direct chats vs groups, and never when disk is low
+        // 2) auto-download policy: kind of media × network × direct chat / group, and never
+        // when disk is low
         let pol = self.storage_policy();
         let in_group = row.conv.starts_with("g:");
-        let limit = if in_group { pol.auto_group } else { pol.auto_direct };
+        let kind = MediaKind::of(&row.name, voice);
+        let auto = pol.allows(kind, self.net_class(), in_group, size);
         let trusted = self.store.is_friend(&from) || in_group;
-        if size <= limit && trusted && !self.low_disk() {
+        if auto && trusted && !self.low_disk() {
             if let Some(me) = self.arc_hint() {
                 tokio::spawn(async move {
                     let _ = me.accept_file(&file_id, None).await;
@@ -747,6 +1027,13 @@ impl Node {
                 active.bytes.store(done, Ordering::Relaxed);
                 if last_emit.elapsed() > Duration::from_millis(300) {
                     last_emit = Instant::now();
+                    // the disk filled up meanwhile (other apps, other downloads): stop here
+                    // (paused, resumable) instead of filling it to the last byte
+                    if let Some(dir) = part.parent() {
+                        if let Ok(free) = free_space(dir) {
+                            anyhow::ensure!(!disk_too_full(free, size - done), "disk full: download paused");
+                        }
+                    }
                     let _ = self.store.file_update(&file_id, 1, done as i64);
                     self.emit_file(&file_id);
                 }
@@ -797,11 +1084,11 @@ impl Node {
     }
 
     pub fn storage_policy(&self) -> StoragePolicy {
-        self.store.kv_get_json("storage.policy").unwrap_or_default()
+        load_storage_policy(&self.store)
     }
 
     pub fn set_storage_policy(&self, p: &StoragePolicy) -> Result<()> {
-        self.store.kv_set_json("storage.policy", p)
+        save_storage_policy(&self.store, p)
     }
 
     pub fn low_disk(&self) -> bool {
@@ -889,9 +1176,10 @@ impl Node {
     /// "Delete for everyone": blank the message and, for a file message, forget its file —
     /// stop transfers, remove the copy Lumora downloaded (never a sender's original or a
     /// copy the user saved elsewhere) and drop the row so it can't be requested any more.
-    pub(super) fn delete_message_everywhere(&self, target: &[u8; 16], author: Option<&PeerId>) -> Result<bool> {
+    /// `by`: who deleted it (the author recalling it, or a group moderator).
+    pub(super) fn delete_message_everywhere(&self, target: &[u8; 16], author: Option<&PeerId>, by: &PeerId) -> Result<bool> {
         let file = self.store.message(target).filter(|m| m.kind == "file" || m.kind == "voice").and_then(|m| self.file_of_message(&m));
-        if !self.store.delete_message(target, author)? {
+        if !self.store.delete_message(target, author, Some(by))? {
             return Ok(false);
         }
         if let Some(row) = file {
@@ -978,6 +1266,11 @@ impl Node {
 
 /// Local id of a file `sender` offered as `wire` when that id was already taken here
 /// (see [`Node::file_row_for`]). Local state only: the wire keeps the sender's id.
+/// Free space left (`free`) can't take the rest of a download (`remaining`) plus a reserve.
+fn disk_too_full(free: u64, remaining: u64) -> bool {
+    free < remaining.saturating_add(64 * MB)
+}
+
 pub(crate) fn local_file_id(sender: &PeerId, wire: &[u8; 16]) -> [u8; 16] {
     let mut h = blake3::Hasher::new_derive_key("lumora local file id v1");
     h.update(&sender.0);
@@ -1052,6 +1345,152 @@ mod tests {
         // samples closer than 200 ms don't change the estimate
         assert_eq!(m.sample(99_999_999, t0 + Duration::from_millis(300 * 27 + 50)), out);
         assert_eq!(sanitize("ảnh đẹp.png"), "ảnh đẹp.png");
+    }
+
+    #[test]
+    fn media_kind_from_offered_name() {
+        let id = false;
+        assert_eq!(MediaKind::of("voice-abababab.ogg", true), MediaKind::Voice);
+        // a file merely named like a voice message is an audio file (kind decides)
+        assert_eq!(MediaKind::of("voice-abababab.ogg", false), MediaKind::File);
+        assert_eq!(MediaKind::of("song.mp3", id), MediaKind::File);
+        for p in ["a.jpg", "B.JPEG", "c.png", "d.webp", "e.heic", "f.gif"] {
+            assert_eq!(MediaKind::of(p, id), MediaKind::Photo, "{p}");
+        }
+        assert_eq!(MediaKind::of("logo.svg", id), MediaKind::File);
+        for v in ["a.mp4", "b.MOV", "c.webm", "d.mkv"] {
+            assert_eq!(MediaKind::of(v, id), MediaKind::Video, "{v}");
+        }
+        for f in ["a.pdf", "b.zip", "noext", "c.bin"] {
+            assert_eq!(MediaKind::of(f, id), MediaKind::File, "{f}");
+        }
+    }
+
+    /// The default rules: kind × network × chat type × size.
+    #[test]
+    fn auto_download_default_rules() {
+        use MediaKind::*;
+        use NetClass::*;
+        let p = AutoDownload::default();
+        let ok = |k, net, group, mb: f64| p.allows(k, net, group, (mb * MB as f64) as u64);
+        // photos and voice messages download by themselves on every network
+        for group in [false, true] {
+            for net in [Wifi, Cell] {
+                assert!(ok(Photo, net, group, 3.0) && ok(Photo, net, group, 5.0), "photo {net:?} g={group}");
+                assert!(!ok(Photo, net, group, 5.1), "big photo {net:?} g={group}");
+                assert!(ok(Voice, net, group, 3.0) && ok(Voice, net, group, 10.0), "voice {net:?}");
+                // the claimed size of a voice message is capped (20 MB; 10 MB in groups)
+                assert!(!ok(Voice, net, group, 5000.0) && !ok(Voice, net, group, 20.5), "huge voice {net:?}");
+                assert_eq!(ok(Voice, net, group, 15.0), !group, "voice 15 MB {net:?} g={group}");
+            }
+            assert!(ok(Photo, Roaming, group, 1.0) && !ok(Photo, Roaming, group, 1.5));
+            assert!(ok(Voice, Roaming, group, 2.0) && !ok(Voice, Roaming, group, 6.0));
+        }
+        // videos and files: Wi-Fi only (video 50 MB, files 25 MB in 1-1, 10 MB in groups)
+        for group in [false, true] {
+            assert!(ok(Video, Wifi, group, 50.0) && !ok(Video, Wifi, group, 50.5));
+            for net in [Cell, Roaming] {
+                assert!(!ok(Video, net, group, 0.1) && !ok(File, net, group, 0.01), "{net:?} g={group}");
+            }
+        }
+        assert!(ok(File, Wifi, false, 25.0) && !ok(File, Wifi, false, 25.5));
+        assert!(ok(File, Wifi, true, 10.0) && !ok(File, Wifi, true, 11.0));
+        assert_eq!(NetClass::Roaming.name(), "roaming");
+    }
+
+    #[test]
+    fn auto_download_settings_merge_and_clamp() {
+        use MediaKind::*;
+        use NetClass::*;
+        let mut p = AutoDownload::default();
+        // turn photos off on mobile data, raise Wi-Fi files: groups stay at their 10 MB cap
+        p.merge(&serde_json::json!({"cell": {"photo": 0}, "wifi": {"file": 100 * MB}}));
+        assert!(!p.allows(Photo, Cell, false, 1));
+        assert!(p.allows(Photo, Wifi, false, MB));
+        assert!(p.allows(Photo, Roaming, false, MB), "roaming untouched");
+        assert!(p.allows(File, Wifi, false, 100 * MB));
+        assert_eq!(p.limit(File, Wifi, true), 10 * MB);
+        // files on mobile data ("mobile" is accepted): groups at most 1 MB
+        p.merge(&serde_json::json!({"mobile": {"file": 5 * MB}}));
+        assert_eq!((p.cell.file, p.cell.file_group), (5 * MB, MB));
+        p.merge(&serde_json::json!({"cell": {"file": 0}}));
+        assert_eq!((p.cell.file, p.cell.file_group), (0, 0));
+        assert!(!p.allows(File, Cell, false, 0), "off means off, even for empty files");
+        // roaming has its own column
+        p.merge(&serde_json::json!({"roaming": {"photo": 0, "video": 3 * MB}}));
+        assert!(!p.allows(Photo, Roaming, false, 1) && p.allows(Video, Roaming, false, 3 * MB));
+        assert!(!p.allows(Video, Cell, false, 1), "mobile data untouched");
+        // explicit group limit, never above the 1-1 limit; huge values capped at "always"
+        p.merge(&serde_json::json!({"wifi": {"file_group": 500 * MB, "video": u64::MAX}}));
+        assert_eq!(p.wifi.file_group, 100 * MB);
+        assert_eq!(p.wifi.video, AUTO_ALWAYS);
+        // "always" never applies in groups: the group's own limit (≥ 10 MB) caps it
+        assert_eq!(p.limit(Video, Wifi, false), AUTO_ALWAYS);
+        assert_eq!(p.limit(Video, Wifi, true), 100 * MB);
+        p.merge(&serde_json::json!({"cell": {"video": u64::MAX, "voice": u64::MAX}}));
+        assert_eq!(p.limit(Video, Cell, true), GROUP_ALWAYS_MAX);
+        assert_eq!(p.limit(Voice, Cell, false), VOICE_AUTO_MAX);
+        assert_eq!(p.limit(Voice, Cell, true), GROUP_ALWAYS_MAX);
+        assert!(disk_too_full(100 * MB, 50 * MB) && !disk_too_full(200 * MB, 50 * MB));
+        // a policy saved by an older build (no auto_download): "never" stays never everywhere
+        let old: Value = serde_json::from_str(r#"{"max_cache":1,"media_days":0,"auto_direct":0,"auto_group":0,"community_days":30}"#).unwrap();
+        let old = StoragePolicy::resolve(Some(old), None);
+        for k in [Photo, Video, Voice, File] {
+            for net in [Wifi, Cell, Roaming] {
+                assert!(!old.allows(k, net, false, 1) && !old.allows(k, net, true, 1), "{k:?} {net:?}");
+            }
+        }
+        let partial: AutoDownload = serde_json::from_str(r#"{"wifi":{"photo":7},"cell":{"video":1}}"#).unwrap();
+        assert_eq!((partial.wifi.photo, partial.wifi.video, partial.roaming), (7, 50 * MB, AutoLimits::roaming()));
+        assert_eq!(partial.cell.video, 1);
+    }
+
+    /// Regression (1.0.8 review): a 1.0.7 policy keeps its meaning, and the per-network
+    /// rules survive an older sibling re-saving `storage.policy` without them.
+    #[test]
+    fn auto_download_legacy_policy_and_own_key() {
+        use MediaKind::*;
+        use NetClass::*;
+        let legacy = |d: u64, g: u64| serde_json::json!({"max_cache":1,"media_days":0,"auto_direct":d,"auto_group":g,"community_days":30});
+        // non-zero legacy limits: min(old, new default); the old group limit covers every kind
+        let p = StoragePolicy::resolve(Some(legacy(MB, 0)), None);
+        assert!(p.allows(Photo, Wifi, false, MB) && !p.allows(Photo, Wifi, false, MB + 1));
+        assert!(!p.allows(Video, Cell, false, 1), "cell default stays off");
+        assert!(!p.allows(Photo, Wifi, true, 1), "groups were never");
+        let p = StoragePolicy::resolve(Some(legacy(25 * MB, 2 * MB)), None);
+        assert!(p.allows(Photo, Wifi, false, 5 * MB) && p.allows(Photo, Wifi, true, 2 * MB) && !p.allows(Photo, Wifi, true, 3 * MB));
+        // nothing stored at all: the new defaults
+        let p = StoragePolicy::resolve(None, None);
+        assert_eq!((p.auto_download, p.legacy_group_cap), (AutoDownload::default(), None));
+
+        let st = Store::open_memory().unwrap();
+        st.kv_set_json("storage.policy", &legacy(0, 0)).unwrap();
+        // changing the cache size keeps derived rules derived (and "never")
+        let mut p = load_storage_policy(&st);
+        p.max_cache = 7;
+        save_storage_policy(&st, &p).unwrap();
+        assert!(st.kv_get(AUTO_DL_KEY).is_none());
+        assert!(!load_storage_policy(&st).allows(Photo, Wifi, false, 1));
+        // the user sets new rules: own key, applies from now on
+        let mut p = load_storage_policy(&st);
+        p.auto_download.merge(&serde_json::json!({"wifi": {"photo": 3 * MB}}));
+        save_storage_policy(&st, &p).unwrap();
+        let p = load_storage_policy(&st);
+        assert!(p.allows(Photo, Wifi, true, 3 * MB) && !p.allows(Video, Wifi, false, 1));
+        // a 1.0.7 sibling re-saves storage.policy without auto_download: rules unchanged
+        st.kv_set_json("storage.policy", &legacy(25 * MB, 2 * MB)).unwrap();
+        let p2 = load_storage_policy(&st);
+        assert_eq!(p2.auto_download, p.auto_download);
+        assert_eq!(p2.legacy_group_cap, None);
+        // early-1.0.8 embedded rules migrate to the own key
+        let st = Store::open_memory().unwrap();
+        let mut v = legacy(0, 0);
+        v["auto_download"] = serde_json::json!({"cell": {"photo": 0}});
+        st.kv_set_json("storage.policy", &v).unwrap();
+        let p = load_storage_policy(&st);
+        assert!(!p.allows(Photo, Cell, false, 1) && p.allows(Photo, Wifi, false, 1));
+        assert!(st.kv_get(AUTO_DL_KEY).is_some());
+        assert!(crate::store::sync::kv_synced(AUTO_DL_KEY));
     }
 }
 

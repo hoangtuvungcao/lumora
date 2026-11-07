@@ -233,6 +233,61 @@ class AvatarStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// gid → the `cover_rev` the cached cover (key `gc:<gid>`) belongs to.
+  final Map<String, String> _coverRevs = {};
+
+  /// Group/community cover. Fetched when first shown and again whenever
+  /// [rev] (`cover_rev`) moves on — the old picture stays until the new one
+  /// is here. No cover ([hasCover] false): null, nothing fetched.
+  Uint8List? groupCover(String gid, {required bool hasCover, String rev = ''}) {
+    final key = 'gc:$gid';
+    if (!hasCover) return null;
+    final cached = _cache[key];
+    if (_cache.containsKey(key) && _coverRevs[gid] == rev) return cached;
+    _fetchCover(gid, rev);
+    return cached;
+  }
+
+  void _fetchCover(String gid, String rev) {
+    final key = 'gc:$gid';
+    if (!_pending.add(key)) return;
+    api.groupCover(gid).then((b64) {
+      _pending.remove(key);
+      final bytes = _decodeB64(b64);
+      final changed = !_sameBytes(_cache[key], bytes) || !_cache.containsKey(key);
+      _cache[key] = bytes;
+      _coverRevs[gid] = rev;
+      if (changed) notifyListeners();
+    }).catchError((_) {
+      _pending.remove(key);
+      _cache[key] = null;
+      _coverRevs[gid] = rev;
+    });
+  }
+
+  /// The group changed (`group` event): a cover already shown follows it.
+  void refreshGroupCover(String gid, {bool? hasCover, String? rev}) {
+    final key = 'gc:$gid';
+    if (!_cache.containsKey(key)) return; // never shown: fetched when needed
+    if (hasCover == false) {
+      _coverRevs[gid] = rev ?? '';
+      if (_cache[key] != null) {
+        _cache[key] = null;
+        notifyListeners();
+      }
+      return;
+    }
+    if (rev != null && rev != _coverRevs[gid]) _fetchCover(gid, rev);
+  }
+
+  /// A cover I just set (or removed: null) shows at once; the next
+  /// `cover_rev` seen fetches the stored copy once.
+  void setGroupCover(String gid, Uint8List? bytes) {
+    _cache['gc:$gid'] = bytes;
+    _coverRevs.remove(gid);
+    notifyListeners();
+  }
+
   void invalidate(String peer) {
     _cache.remove(peer);
     notifyListeners();
@@ -591,6 +646,73 @@ class ChatStore extends ChangeNotifier {
   final Map<String, String> drafts = {};
   final Map<String, int> ttlByConv = {};
 
+  /// The default self-destruct timer for new chats (Settings, 0 = off).
+  int Function() defaultTtl = () => 0;
+
+  /// A chat's timer changed (kept by AppServices so it survives a restart).
+  void Function(String conv, int ms)? onTtlChanged;
+
+  /// The first [load] finished: conversations seen after it are new chats.
+  bool _loaded = false;
+
+  /// A chat that did not exist before: it starts with the default timer.
+  void _newChat(Conversation c) {
+    final ms = defaultTtl();
+    if (ms <= 0 || c.isSaved || c.id.contains('#') || ttlByConv.containsKey(c.id)) return;
+    ttlByConv[c.id] = ms;
+    onTtlChanged?.call(c.id, ms);
+  }
+
+  /// Group read receipts (`group_read`): conv -> member -> read up to (hlc).
+  final Map<String, Map<String, int>> groupReads = {};
+
+  /// Bumped on every `group_read`, so open "Seen by" lists reload.
+  final groupReadTick = ValueNotifier<int>(0);
+
+  /// `group_read {conv, peer, upto}`: a member read the group up to `upto`.
+  void onGroupRead(Map<String, dynamic> d) {
+    final conv = d['conv']?.toString() ?? '';
+    final peer = d['peer']?.toString() ?? '';
+    final upto = d['upto'] is num ? (d['upto'] as num).toInt() : int.tryParse('${d['upto']}') ?? 0;
+    if (conv.isEmpty || peer.isEmpty) return;
+    final m = groupReads.putIfAbsent(conv, () => {});
+    if ((m[peer] ?? -1) >= upto) return;
+    m[peer] = upto;
+    groupReadTick.value++;
+    notifyListeners();
+  }
+
+  /// The read marks the core kept for a group chat (so "seen" ticks and the
+  /// "Seen by" list survive a restart); merged with live `group_read`s, marks
+  /// only move forward. Called when the chat opens.
+  Future<void> loadGroupReads(String conv) async {
+    if (!conv.startsWith('g:')) return;
+    final Map<String, int> got;
+    try {
+      got = await api.groupReads(conv);
+    } catch (_) {
+      return;
+    }
+    final m = groupReads.putIfAbsent(conv, () => {});
+    var changed = false;
+    got.forEach((peer, upto) {
+      if ((m[peer] ?? -1) < upto) {
+        m[peer] = upto;
+        changed = true;
+      }
+    });
+    if (!changed) return;
+    groupReadTick.value++;
+    notifyListeners();
+  }
+
+  /// Whether some member has read my group message with this [hlc] (kept
+  /// marks loaded when the chat opens + live `group_read` events).
+  bool groupSeen(String conv, int hlc) {
+    if (hlc <= 0) return false;
+    return (groupReads[conv] ?? const {}).values.any((u) => u >= hlc);
+  }
+
   /// conv -> wallpaper value (null = default). `default` key holds the global one.
   final Map<String, String?> wallpapers = {};
 
@@ -645,11 +767,44 @@ class ChatStore extends ChangeNotifier {
   Timer? _expiryTimer;
   List<Conversation>? _sorted;
 
-  Future<void> load() async {
+  Future<void>? _loading;
+  bool _loadAgain = false;
+
+  /// Reads the chat list. Calls while one runs don't start a second, concurrent read:
+  /// they wait for it, and one more read follows (it may predate their change).
+  Future<void> load() {
+    if (_loading != null) {
+      _loadAgain = true;
+      return _loading!;
+    }
+    return _loading = _loadLoop();
+  }
+
+  Future<void> _loadLoop() async {
+    try {
+      do {
+        _loadAgain = false;
+        await _loadOnce();
+      } while (_loadAgain);
+    } finally {
+      _loading = null;
+    }
+  }
+
+  Future<void> _loadOnce() async {
     final list = await api.conversations();
+    final before = _loaded ? convs.keys.toSet() : null;
     convs
       ..clear()
       ..addEntries(list.map((c) => MapEntry(c.id, c)));
+    // chats that appeared since the last read (found by a reload, not an event): the
+    // default timer applies to them as to any new chat
+    if (before != null) {
+      for (final c in list) {
+        if (!before.contains(c.id)) _newChat(c);
+      }
+    }
+    _loaded = true;
     _sorted = null;
     notifyListeners();
     _fillPreviews();
@@ -663,6 +818,7 @@ class ChatStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    groupReadTick.dispose();
     _expiryTimer?.cancel();
     _reloadTimer?.cancel();
     _refreshTimer?.cancel();
@@ -747,6 +903,7 @@ class ChatStore extends ChangeNotifier {
 
   void onConversation(Map<String, dynamic> j) {
     final c = _merged(Conversation.fromJson(j), hasLastMine: j.containsKey('last_mine'), hasMentions: j.containsKey('mentions'));
+    if (_loaded && !convs.containsKey(c.id)) _newChat(c);
     _conv(c);
     // The core sends rows without a preview (a call record that just ended, …): never
     // leave "Bạn:" with nothing after it — derive it from the last message.
@@ -1151,8 +1308,8 @@ class ChatStore extends ChangeNotifier {
     await api.pinMessage(conv, m.id, on);
   }
 
-  Future<void> forward(Message m, String toConv) async {
-    await api.forwardMessage(m.id, toConv);
+  Future<void> forward(Message m, String toConv, {bool hideSender = false}) async {
+    await api.forwardMessage(m.id, toConv, hideSender: hideSender);
     if (_threads.containsKey(toConv)) {
       _threads[toConv]!.loaded = false;
       await _threads[toConv]!.loadInitial();
@@ -1270,13 +1427,18 @@ class ChatStore extends ChangeNotifier {
 
   void setTtl(String conv, int ms) {
     ttlByConv[conv] = ms;
+    onTtlChanged?.call(conv, ms);
     notifyListeners();
   }
 
   /// Ensures a direct conversation exists locally (e.g. "Message" from friends).
   String ensureDirect(Contact c) {
     final id = 'd:${c.peer}';
-    convs.putIfAbsent(id, () => Conversation(id: id, kind: ConvKind.direct, title: c.displayName, lastTs: DateTime.now().millisecondsSinceEpoch));
+    convs.putIfAbsent(id, () {
+      final conv = Conversation(id: id, kind: ConvKind.direct, title: c.displayName, lastTs: DateTime.now().millisecondsSinceEpoch);
+      _newChat(conv);
+      return conv;
+    });
     _sorted = null;
     notifyListeners();
     return id;
@@ -1370,6 +1532,13 @@ class CallStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A call ended: the next one starts without the in-call chat open or a raised hand.
+  void _resetInCallUi() {
+    chatOpen = false;
+    handRaised = false;
+    bursts.clear();
+  }
+
   /// Local floating reaction (also sent as a message by the caller).
   void burst(String emoji) {
     final id = ++_burstId;
@@ -1400,6 +1569,8 @@ class CallStore extends ChangeNotifier {
   void Function(CallState c)? onMissed;
 
   void onCall(Map<String, dynamic> j) {
+    // a plain group call that doesn't ring me: only a "Join" banner (AvailableCalls)
+    if (j['state'] == 'available') return;
     final c = CallState.fromJson(j);
     if (c.phase == CallPhase.incoming) {
       if (call?.callId != c.callId) answeredElsewhere = null;
@@ -1409,6 +1580,7 @@ class CallStore extends ChangeNotifier {
       _ringTimeout = Timer(const Duration(seconds: 90), () {
         if (call?.callId == c.callId && call?.phase == CallPhase.incoming) {
           call = null;
+          _resetInCallUi();
           notifyListeners();
           onMissed?.call(c);
         }
@@ -1429,6 +1601,7 @@ class CallStore extends ChangeNotifier {
       Timer(const Duration(milliseconds: 2400), () {
         if (call?.callId != c.callId) return;
         call = null;
+        _resetInCallUi();
         answeredElsewhere = null;
         notifyListeners();
       });
@@ -1443,6 +1616,7 @@ class CallStore extends ChangeNotifier {
         videoCodec = null;
         peerMedia.clear();
         cameraRequested.value = false; // the core sends no camera_released on hang-up
+        _resetInCallUi();
       }
     } else {
       final prev = call;
@@ -1464,10 +1638,15 @@ class CallStore extends ChangeNotifier {
         startedAt: c.startedAt ?? prev?.startedAt ?? (c.phase == CallPhase.active ? DateTime.now().millisecondsSinceEpoch : null),
         speaking: c.speaking,
         quality: c.quality,
+        room: c.room,
       );
-      if (prev == null) {
+      if (prev == null || (c.room && prev.callId != c.callId)) {
         cam = c.video;
-        mic = true;
+        // (a room asked for the microphone in [prepareRoom]: keep what it got)
+        if (!c.room || !_roomPrepared) mic = true;
+        _roomPrepared = false;
+        // voice rooms stay in the small panel
+        if (c.room) minimized = true;
       }
     }
     notifyListeners();
@@ -1545,17 +1724,44 @@ class CallStore extends ChangeNotifier {
   /// Whether `participant` turned their camera off (unknown: on).
   bool peerCamOff(String participant) => peerMedia[participant]?.cam == false;
 
-  /// Voice-channel calls stay minimised (Discord-style panel).
+  /// Voice-channel calls stay minimised (small panel).
   bool isVoiceChannel(String conv) => conv.contains('#');
 
-  Future<void> start(String conv, {bool video = false, bool minimized = false}) async {
+  bool _roomPrepared = false;
+
+  /// Before joining a voice room: the microphone permission (Android asks;
+  /// refused → the room is joined muted) and the small call panel. Returns
+  /// whether the microphone may be used.
+  Future<bool> prepareRoom() async {
+    final micOk = !MicPermission.needed || await MicPermission.ensure();
+    mic = micOk;
+    cam = false;
+    minimized = true;
+    _roomPrepared = true;
+    notifyListeners();
+    return micOk;
+  }
+
+  /// Whether `account` (or the device it is in the room with) has its microphone
+  /// off in this call.
+  bool accountMuted(String account) {
+    final c = call;
+    if (c == null) return false;
+    for (final e in peerMedia.entries) {
+      if ((e.key == account || c.accountOf(e.key) == account) && e.value.mic == false) return true;
+    }
+    return false;
+  }
+
+  /// [ring]: a plain group's members whose phones ring (the rest get a "Join" banner).
+  Future<void> start(String conv, {bool video = false, bool minimized = false, List<String>? ring}) async {
     // Android: RECORD_AUDIO first (the core opens the microphone itself).
     // Refused: the call still goes ahead, honestly muted.
     final micOk = !MicPermission.needed || await MicPermission.ensure();
     cam = video;
     mic = micOk;
     this.minimized = minimized || isVoiceChannel(conv);
-    final id = await api.callStart(conv, video: video);
+    final id = await api.callStart(conv, video: video, ring: ring);
     call ??= CallState(callId: id, conv: conv, peer: conv.startsWith('d:') ? conv.substring(2) : '', phase: CallPhase.ringing, video: video);
     notifyListeners();
     if (!micOk) unawaited(api.callSet(id, mic: false).catchError((_) {}));
@@ -1599,6 +1805,37 @@ class CallStore extends ChangeNotifier {
       // Not answered (call already over, network, microphone): back to the
       // ringing screen if it is still ringing, and say why.
       if (call?.callId == c.callId) call = c.phase == CallPhase.incoming || c.phase == CallPhase.ringing ? c : null;
+      answerError = e;
+      notifyListeners();
+    }
+  }
+
+  /// Joins a plain group call that did not ring me (its "Join" banner):
+  /// `call_answer` accept, straight into the call — it never rings here.
+  Future<void> joinAvailable(CallState c) async {
+    if (inCall) return;
+    final micOk = !MicPermission.needed || await MicPermission.ensure();
+    mic = micOk;
+    cam = c.video;
+    minimized = false;
+    call = CallState(
+      callId: c.callId,
+      conv: c.conv,
+      peer: c.peer,
+      phase: CallPhase.active,
+      video: c.video,
+      participants: c.participants,
+      streams: c.streams,
+      startedAt: DateTime.now().millisecondsSinceEpoch,
+      accounts: c.accounts,
+      names: c.names,
+    );
+    notifyListeners();
+    try {
+      await api.callAnswer(c.callId, true, video: c.video);
+      if (!micOk) unawaited(api.callSet(c.callId, mic: false).catchError((_) {}));
+    } catch (e) {
+      if (call?.callId == c.callId) call = null;
       answerError = e;
       notifyListeners();
     }
@@ -1852,17 +2089,26 @@ class RemoteStore extends ChangeNotifier {
     super.notifyListeners();
   }
 
-  static String randomPassword() {
-    const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-    final r = math.Random.secure();
-    return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
-  }
-
+  /// A new temporary password, made by the core (`remote_new_password`).
+  /// (`remote_set password` would set the fixed unattended password instead.)
   Future<void> refreshPassword() async {
-    final pw = randomPassword();
+    final pw = await api.remoteNewPassword();
+    if (pw.isEmpty) return;
     status = status.copyWith(password: pw);
     notifyListeners();
-    await api.remoteSet(password: pw);
+  }
+
+  /// Off: every incoming view / control request is refused by the core.
+  Future<void> setAllowIncoming(bool v) async {
+    status = status.copyWith(allowIncoming: v);
+    notifyListeners();
+    try {
+      await api.remoteSet(allowIncoming: v);
+    } catch (_) {
+      status = status.copyWith(allowIncoming: !v);
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> setUnattended(bool v) async {
@@ -2038,6 +2284,32 @@ class StoryStore extends ChangeNotifier {
   List<Story> stories = const [];
   final Map<String, Uint8List?> images = {};
 
+  /// Friends who never get my Khoảnh khắc / my close friends (account ids; synced lists
+  /// the core keeps, see [loadAudience]).
+  List<String> hidden = const [], close = const [];
+  bool audienceLoaded = false;
+
+  /// The audience lists from the core (`settings_get`): at start, and when another of my
+  /// devices changed them.
+  Future<void> loadAudience() async {
+    try {
+      final st = await api.settingsGet();
+      List<String> ids(Object? v) => v is List ? [for (final x in v) '$x'] : const [];
+      hidden = ids(st['story_hidden']);
+      close = ids(st['story_close']);
+      audienceLoaded = true;
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// Replaces one or both lists (the core syncs them to my other devices).
+  Future<void> setAudience({List<String>? hidden, List<String>? close}) async {
+    await api.settingsSet({'story_hidden': ?hidden, 'story_close': ?close});
+    if (hidden != null) this.hidden = List.unmodifiable(hidden);
+    if (close != null) this.close = List.unmodifiable(close);
+    notifyListeners();
+  }
+
   Future<void> load() async {
     try {
       stories = await api.stories();
@@ -2092,6 +2364,44 @@ class StoryStore extends ChangeNotifier {
 
   Future<List<Story>> archive(String me) => api.storyArchive(me);
 
+  /// Bumped on every `story_view`, so an open viewers list reloads.
+  final viewTick = ValueNotifier<int>(0);
+
+  /// `story_view {id, viewer}`: a friend saw my story — its count goes up.
+  /// (The core keeps one row per viewer: a repeat changes nothing there.)
+  final Map<String, Set<String>> _viewersSeen = {};
+  void onView(Map<String, dynamic> d) {
+    final id = d['id']?.toString() ?? '';
+    final viewer = d['viewer']?.toString() ?? '';
+    final i = stories.indexWhere((s) => s.id == id);
+    viewTick.value++;
+    if (i < 0 || viewer.isEmpty) return;
+    final known = _viewersSeen[id];
+    if (known == null) {
+      // who was already counted isn't known here: take the core's list
+      unawaited(viewers(id).then((_) {}, onError: (_) {}));
+      return;
+    }
+    if (!known.add(viewer)) return;
+    final st = stories[i];
+    stories = [...stories]..[i] = Story(id: st.id, author: st.author, created: st.created, text: st.text, hasImage: st.hasImage, bg: st.bg, seen: st.seen, views: st.views + 1);
+    notifyListeners();
+  }
+
+  /// Who saw my story [id] and when (oldest first).
+  Future<List<StoryView>> viewers(String id) async {
+    final list = await api.storyViewers(id);
+    // what the core counts is the truth: the live count follows it
+    _viewersSeen[id] = {for (final v in list) v.peer};
+    final i = stories.indexWhere((s) => s.id == id);
+    if (i >= 0 && stories[i].views != list.length) {
+      final st = stories[i];
+      stories = [...stories]..[i] = Story(id: st.id, author: st.author, created: st.created, text: st.text, hasImage: st.hasImage, bg: st.bg, seen: st.seen, views: list.length);
+      notifyListeners();
+    }
+    return list;
+  }
+
   void seen(String id) {
     final i = stories.indexWhere((s) => s.id == id);
     if (i < 0 || stories[i].seen) return;
@@ -2100,8 +2410,9 @@ class StoryStore extends ChangeNotifier {
     api.storySeen(id).catchError((_) {});
   }
 
-  Future<void> post({String? text, String? imagePath, String? bg}) async {
-    await api.postStory(text: text, imagePath: imagePath, bg: bg);
+  /// [audience]: `friends` (all minus [hidden]) or `close` ([close] minus [hidden]).
+  Future<void> post({String? text, String? imagePath, String? bg, String? audience}) async {
+    await api.postStory(text: text, imagePath: imagePath, bg: bg, audience: audience);
     await load();
   }
 
@@ -2240,10 +2551,28 @@ class NetStore extends ChangeNotifier {
     return (r['freed_bytes'] as num?)?.toInt() ?? 0;
   }
 
+  /// One auto-download limit: [network] `wifi` / `cell`, [kind] `photo` / `video` / `file`.
+  Future<StoragePolicy> setAutoDownload(String network, String kind, int bytes) async {
+    final p = await api.setAutoDownload({
+      network: {kind: bytes},
+    });
+    final st = storage;
+    if (st != null) storage = {...st, 'policy': {...p.toJson(), ..._autoJson(p)}};
+    notifyListeners();
+    return p;
+  }
+
+  static Map<String, dynamic> _autoJson(StoragePolicy p) {
+    Map<String, int> l(AutoLimits x) => {'photo': x.photo, 'video': x.video, 'voice': x.voice, 'file': x.file, 'file_group': x.fileGroup};
+    return {
+      'auto_download': {'wifi': l(p.autoDownload.wifi), 'cell': l(p.autoDownload.cell), 'roaming': l(p.autoDownload.roaming)},
+    };
+  }
+
   Future<StoragePolicy> setStoragePolicy(Map<String, int> values) async {
     final p = await api.setStoragePolicy(values);
     final st = storage;
-    if (st != null) storage = {...st, 'policy': p.toJson()};
+    if (st != null) storage = {...st, 'policy': {...p.toJson(), ..._autoJson(p)}};
     notifyListeners();
     // Applying a stricter policy may have freed space.
     loadStorage().catchError((_) {});
@@ -2258,15 +2587,37 @@ class SpacesStore extends ChangeNotifier {
   final LumoraApi api;
   List<Space> spaces = const [];
 
-  /// channel conv -> participants override after join/leave.
+  /// Voice channel conv → who is in the room (accounts, first to join first):
+  /// from `spaces`, then live from the core's `voice` events.
   final Map<String, List<String>> voice = {};
+
+  /// Voice channel conv → participants with their microphone off.
+  final Map<String, Set<String>> voiceMuted = {};
+
+  /// Voice channel conv → participants talking right now (my room only).
+  final Map<String, Set<String>> voiceSpeaking = {};
+
+  /// The voice channel this device is in (the core's room call says so).
   String? joinedVoice;
+
+  /// Set when the room moved to another of my devices (its name, may be
+  /// empty); the UI says so once and clears it.
+  String? movedElsewhere;
+
+  /// Left / removed: off the list now (the next load agrees).
+  void forget(String id) {
+    if (!spaces.any((s) => s.id == id)) return;
+    spaces = spaces.where((s) => s.id != id).toList();
+    notifyListeners();
+  }
 
   Future<void> load() async {
     spaces = await api.spaces();
     for (final s in spaces) {
       for (final c in s.channels) {
-        if (c.voice) voice[c.conv] = List.of(c.participants);
+        if (!c.voice) continue;
+        voice[c.conv] = List.of(c.participants);
+        voiceMuted[c.conv] = c.muted.toSet();
       }
     }
     notifyListeners();
@@ -2279,15 +2630,94 @@ class SpacesStore extends ChangeNotifier {
     return null;
   }
 
-  Future<void> toggleVoice(String conv, String me) async {
-    final joining = joinedVoice != conv;
-    if (joinedVoice != null) voice[joinedVoice!]?.remove(me);
-    joinedVoice = joining ? conv : null;
-    if (joining) (voice[conv] ??= []).add(me);
+  /// The voice channel `conv` (and its community), if known.
+  (Space, Channel)? channelOf(String conv) {
+    for (final s in spaces) {
+      for (final c in s.channels) {
+        if (c.conv == conv) return (s, c);
+      }
+    }
+    return null;
+  }
+
+  /// Total people in the voice channels of `space`.
+  int inVoice(Space space) => space.channels.where((c) => c.voice).fold(0, (a, c) => a + (voice[c.conv] ?? c.participants).length);
+
+  /// Join voice channel `conv` — the one start path: leaves the channel I'm
+  /// in first. Returns the room's call id. Errors are thrown (the UI shows them).
+  Future<String?> joinVoice(String conv) async {
+    final prev = joinedVoice;
+    if (prev == conv) return null;
+    if (prev != null) {
+      joinedVoice = null;
+      notifyListeners();
+      try {
+        await api.voiceJoin(prev, false);
+      } catch (_) {
+        // the core leaves the old room by itself when joining another
+      }
+    }
+    joinedVoice = conv;
     notifyListeners();
     try {
-      await api.voiceJoin(conv, joining);
-    } catch (_) {}
+      return await api.voiceJoin(conv, true);
+    } catch (_) {
+      if (joinedVoice == conv) {
+        joinedVoice = null;
+        notifyListeners();
+      }
+      rethrow;
+    }
+  }
+
+  /// Leave the voice channel I'm in.
+  Future<void> leaveVoice() async {
+    final prev = joinedVoice;
+    if (prev == null) return;
+    joinedVoice = null;
+    notifyListeners();
+    await api.voiceJoin(prev, false);
+  }
+
+  /// `voice` event: who is in a room (or: my room moved to another device).
+  void onVoice(Map<String, dynamic> j) {
+    final conv = j['conv']?.toString() ?? '';
+    if (conv.isEmpty) return;
+    if (j['moved'] == true) {
+      if (joinedVoice == conv) {
+        joinedVoice = null;
+        movedElsewhere = j['device_name']?.toString() ?? '';
+        notifyListeners();
+      }
+      return;
+    }
+    List<String> ls(String k) => (j[k] is List) ? (j[k] as List).map((e) => e.toString()).toList() : const <String>[];
+    voice[conv] = ls('participants');
+    voiceMuted[conv] = ls('muted').toSet();
+    voiceSpeaking[conv] = ls('speaking').toSet();
+    notifyListeners();
+  }
+
+  /// `call` event: a room call that is active is the channel I'm in; when it
+  /// ends (left, hung up, lost, moved), I'm in no channel.
+  void onCall(Map<String, dynamic> j) {
+    final conv = j['conv']?.toString() ?? '';
+    final room = j['room'] == true;
+    final state = j['state']?.toString() ?? '';
+    if (state == 'ended') {
+      if (joinedVoice == conv) {
+        joinedVoice = null;
+        voiceSpeaking.remove(conv);
+        notifyListeners();
+      }
+    } else if (room && state == 'active' && joinedVoice != conv) {
+      joinedVoice = conv;
+      notifyListeners();
+    }
+  }
+
+  void clearMoved() {
+    movedElsewhere = null;
   }
 }
 
@@ -2302,9 +2732,14 @@ class NavStore extends ChangeNotifier {
   String? channelConv;
   bool infoPanel = false;
 
+  /// Bumped by every [go] (not by [openConv] / [openChannel]), so the phone
+  /// shell can follow explicit navigation without reacting to chat opens.
+  int goSeq = 0;
+
   void go(Section s, {String? space}) {
     section = s;
     if (space != null) spaceId = space;
+    goSeq++;
     notifyListeners();
   }
 
@@ -2521,6 +2956,7 @@ class EventHub {
       case 'call':
         final prev = calls.call;
         calls.onCall(d);
+        spaces.onCall(d);
         if (d['state'] == 'ended') AppleAudio.endCall(); // the other side hung up
         AppleServices.instance.onCallEvent(d);
         // (answered or declined on another of my devices: not missed)
@@ -2544,6 +2980,8 @@ class EventHub {
         notices.add(Notice(kind: NoticeKind.remote, title: rname, peer: rp));
       case 'call_peer':
         calls.onCallPeer(d);
+      case 'voice':
+        spaces.onVoice(d);
       case 'remote_state':
         remote.onState(d);
       case 'clipboard':
@@ -2558,11 +2996,17 @@ class EventHub {
         }
         if (gid.isNotEmpty) {
           avatars.refreshGroup(gid, hasAvatar: d['has_avatar'] is bool ? d['has_avatar'] as bool : null);
+          avatars.refreshGroupCover(gid, hasCover: d['has_cover'] is bool ? d['has_cover'] as bool : null, rev: d['cover_rev']?.toString());
           chat.onGroup(gid, name: d['name']?.toString(), member: d['my_role'] == null ? null : d['my_role'] != 'none');
         }
       case 'group_removed':
-        final gconv = d['conv']?.toString() ?? (d['gid'] != null ? 'g:${d['gid']}' : '');
-        if (gconv.isNotEmpty) chat.onGroupRemoved(gconv, left: d['left'] == true);
+        final rgid = d['gid']?.toString() ?? '';
+        final gconv = d['conv']?.toString() ?? (rgid.isNotEmpty ? 'g:$rgid' : '');
+        final dissolved = d['dissolved'] == true;
+        // dissolved by its owner: gone for everyone, like a group I left
+        if (gconv.isNotEmpty) chat.onGroupRemoved(gconv, left: d['left'] == true || dissolved);
+        if (dissolved && gconv.length > 2) _onDissolved(rgid.isNotEmpty ? rgid : gconv.substring(2).split('#').first, gconv, d);
+        _reloadSpaces(); // a community I left / was removed from leaves the rail at once
       case 'profile':
         // (name / bio / avatar / cover: reloaded by AppServices._onDeviceEvent) —
         // the cached pictures of my own avatar and cover go with it
@@ -2575,6 +3019,7 @@ class EventHub {
         final skey = d['key']?.toString() ?? '';
         chat.onSettingChanged(skey);
         if (skey == 'storage.policy' && net.storage != null) unawaited(net.loadStorage().catchError((_) {}));
+        if (skey.startsWith('privacy.story_')) unawaited(stories.loadAudience());
       case 'scheduled_failed':
         // (the chat gets its own line from the core; this is the bell)
         notices.add(Notice(kind: NoticeKind.scheduledFailed, title: d['text']?.toString() ?? '', body: d['error']?.toString() ?? '', conv: d['conv']?.toString()));
@@ -2588,6 +3033,10 @@ class EventHub {
         }
       case 'group_flood':
         chat.floods.onEvent(d);
+      case 'group_read':
+        chat.onGroupRead(d);
+      case 'story_view':
+        stories.onView(d);
       case 'error':
         final code = d['code']?.toString();
         if (code == 'input_unavailable' || code == 'capture_unavailable' || code == 'mic_unavailable') {
@@ -2599,6 +3048,34 @@ class EventHub {
   }
 
   DateTime? _storageWarned;
+
+  /// A group / community was deleted by its owner (`group_removed` with
+  /// `dissolved`): name + whether it was a community. Set by AppServices
+  /// (the toast and the bell notice, in the app's language).
+  void Function(String name, bool community)? onGroupDissolved;
+
+  /// Groups deleted from this device (the screen that did it says so itself).
+  final Set<String> dissolvedHere = {};
+
+  void _onDissolved(String gid, String gconv, Map<String, dynamic> d) {
+    final space = spaces.byId(gid);
+    spaces.forget(gid);
+    // it was open: close it (a chat page closes itself once its conv goes)
+    final open = nav.conv;
+    if (open != null && (open == gconv || open.startsWith('$gconv#'))) {
+      nav.openConv(null);
+      nav.toggleInfo(false);
+    }
+    if (nav.section == Section.space && nav.spaceId == gid) {
+      nav.spaceId = null;
+      nav.channelConv = null;
+      nav.go(Section.chats);
+    }
+    if (dissolvedHere.remove(gid)) return;
+    final name = d['name']?.toString() ?? space?.name ?? '';
+    final kind = d['kind'];
+    onGroupDissolved?.call(name, kind is num ? kind == 1 : space != null);
+  }
 
   Timer? _spacesDebounce;
   void _reloadSpaces() {

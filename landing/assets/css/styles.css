@@ -528,7 +528,7 @@ p{margin:0}
 
 /* footer */
 .footer{padding:48px 0 40px;border-top:1px solid var(--border)}
-.footer__inner{display:grid;grid-template-columns:1fr auto;gap:24px 40px;align-items:start}
+.footer__inner{display:grid;grid-template-columns:minmax(240px,1fr) minmax(0,auto);gap:24px 40px;align-items:start}
 .footer__brand p{margin-top:10px;color:var(--muted);font-size:14px}
 .footer__links{display:flex;flex-wrap:wrap;gap:8px 24px}
 .footer__links a{color:var(--muted);font-weight:500;font-size:14px}

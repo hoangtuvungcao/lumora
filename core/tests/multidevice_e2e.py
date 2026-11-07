@@ -326,6 +326,39 @@ def run_matrix(tmp, start, link, befriend):
             wait_until(lambda: all(m["peer"] != pm for m in G.call("group_info", gid=gx["gid"])["members"]), SYNC_S, "G sees M left")
         _()
 
+        @scenario("community: cover set on M0 → linked devices + members; deleted for everyone on M0 → gone on every device")
+        def _():
+            import base64
+            c = M0.call("create_group", name="Cộng đồng đa thiết bị", members=[pf, pg], kind=1)
+            gid, conv = c["gid"], c["conv"]
+            everywhere(A + [F, G], lambda n: any(x["id"] == gid for x in n.call("spaces")), "community listed")
+            cover = base64.b64encode(b"\xff\xd8\xff\xe0" + os.urandom(120_000)).decode()
+            M0.call("group_meta", gid=gid, cover=cover)
+            everywhere([M1, M2, F, G], lambda n: n.call("group_cover", gid=gid)["cover"] == cover, "the cover")
+            rev = M0.call("group_info", gid=gid)["cover_rev"]
+            everywhere([M1, M2], lambda n: next(x for x in n.call("spaces") if x["id"] == gid)["cover_rev"] == rev, "cover_rev in spaces")
+            m = F.call("send_text", conv=conv, text="chào cộng đồng")
+            everywhere(A, lambda n: msg(n, conv, m["id"]) is not None, "F's community message")
+            # (a linked device of the owner may delete it too; here the main device does)
+            M0.call("group_dissolve", gid=gid)
+            def gone(n):
+                return not any(x["id"] == gid for x in n.call("spaces")) and group_of(n, gid) is None \
+                    and not any(r["id"].startswith(conv) for r in n.call("conversations"))
+            everywhere(A + [F, G], gone, "community gone")
+            for n in (M1, M2, F):
+                n.wait_event(lambda e: e["event"] == "group_removed" and e.get("gid") == gid and e.get("dissolved") is True, SYNC_S, f"{n.name}: group_removed dissolved")
+            for n in (M1, F):
+                try:
+                    n.call("send_text", conv=conv, text="vẫn còn?")
+                    raise AssertionError(f"{n.name} posted to a deleted community")
+                except RuntimeError:
+                    pass
+            # a restart doesn't bring it back
+            M2.stop(); M2.start()
+            time.sleep(2)
+            assert gone(M2) and gone(M1), "deleted community came back"
+        _()
+
         @scenario("stickers: pack + sticker made on M0, removed on M1 → every device")
         def _():
             pk = M0.call("sticker_pack_create", name="Gói ma trận")
@@ -340,7 +373,7 @@ def run_matrix(tmp, start, link, befriend):
             everywhere(A, lambda n: pack(n) is None, "pack deleted")
         _()
 
-        @scenario("BotFather bots: made on M1, deleted on M2 → every device")
+        @scenario("Bot Studio bots: made on M1, deleted on M2 → every device")
         def _():
             M1.call("bot_create", name="Trợ lý ma trận", username="matran_bot")
             has = lambda n: any(b.get("username") == "matran_bot" for b in n.call("bot_list"))
@@ -361,6 +394,19 @@ def run_matrix(tmp, start, link, befriend):
             everywhere(A, lambda n: (lambda s: s["read_receipts"] and s["typing"])(n.call("settings_get")), "privacy on")
             M2.call("set_wallpaper", conv=dF, wallpaper="midnight")
             everywhere(A, lambda n: n.call("get_wallpaper", conv=dF)["wallpaper"] == "midnight", "wallpaper")
+            # auto-download rules have their own synced key: a later cache change on another
+            # device (the whole storage.policy re-saved) doesn't undo them
+            M1.call("settings_set", auto_download={"cell": {"photo": 0}})
+            everywhere(A, lambda n: n.call("settings_get")["auto_download"]["cell"]["photo"] == 0, "auto-download rule")
+            M2.call("set_storage_policy", max_cache=3 << 30)
+            everywhere(A, lambda n: n.call("storage_policy")["max_cache"] == 3 << 30, "cache size")
+            time.sleep(2)
+            assert all(n.call("settings_get")["auto_download"]["cell"]["photo"] == 0 for n in A), "rule reset by a policy change"
+            # "mentions only": emptied on one device stays empty everywhere (not "never set")
+            M0.call("settings_set", mentions_only=[dF])
+            everywhere(A, lambda n: n.call("settings_get")["mentions_only"] == [dF], "mentions only")
+            M1.call("settings_set", mentions_only=[])
+            everywhere(A, lambda n: n.call("settings_get")["mentions_only"] == [], "mentions only cleared")
         _()
 
         @scenario("stories: posted on M0 → M1, M2 and friends; deleted on M1 → gone everywhere")
@@ -1051,6 +1097,48 @@ def main():
             B0.wait_event(lambda e: e["event"] == "call" and e["call_id"] == c["call_id"] and e["state"] == "ended", 10, "call ended for B")
         _()
 
+        @step("voice rooms across my devices: a linked device sees me in the room; joining there moves me")
+        def _():
+            A1 = ctx["A1"]
+            g = A0.call("create_group", name="Phòng thoại", members=[pb], kind=1)
+            gid = g["gid"]
+            for n in (A1, B0):
+                wait_until(lambda n=n: any(x["id"] == gid for x in n.call("spaces")), 40, f"{n.name} has the community")
+            sp = next(x for x in A0.call("spaces") if x["id"] == gid)
+            vconv = next(c["conv"] for c in sp["channels"] if c["voice"])
+            d0, d1, db = A0.call("me")["device"], A1.call("me")["device"], B0.call("me")["device"]
+
+            def state(n):
+                return n.call("voice_state", conv=vconv)
+
+            def on(n, dev):
+                st = state(n)
+                return st["participants"] == [pa] and st["devices"].get(pa) == dev
+
+            A0.call("voice_join", conv=vconv)
+            for n in (A1, B0):
+                wait_until(lambda n=n: on(n, d0), 20, f"{n.name} sees A in the room on A0")
+            sp1 = next(x for x in A1.call("spaces") if x["id"] == gid)
+            assert next(c["participants"] for c in sp1["channels"] if c["conv"] == vconv) == [pa]
+            assert state(A1)["joined"] is False and state(A0)["joined"] is True
+            # joining on A1 moves me there: A0 leaves the room by itself
+            A1.call("voice_join", conv=vconv)
+            ev = A0.wait_event(lambda e: e["event"] == "voice" and e.get("conv") == vconv and e.get("moved") is True, 20, "A0 told it moved")
+            assert ev["device"] == d1, ev
+            A0.wait_event(lambda e: e["event"] == "call" and e.get("conv") == vconv and e["state"] == "ended", 10, "A0's room call ended")
+            for n in (A0, A1, B0):
+                wait_until(lambda n=n: on(n, d1), 20, f"{n.name}: A is in the room on A1")
+            assert state(A1)["joined"] is True and state(A0)["joined"] is False
+            # a friend joining gets media with A1 (not A0)
+            B0.call("voice_join", conv=vconv)
+            A1.wait_event(lambda e: e["event"] == "call" and e.get("conv") == vconv and db in [p["peer"] for p in e["participants"]], 20, "A1 has media with B0")
+            B0.wait_event(lambda e: e["event"] == "call" and e.get("conv") == vconv and [p["peer"] for p in e["participants"]] == [d1], 20, "B0 has media with A1 only")
+            A1.call("voice_leave", conv=vconv)
+            B0.call("voice_leave", conv=vconv)
+            for n in (A0, A1, B0):
+                wait_until(lambda n=n: state(n)["participants"] == [], 20, f"{n.name}: room empty")
+        _()
+
         @step("revocation with wipe: A0 signs A2 out; friends drop it, its data is wiped, group keys rotate")
         def _():
             g = ctx["g1"]
@@ -1127,11 +1215,101 @@ def main():
             A0.wait_event(lambda e: e["event"] == "device_revoked", 60, "old main device steps down")
         _()
 
+        @step("restore with the recovery phrase while linked devices exist: no device is signed out or re-listed without the user; signed-out ones stay out")
+        def _():
+            R0 = start("R0")
+            nodes.append(R0)
+            pr = R0.me["peer"]
+            befriend(C, R0)
+            R1 = link(R0, "R1", "qr", history="all")
+            R2 = link(R0, "R2", "qr", history="none")
+            R3 = link(R0, "R3", "qr", history="none")
+            nodes.extend([R1, R2, R3])
+            d1, d2, d3 = R1.me["device"], R2.me["device"], R3.me["device"]
+            wait_until(lambda: R1.call("history_status")["done"], 60, "R1 history")
+            wait_until(lambda: {d1, d2, d3} <= {d["device"] for d in R1.call("devices")["devices"]}, 20, "R1 knows R2, R3")
+            # R2 and R3 (say, a stolen phone and an old laptop) are offline when the main
+            # device signs them out: they never hear about it
+            R2.stop()
+            R3.stop()
+            R0.call("device_revoke", device=d2, wipe_media=False)
+            R0.call("device_revoke", device=d3, wipe_media=False)
+            wait_until(lambda: not {d2, d3} & {d["device"] for d in R1.call("devices")["devices"]}, 30, "R1 has the revocations")
+            phrase = R0.call("recovery_phrase")["phrase"]
+            # the main device is lost for good; R1 is off too. The account is restored on a
+            # new main device, which knows nothing about R2 / R3
+            R1.stop()
+            R0.stop()
+            nodes.remove(R0)
+            N = start("R0-moi", more=["--restore-phrase", phrase])
+            nodes.append(N)
+            assert N.me["peer"] == pr and N.me["primary"] and N.me["device"] == pr, N.me
+
+            def listed(n):
+                return {d["device"] for d in n.call("devices")["devices"]}
+
+            def asked(dev, t):
+                return N.wait_event(lambda e: e["event"] == "device_relist_request" and e["device"] == dev, t, f"relist request of {dev[:8]}")
+
+            # the signed-out phone comes back first: the user is asked, it is NOT listed
+            R2.start()
+            ev = asked(d2, 40)
+            assert ev["name"] == "R2" or ev["name"], ev
+            time.sleep(3)
+            assert d2 not in listed(N), "a missing device was listed without the user's approval"
+            assert d2 in {r["device"] for r in N.call("device_relist_requests")}
+            N.call("device_relist", device=d2, approve=False)  # "not mine — sign it out"
+            R2.wait_event(lambda e: e["event"] == "device_revoked", 40, "R2 signed out after the refusal")
+            assert d2 not in listed(N) and d2 in {r["device"] for r in N.call("devices")["revoked"]}
+            # the real linked device comes back: never signed out, listed once the user allows it
+            R1.start()
+            asked(d1, 40)
+            time.sleep(3)
+            assert d1 not in listed(N), "listed without the user's approval"
+            assert N.call("history_status")["done"] and not N.call("history_status").get("source"), "an unapproved device became the history source"
+            me1 = R1.call("me")
+            assert me1["peer"] == pr and me1["device"] == d1 and not me1["primary"], me1
+            N.call("device_relist", device=d1, approve=True)
+            wait_until(lambda: d1 in listed(N), 10, "R1 listed after the approval")
+            wait_until(lambda: listed(R1) == {pr, d1}, 30, "R1 has the new list")
+            # R1 brought the old list along: R3's earlier revocation is known on the new main
+            wait_until(lambda: d3 in {r["device"] for r in N.call("devices")["revoked"]}, 30, "R3's revocation taken over")
+            # restored with nothing: the account (friends, chats) comes back from the approved R1
+            wait_until(lambda: N.call("history_status")["done"], 60, "account copied from R1")
+            wait_until(lambda: any(c["peer"] == pc and c["status"] == 3 for c in N.call("contacts")), 20, "C is a friend again on the new main device")
+            # the old laptop comes back: told it was signed out, the user is never asked
+            R3.start()
+            R3.wait_event(lambda e: e["event"] == "device_revoked", 60, "R3 signed out")
+            try:
+                asked(d3, 2)
+                raise AssertionError("the user was asked about a device signed out before")
+            except TimeoutError:
+                pass
+            assert d3 not in listed(N) and d3 not in listed(R1)
+            # a friend's message reaches both devices of the restored account
+            m = C.call("send_text", conv=f"d:{pr}", text="gửi tới tài khoản vừa khôi phục")
+            for n in (N, R1):
+                n.wait_event(lambda e: e["event"] == "message" and e["id"] == m["id"], 40, f"{n.name} got the friend's message")
+            assert R1.call("me")["device"] == d1
+            try:
+                R1.wait_event(lambda e: e["event"] == "device_revoked", 1, "R1 still signed in")
+                raise AssertionError("R1 was signed out")
+            except TimeoutError:
+                pass
+        _()
+
         @step("outboxes drain on every device (bounded storage)")
         def _():
             def drained():
                 return sum(n.call("storage_stats")["outbox"] for n in nodes) == 0
-            wait_until(drained, 40, "outboxes empty")
+            try:
+                wait_until(drained, 40, "outboxes empty")
+            except TimeoutError:
+                print("     outbox left:", {n.name: n.call("storage_stats")["outbox"] for n in nodes})
+                for n in nodes:
+                    for o in n.call("debug_outbox"):
+                        print(f"       {n.name} → {o['to'][:10]} ({o['attempts']}x): {o['msg'][:120]}")
+                raise
         _()
     except Exception:
         ok = False

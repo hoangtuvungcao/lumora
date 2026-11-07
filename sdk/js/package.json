@@ -1,7 +1,7 @@
 {
   "name": "lumora-bot",
   "version": "1.1.0",
-  "description": "Lumora Bot SDK for JavaScript: build bots for the Lumora messenger (commands, buttons, groups, files, checklists, reminders).",
+  "description": "Lumora Bot SDK for JavaScript: build bots for the Lumora messaging app (commands, buttons, groups, files, checklists, reminders).",
   "type": "module",
   "main": "./lumora-bot.mjs",
   "module": "./lumora-bot.mjs",
@@ -32,7 +32,7 @@
     "lumora",
     "bot",
     "chatbot",
-    "messenger",
+    "messaging",
     "sdk",
     "end-to-end-encryption"
   ]

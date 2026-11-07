@@ -1,4 +1,4 @@
-// Telegram-style destructive actions with clear choices.
+// Destructive actions with clear choices.
 
 import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
@@ -12,11 +12,15 @@ import '../theme.dart';
 import '../widgets/common.dart';
 
 /// "Delete message": only for me / for both sides (or everyone in groups).
-Future<void> askDeleteMessage(BuildContext context, String conv, Message m) async {
+/// [moderator]: I may delete others' messages for everyone here (a community
+/// role with manage_messages, or owner / admin).
+Future<void> askDeleteMessage(BuildContext context, String conv, Message m, {bool moderator = false}) async {
   final s = S.read(context);
   final chat = context.read<ChatStore>();
   final group = conv.startsWith('g:');
-  final canEveryone = m.mine || !group;
+  // 1-1: only my own messages go for both sides ("delete for me" covers the
+  // rest); groups: my own, or anyone's as a moderator
+  final canEveryone = !m.deleted && (m.mine || (group && moderator));
   final r = await showDialog<String>(
     context: context,
     builder: (c) => SimpleDialog(

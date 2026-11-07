@@ -360,9 +360,9 @@ Future<void> showSendLocation(BuildContext context, String conv) async {
               Text(gpsError, style: const TextStyle(color: LC.warning)),
               const SizedBox(height: 8),
               Row(children: [
-                Expanded(child: TextField(controller: lat, decoration: const InputDecoration(labelText: 'Lat'))),
+                Expanded(child: TextField(controller: lat, decoration: InputDecoration(labelText: s('loc_lat')))),
                 const SizedBox(width: 8),
-                Expanded(child: TextField(controller: lon, decoration: const InputDecoration(labelText: 'Lon'))),
+                Expanded(child: TextField(controller: lon, decoration: InputDecoration(labelText: s('loc_lon')))),
               ]),
             ],
             const SizedBox(height: 8),

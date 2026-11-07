@@ -433,7 +433,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   hero,
                   const SizedBox(height: 20),
                   modes,
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
+                  // the phrase makes this the MAIN device: the current main device (if the
+                  // account is still in use) is signed out — linking keeps both
+                  SecureNote(s('restore_takes_over'), icon: AppIcons.warning, color: LC.warning),
+                  const SizedBox(height: 16),
                   RecoveryPhraseInput(controller: _restore, onChanged: () => setState(() => _error = null)),
                   const SizedBox(height: 20),
                   SecureTextField(controller: _name, label: s('display_name'), hint: s('display_name_hint'), onChanged: (_) => setState(() {})),

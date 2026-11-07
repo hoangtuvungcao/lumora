@@ -490,8 +490,8 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 <tbody>
 <tr>
 <td><code>post_story</code></td>
-<td><code>text?, image_path?, bg?: "aurora"</code></td>
-<td>story</td>
+<td><code>text?, image_path?, bg?: "aurora", audience?: "friends" | "close"</code></td>
+<td><code>{id, recipients}</code> (friends on <code>story_hidden</code> never get it; <code>close</code> = only <code>story_close</code>)</td>
 </tr>
 <tr>
 <td><code>stories</code></td>
@@ -551,9 +551,14 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 <td>–</td>
 </tr>
 <tr>
-<td><code>group_meta</code> / <code>group_avatar</code></td>
-<td><code>gid, avatar?, description?</code> / <code>gid</code></td>
-<td>– / <code>{avatar}</code></td>
+<td><code>group_meta</code> / <code>group_avatar</code> / <code>group_cover</code></td>
+<td><code>gid, avatar?, description?, cover?</code> (cover: JPEG ≤ 300 KB base64, <code>""</code> removes; communities: admins only) / <code>gid</code> / <code>gid</code></td>
+<td>– / <code>{avatar}</code> / <code>{cover}</code></td>
+</tr>
+<tr>
+<td><code>group_dissolve</code></td>
+<td><code>gid</code> (owner only)</td>
+<td>– ; every member then gets <code>conversation_removed</code> + <code>group_removed {dissolved: true, name, kind}</code></td>
 </tr>
 <tr>
 <td><code>group_channel</code></td>
@@ -649,7 +654,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 </tr>
 <tr>
 <td><code>storage_policy</code> / <code>set_storage_policy</code></td>
-<td>– / <code>max_cache?, media_days?, auto_direct?, auto_group?, community_days?</code></td>
+<td>– / <code>max_cache?, media_days?, community_days?, auto_download?: {wifi?, cell?: {photo?, video?, voice?, file?, file_group?}}</code> (bytes; 0 = off, 2^50 = always; <code>auto_direct</code> / <code>auto_group</code> are legacy and no longer decide)</td>
 <td>policy</td>
 </tr>
 <tr>
@@ -681,7 +686,7 @@ Message, file, call, session and story ids are 32 hex chars. Timestamps are ms s
 </tr>
 <tr>
 <td><code>settings_set</code></td>
-<td><code>read_receipts?, typing?, p2p_only?, downloads_dir?</code></td>
+<td><code>read_receipts?, typing?, p2p_only?, downloads_dir?, auto_download?, story_hidden?: [id], story_close?: [id]</code></td>
 <td>– (<code>p2p_only</code>: never use a bridge; does <strong>not</strong> hide your IP)</td>
 </tr>
 </tbody>
@@ -933,6 +938,8 @@ File         {id, conv, peer, name, size, hash, path, direction(0 out,1 in),
       <a href="/developers/" data-i18n="nav.dev">Nhà phát triển</a>
       <a href="/privacy/" data-i18n="footer.privacy">Chính sách quyền riêng tư</a>
       <a href="/terms/" data-i18n="footer.terms">Điều khoản sử dụng</a>
+      <a href="/child-safety/" data-i18n="footer.child">An toàn trẻ em</a>
+      <a href="/delete-account/" data-i18n="footer.delete">Xoá tài khoản</a>
     </nav>
     <p class="footer__copy">© <span class="js-year">2026</span> Lumora. <span data-i18n="footer.made">Làm tại Việt Nam, cho mọi người.</span></p>
   </div>

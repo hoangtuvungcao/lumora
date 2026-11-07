@@ -153,13 +153,29 @@ abstract class LumoraApi {
   Future<DeviceList> deviceRevoke(String device, {bool wipeMedia = false}) async =>
       DeviceList.fromJson(_map(await request('device_revoke', {'device': device, 'wipe_media': wipeMedia})));
 
+  /// Main device: own devices missing from the account's list (the account was
+  /// restored here with the recovery phrase) that asked to be listed again
+  /// (`device_relist_request {device, name, kind, short_id}`).
+  Future<List<RelistRequest>> deviceRelistRequests() async {
+    final v = await request('device_relist_requests');
+    return v is List ? [for (final x in v) if (x is Map) RelistRequest.fromJson(x.cast<String, dynamic>())] : const [];
+  }
+
+  /// The user's answer: [approve] lists the device again; otherwise it is
+  /// signed out of the account (and wiped).
+  Future<DeviceList> deviceRelist(String device, {required bool approve}) async =>
+      DeviceList.fromJson(_map(await request('device_relist', {'device': device, 'approve': approve})));
+
   /// A linked device signs itself out; `device_revoked {by_self: true}` follows.
   /// Returns whether the main device could be told right away.
   /// [primaryOk]: the main device may sign out too (the user confirmed they kept the recovery
   /// phrase); without it the core refuses with `err.primary_logout`.
   /// [passphrase]: required when the install is password-protected (else `err.wrong_passphrase`).
-  Future<bool> deviceLogout({bool primaryOk = false, String? passphrase}) async =>
-      _b(_map(await request('device_logout', {if (primaryOk) 'primary_ok': true, 'passphrase': ?passphrase})), 'notified');
+  /// [wipe] ("Delete account"): the downloaded files go too (a linked device also asks the main
+  /// device to revoke it with a media wipe).
+  Future<bool> deviceLogout({bool primaryOk = false, String? passphrase, bool wipe = false}) async => _b(
+      _map(await request('device_logout', {if (primaryOk) 'primary_ok': true, 'passphrase': ?passphrase, if (wipe) 'wipe': true})),
+      'notified');
 
   /// Make this linked device the main one (needs the 24-word recovery phrase);
   /// `link_state {state: restart, reason: promoted}` follows. Errors:
@@ -293,8 +309,8 @@ abstract class LumoraApi {
         if (mentionAll) 'mention_all': true,
         if (silent) 'silent': true,
       })));
-  Future<void> forwardMessage(String msgId, String toConv) =>
-      request('forward_message', {'msg_id': msgId, 'to_conv': toConv});
+  Future<void> forwardMessage(String msgId, String toConv, {bool hideSender = false}) =>
+      request('forward_message', {'msg_id': msgId, 'to_conv': toConv, if (hideSender) 'hide_sender': true});
   Future<void> pinMessage(String conv, String msgId, bool on) =>
       request('pin_message', {'conv': conv, 'msg_id': msgId, 'on': on});
   Future<List<Message>> pinnedMessages(String conv) async =>
@@ -338,14 +354,85 @@ abstract class LumoraApi {
 
   Future<String> createCommunity(String name, List<String> members) async =>
       _map(await request('create_group', {'name': name, 'members': members, 'kind': 1}))['conv'] as String? ?? '';
-  Future<void> groupChannel(String gid, String name, {bool voice = false, bool remove = false}) =>
-      request('group_channel', {'gid': gid, 'name': name, 'voice': voice, 'remove': remove});
+  Future<void> groupChannel(String gid, String name, {bool voice = false, bool remove = false, String? category, String? topic}) =>
+      request('group_channel', {'gid': gid, 'name': name, 'voice': voice, 'remove': remove, 'category': ?category, 'topic': ?topic});
+
+  // ---- Community 2.0: roles, permissions, channel settings, timeouts.
+
+  /// The community's roles, highest first (`@everyone` last).
+  Future<List<GroupRole>> groupRoles(String gid) async => _list(await request('group_roles', {'gid': gid})).map(GroupRole.fromJson).toList();
+
+  /// Creates a role when [id] is null, else updates it. Returns its id.
+  Future<String> groupRoleSet(String gid, {String? id, required String name, required String color, required List<String> perms, int? position}) async =>
+      _map(await request('group_role_set', {'gid': gid, 'id': ?id, 'name': name, 'color': color, 'perms': perms, 'position': ?position}))['id']?.toString() ?? id ?? '';
+  Future<void> groupRoleDelete(String gid, String id) => request('group_role_delete', {'gid': gid, 'id': id});
+
+  /// Sets [peer]'s custom roles (built-in `admin` / `everyone` are not listed here).
+  Future<void> groupMemberRoles(String gid, String peer, List<String> roles) => request('group_member_roles', {'gid': gid, 'peer': peer, 'roles': roles});
+
+  /// Changes the channel called [name]; only the fields passed change.
+  Future<void> groupChannelUpdate(String gid, String name,
+          {String? newName, String? topic, String? category, int? position, bool? private, List<String>? allowRoles, bool? announce}) =>
+      request('group_channel_update', {
+        'gid': gid,
+        'name': name,
+        'new_name': ?newName,
+        'topic': ?topic,
+        'category': ?category,
+        'position': ?position,
+        'private': ?private,
+        'allow_roles': ?allowRoles,
+        'announce': ?announce,
+      });
+
+  /// Mutes [peer] in the community until [untilMs] (epoch ms); 0 lifts it.
+  Future<void> groupTimeout(String gid, String peer, int untilMs) => request('group_timeout', {'gid': gid, 'peer': peer, 'until_ms': untilMs});
   Future<String> createInvite(String gid, {int hours = 24}) async =>
       _map(await request('create_invite', {'gid': gid, 'hours': hours}))['link'] as String? ?? '';
+
+  /// A new invite link (needs `invite`), with its id for [groupRevokeInvite].
+  Future<InviteLink> createInviteLink(String gid, {int hours = 24}) async {
+    final m = _map(await request('create_invite', {'gid': gid, 'hours': hours}));
+    return InviteLink.fromJson({'created': DateTime.now().millisecondsSinceEpoch, ...m});
+  }
+
+  /// The live invite links I created for [gid].
+  Future<List<InviteLink>> groupInviteLinks(String gid) async =>
+      _list(await request('group_invite_links', {'gid': gid})).map(InviteLink.fromJson).toList();
+
+  /// Revokes invite link [id]; no id: every link made so far, by anyone
+  /// (needs `invite`). Joining with a revoked link fails (`err.invite_revoked`).
+  Future<void> groupRevokeInvite(String gid, {String? id}) => request('group_revoke_invite', {'gid': gid, 'id': ?id});
+
+  /// Owner only: [peer] becomes the owner, I become an admin.
+  Future<void> groupTransferOwner(String gid, String peer) => request('group_transfer_owner', {'gid': gid, 'peer': peer});
+
+  /// "Approve new members": turns down [peer]'s join request (approve = [groupAdd]).
+  Future<void> groupJoinDeny(String gid, String peer) => request('group_join_deny', {'gid': gid, 'peer': peer});
+
+  /// Invitations to groups waiting for my answer ("who can add me").
+  Future<List<GroupInvite>> groupInvites() async => _list(await request('group_invites')).map(GroupInvite.fromJson).toList();
+
+  /// Accepts / declines the invitation to [gid]; accepted → the group's conversation.
+  Future<String?> groupInviteAnswer(String gid, bool accept) async {
+    final r = await request('group_invite_answer', {'gid': gid, 'accept': accept});
+    return r is Map ? r['conv']?.toString() : null;
+  }
   Future<InviteInfo> inspectInvite(String link) async =>
       InviteInfo.fromJson(_map(await request('inspect_invite', {'link': link})));
-  Future<String> joinInvite(String link) async =>
-      _map(await request('join_invite', {'link': link}))['conv'] as String? ?? '';
+  /// The joined group's conversation (`g:<gid>`; the core may only send the
+  /// gid while the join is still pending).
+  Future<String> joinInvite(String link) async => (await joinInviteResult(link)).conv;
+
+  /// Joins by link. The real core only sends the request (`pending: true`): the group
+  /// arrives later (`group` event), or `group_join_denied {gid, reason, code}` says no.
+  Future<JoinResult> joinInviteResult(String link) async {
+    final m = _map(await request('join_invite', {'link': link}));
+    final gid = m['gid'] as String? ?? '';
+    var conv = m['conv'] as String? ?? '';
+    if (conv.isEmpty && gid.isNotEmpty) conv = 'g:$gid';
+    return JoinResult(conv: conv, gid: gid, name: m['name']?.toString() ?? '', pending: m['pending'] == true);
+  }
 
   Future<void> remoteDisplay(String session, int index) =>
       request('remote_display', {'session': session, 'index': index});
@@ -359,10 +446,16 @@ abstract class LumoraApi {
       request('set_wallpaper', {'conv': conv, 'wallpaper': wallpaper});
   Future<String?> getWallpaper(String conv) async =>
       _map(await request('get_wallpaper', {'conv': conv}))['wallpaper'] as String?;
-  Future<void> groupMeta(String gid, {String? avatar, String? description}) =>
-      request('group_meta', {'gid': gid, 'avatar': ?avatar, 'description': ?description});
+  /// [cover]: base64 JPEG (≤ 300 KB decoded), `""` removes it. Only the
+  /// fields passed change.
+  Future<void> groupMeta(String gid, {String? avatar, String? description, String? cover}) =>
+      request('group_meta', {'gid': gid, 'avatar': ?avatar, 'description': ?description, 'cover': ?cover});
   Future<String?> groupAvatar(String gid) async =>
       _map(await request('group_avatar', {'gid': gid}))['avatar'] as String?;
+
+  /// The group's / community's cover (base64 JPEG), null when it has none.
+  Future<String?> groupCover(String gid) async =>
+      _map(await request('group_cover', {'gid': gid}))['cover'] as String?;
 
   // ------------------------------------------------------- all-in-one
 
@@ -382,8 +475,9 @@ abstract class LumoraApi {
   Future<Message> sendContact(String conv, String peer) async =>
       Message.fromJson(_map(await request('send_contact', {'conv': conv, 'peer': peer})));
 
-  Future<String> postStory({String? text, String? imagePath, String? bg}) async =>
-      _map(await request('post_story', {'text': ?text, 'image_path': ?imagePath, 'bg': ?bg}))['id']?.toString() ?? '';
+  /// [audience]: `friends` (every friend not on my hidden list) or `close` (close friends only).
+  Future<String> postStory({String? text, String? imagePath, String? bg, String? audience}) async =>
+      _map(await request('post_story', {'text': ?text, 'image_path': ?imagePath, 'bg': ?bg, 'audience': ?audience}))['id']?.toString() ?? '';
   Future<List<Story>> stories() async => _list(await request('stories')).map(Story.fromJson).toList();
   Future<String?> storyImage(String id) async => _map(await request('story_image', {'story_id': id}))['image'] as String?;
   Future<void> storySeen(String id) => request('story_seen', {'story_id': id});
@@ -392,7 +486,15 @@ abstract class LumoraApi {
   /// My stories, newest first, including the ones past their 24 h (`active` = still shown).
   Future<List<Story>> storyArchive(String me) async =>
       _list(await request('story_archive')).map((j) => Story.fromJson({...j, 'author': me, 'seen': true})).toList();
-  Future<List<Map<String, dynamic>>> storyViewers(String id) async => _list(await request('story_viewers', {'story_id': id}));
+  /// Who saw my story, oldest first: `[{peer, ts}]` (an older core sends bare peer ids).
+  Future<List<StoryView>> storyViewers(String id) async {
+    final v = await request('story_viewers', {'story_id': id});
+    if (v is! List) return const [];
+    return [
+      for (final x in v)
+        if (x is String && x.isNotEmpty) StoryView(x) else if (x is Map && '${x['peer'] ?? ''}'.isNotEmpty) StoryView('${x['peer']}', ts: _i(x, 'ts'), name: _s(x, 'name')),
+    ];
+  }
 
   /// smooth | balanced | sharp | saver
   Future<void> remoteQuality(String session, String preset) => request('remote_quality', {'session': session, 'preset': preset});
@@ -405,8 +507,12 @@ abstract class LumoraApi {
   Future<void> joinPublic(String gid, String via) => request('join_public', {'gid': gid, 'via': via});
   Future<void> groupVisibility(String gid, {required bool public, String handle = ''}) =>
       request('group_visibility', {'gid': gid, 'public': public, 'handle': handle});
-  Future<void> groupSettings(String gid, {int? slowModeS, bool? adminsOnly}) =>
-      request('group_settings', {'gid': gid, 'slow_mode_s': ?slowModeS, 'admins_only': ?adminsOnly});
+  /// Switch an older group to the Community 2.0 rules (admins; refused with
+  /// `err.group_upgrade_blocked` while a member's app is older).
+  Future<void> groupUpgradeRules(String gid) => request('group_upgrade_rules', {'gid': gid});
+
+  Future<void> groupSettings(String gid, {int? slowModeS, bool? adminsOnly, bool? approveJoins}) =>
+      request('group_settings', {'gid': gid, 'slow_mode_s': ?slowModeS, 'admins_only': ?adminsOnly, 'approve_joins': ?approveJoins});
   Future<void> groupBan(String gid, String peer, bool ban) => request('group_ban', {'gid': gid, 'peer': peer, 'ban': ban});
   Future<void> groupPurgeMember(String gid, String peer) => request('group_purge_member', {'gid': gid, 'peer': peer});
   Future<void> groupClearHistory(String gid) => request('group_clear_history', {'gid': gid});
@@ -435,6 +541,14 @@ abstract class LumoraApi {
   Future<List<String>> hiddenMembers() async => ((await request('hidden_members') as List?) ?? const []).map((e) => '$e').toList();
   Future<List<String>> setMemberHidden(String peer, bool hidden) async =>
       ((await request('set_member_hidden', {'peer': peer, 'hidden': hidden}) as List?) ?? const []).map((e) => '$e').toList();
+  /// Every member's read mark in a group chat (kept by the core across
+  /// restarts): member -> read up to (hlc).
+  Future<Map<String, int>> groupReads(String conv) async {
+    final v = await request('group_reads', {'conv': conv});
+    if (v is! Map) return const {};
+    return {for (final e in v.entries) if (e.value is num) '${e.key}': (e.value as num).toInt()};
+  }
+
   Future<List<String>> seenBy(String msgId) async {
     final v = await request('seen_by', {'msg_id': msgId});
     return v is List ? v.map((e) => e is Map ? (e['peer']?.toString() ?? '') : e.toString()).where((e) => e.isNotEmpty).toList() : const [];
@@ -492,7 +606,7 @@ abstract class LumoraApi {
 
   Future<void> lockedChatsSet(List<String> chats) => request('locked_chats_set', {'chats': chats});
 
-  /// The BotFather conversation (synced to the account's devices, last 200
+  /// The Bot Studio conversation (synced to the account's devices, last 200
   /// lines; tokens are never kept in it).
   Future<List<Map<String, dynamic>>> botfatherHistory() async =>
       ((_map(await request('botfather_history'))['entries'] as List?) ?? const []).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
@@ -538,7 +652,10 @@ abstract class LumoraApi {
       request('group_rename', {'gid': gid, 'name': name});
   Future<void> groupLeave(String gid) => request('group_leave', {'gid': gid});
 
-  /// Discord-like spaces ("servers"). NOT in api.md v1 — a UI-side proposal
+  /// Owner only: deletes the group / community for every member.
+  Future<void> groupDissolve(String gid) => request('group_dissolve', {'gid': gid});
+
+  /// Spaces ("servers") with text and voice channels. NOT in api.md v1 — a UI-side proposal
   /// (`spaces` command). Returns an empty list if the core doesn't know it.
   Future<List<Space>> spaces() async {
     try {
@@ -548,8 +665,13 @@ abstract class LumoraApi {
     }
   }
 
-  Future<void> voiceJoin(String channelConv, bool join) =>
-      request(join ? 'voice_join' : 'voice_leave', {'conv': channelConv});
+  /// Joins (silent drop-in room: nobody is rung) or leaves a community voice
+  /// channel. Joining returns the room's call id (its media is a `call` with
+  /// `room: true`).
+  Future<String?> voiceJoin(String channelConv, bool join) async {
+    final r = await request(join ? 'voice_join' : 'voice_leave', {'conv': channelConv});
+    return r is Map ? r['call_id']?.toString() : null;
+  }
 
   /// [preview]: app-made preview (PDF first page, text snippet) carried with
   /// the file message so receivers see it before downloading.
@@ -568,9 +690,11 @@ abstract class LumoraApi {
   Future<List<FileItem>> files() async =>
       _list(await request('files')).map(FileItem.fromJson).toList();
 
-  Future<String> callStart(String conv, {bool video = false}) async {
+  /// [ring]: in a plain group, the members whose phones ring (everyone
+  /// else sees a "Join" banner; null/empty rings nobody).
+  Future<String> callStart(String conv, {bool video = false, List<String>? ring}) async {
     await AppleAudio.startCall(video: video); // iOS: microphone needs play-and-record first
-    return _map(await request('call_start', {'conv': conv, 'video': video}))['call_id']
+    return _map(await request('call_start', {'conv': conv, 'video': video, 'ring': ?ring}))['call_id']
             as String? ??
         '';
   }
@@ -605,12 +729,15 @@ abstract class LumoraApi {
 
   Future<RemoteStatus> remoteStatus() async =>
       RemoteStatus.fromJson(_map(await request('remote_status')));
-  Future<void> remoteSet({String? password, bool? unattended, bool? allowControl}) =>
+  Future<void> remoteSet({String? password, bool? unattended, bool? allowControl, bool? allowIncoming}) =>
       request('remote_set', {
         'password': ?password,
         'unattended': ?unattended,
         'allow_control': ?allowControl,
+        'allow_incoming': ?allowIncoming,
       });
+  /// A new temporary remote password, made by the core (the old one stops working).
+  Future<String> remoteNewPassword() async => _map(await request('remote_new_password'))['password'] as String? ?? '';
   /// [device]: which of the target account's devices (required when it has
   /// several that can be controlled: the error `err.choose_device` lists them
   /// in `detail`, see [RemoteDeviceChoice.parse]).
@@ -632,12 +759,23 @@ abstract class LumoraApi {
   /// Housekeeping (expired messages, temporary data, database compaction).
   Future<Map<String, dynamic>> maintain() async => _map(await request('maintain'));
 
-  /// `{max_cache, media_days, auto_direct, auto_group, community_days}` (bytes / days, 0 = no limit / never).
+  /// `{max_cache, media_days, community_days, auto_download}` (bytes / days, 0 = no limit / never).
   Future<StoragePolicy> storagePolicy() async => StoragePolicy.fromJson(_map(await request('storage_policy')));
 
   /// Saves the given fields and applies the policy right away. Returns the full policy.
   Future<StoragePolicy> setStoragePolicy(Map<String, int> values) async =>
       StoragePolicy.fromJson(_map(await request('set_storage_policy', values)));
+
+  /// Changes auto-download limits: `{wifi?: {photo?, video?, file?}, cell?: {…}}` (bytes,
+  /// 0 = off, [kAutoDownloadAlways] = always). Returns the full policy.
+  Future<StoragePolicy> setAutoDownload(Map<String, Map<String, int>> values) async =>
+      StoragePolicy.fromJson(_map(await request('set_storage_policy', {'auto_download': values})));
+
+  /// The device's network as the app sees it — `wifi`, `cell` (mobile data) or `roaming`
+  /// (roaming / a metered Wi-Fi): the core uses that network's auto-download limits and,
+  /// off Wi-Fi, avoids costly connection upgrades.
+  Future<void> setNetworkHint({required String network, bool lowBattery = false}) =>
+      request('set_network_hint', {'network': network, 'metered': network != 'wifi', 'low_battery': lowBattery});
 
   /// Removes downloaded media (messages stay; files can be downloaded again).
   /// [conv] null = every conversation. Returns `{freed_bytes, removed_files, cache_bytes}`.
@@ -650,6 +788,13 @@ abstract class LumoraApi {
 
   /// Values the core keeps for `settings_set` keys.
   Future<Map<String, dynamic>> settingsGet() async => _map(await request('settings_get'));
+
+  /// Recovery from friends after a restore with the recovery phrase:
+  /// `{recovering, offers: [{peer, name, messages, groups, since, verified, state, received, at}]}`.
+  Future<Map<String, dynamic>> recoveryOffers() async => _map(await request('recovery_offers'));
+  Future<Map<String, dynamic>> recoveryAccept(String peer) async => _map(await request('recovery_accept', {'peer': peer}));
+  Future<Map<String, dynamic>> recoveryDecline(String peer) async => _map(await request('recovery_decline', {'peer': peer}));
+  Future<Map<String, dynamic>> recoveryDismiss() async => _map(await request('recovery_dismiss'));
 }
 
 Map<String, dynamic> _map(dynamic v) =>
@@ -942,6 +1087,18 @@ class LinkRequest {
       device: _s(j, 'device'), name: _s(j, 'name'), kind: _i(j, 'kind'), os: _s(j, 'os'), path: _s(j, 'path'), state: _s(j, 'state'));
 }
 
+/// An own device asking to be listed again (`device_relist_request`).
+class RelistRequest {
+  const RelistRequest({required this.device, this.name = '', this.kind = 0, this.shortId = ''});
+  final String device;
+  final String name;
+  final int kind;
+  final String shortId;
+
+  factory RelistRequest.fromJson(Map<String, dynamic> j) =>
+      RelistRequest(device: _s(j, 'device'), name: _s(j, 'name'), kind: _i(j, 'kind'), shortId: _s(j, 'short_id'));
+}
+
 /// `history_status` / `history_sync` progress on a newly linked device.
 class HistoryStatus {
   const HistoryStatus({this.active = false, this.done = true, this.stateDone = true, this.messages = 0, this.sinceMs = 0, this.convsDone = 0, this.convsTotal = 0});
@@ -1009,6 +1166,53 @@ class RemoteDeviceChoice {
   }
 }
 
+/// "Always download" limit (1 PiB), the same value as the core's `AUTO_ALWAYS`.
+const kAutoDownloadAlways = 1 << 50;
+
+/// Auto-download limits on one kind of network (bytes; 0 = off).
+class AutoLimits {
+  const AutoLimits({required this.photo, required this.video, required this.voice, required this.file, required this.fileGroup});
+  final int photo, video, voice, file, fileGroup;
+
+  // defaults (as the core's): photos and voice messages everywhere, videos and files on Wi-Fi only
+  static const wifi = AutoLimits(photo: 5 << 20, video: 50 << 20, voice: kAutoDownloadAlways, file: 25 << 20, fileGroup: 10 << 20);
+  static const cell = AutoLimits(photo: 5 << 20, video: 0, voice: kAutoDownloadAlways, file: 0, fileGroup: 0);
+  static const roaming = AutoLimits(photo: 1 << 20, video: 0, voice: 5 << 20, file: 0, fileGroup: 0);
+
+  factory AutoLimits.fromJson(Map<String, dynamic>? j, AutoLimits d) => j == null
+      ? d
+      : AutoLimits(
+          photo: _i(j, 'photo', d.photo),
+          video: _i(j, 'video', d.video),
+          voice: _i(j, 'voice', d.voice),
+          file: _i(j, 'file', d.file),
+          fileGroup: _i(j, 'file_group', d.fileGroup),
+        );
+
+  /// `photo` / `video` / `voice` / `file`.
+  int operator [](String kind) => switch (kind) { 'photo' => photo, 'video' => video, 'voice' => voice, _ => file };
+}
+
+/// Per-network auto-download rules (Wi-Fi / mobile data / roaming or metered Wi-Fi).
+class AutoDownload {
+  const AutoDownload({this.wifi = AutoLimits.wifi, this.cell = AutoLimits.cell, this.roaming = AutoLimits.roaming});
+  final AutoLimits wifi, cell, roaming;
+  factory AutoDownload.fromJson(Map<String, dynamic>? j) => AutoDownload(
+        wifi: AutoLimits.fromJson((j?['wifi'] as Map?)?.cast<String, dynamic>(), AutoLimits.wifi),
+        cell: AutoLimits.fromJson((j?['cell'] as Map?)?.cast<String, dynamic>(), AutoLimits.cell),
+        roaming: AutoLimits.fromJson((j?['roaming'] as Map?)?.cast<String, dynamic>(), AutoLimits.roaming),
+      );
+  AutoLimits of(String network) => switch (network) { 'cell' => cell, 'roaming' => roaming, _ => wifi };
+
+  /// Whether a received [kind] (`photo` / `video` / `voice` / `file`) of [size] bytes
+  /// downloads by itself on [network] (the same rule as the core's).
+  bool allows(String network, String kind, int size, {bool inGroup = false}) {
+    final l = of(network);
+    final limit = kind == 'file' && inGroup ? (l.fileGroup < l.file ? l.fileGroup : l.file) : l[kind];
+    return limit > 0 && size <= limit;
+  }
+}
+
 /// Disk policy of the core (`storage_policy`).
 class StoragePolicy {
   const StoragePolicy({
@@ -1017,7 +1221,11 @@ class StoragePolicy {
     this.autoDirect = 25 << 20,
     this.autoGroup = 2 << 20,
     this.communityDays = 30,
+    this.autoDownload = const AutoDownload(),
   });
+
+  /// What downloads by itself, per network and kind of media.
+  final AutoDownload autoDownload;
 
   /// Max bytes of downloaded media (0 = unlimited).
   final int maxCache;
@@ -1025,7 +1233,7 @@ class StoragePolicy {
   /// Delete downloaded media older than this many days (0 = never).
   final int mediaDays;
 
-  /// Auto-download size limit in direct chats / groups (bytes).
+  /// Legacy single auto-download limits (an older core decides with these).
   final int autoDirect;
   final int autoGroup;
 
@@ -1038,6 +1246,7 @@ class StoragePolicy {
         autoDirect: _i(j, 'auto_direct', 25 << 20),
         autoGroup: _i(j, 'auto_group', 2 << 20),
         communityDays: _i(j, 'community_days', 30),
+        autoDownload: AutoDownload.fromJson((j['auto_download'] as Map?)?.cast<String, dynamic>()),
       );
 
   Map<String, int> toJson() => {
@@ -1270,6 +1479,15 @@ MessageStatus _msgStatus(int v) => switch (v) {
       _ => MessageStatus.failed,
     };
 
+/// `join_invite` answer: [pending] = asked, not in the group yet.
+class JoinResult {
+  const JoinResult({required this.conv, required this.gid, this.name = '', this.pending = false});
+  final String conv;
+  final String gid;
+  final String name;
+  final bool pending;
+}
+
 class Message {
   const Message({
     required this.id,
@@ -1309,6 +1527,29 @@ class Message {
   final Map<String, dynamic> meta;
 
   String? get forwardedFrom => meta['forwarded_from']?.toString();
+
+  /// Handed back by this friend after a restore from the recovery phrase and not signed
+  /// by me (core `meta.restored_from`): the bubble says "Restored from …".
+  String? get restoredFrom {
+    final v = meta['restored_from']?.toString();
+    return v == null || v.isEmpty ? null : v;
+  }
+
+  String? get restoredPeer => meta['restored_peer']?.toString();
+
+  /// Handed back as "mine" without my own signature (or from an unverified offer): the
+  /// label says "unverified" (core `meta.restored_unverified`).
+  bool get restoredUnverified => meta['restored_unverified'] == true;
+
+  /// Deleted for everyone: by whom (the author recalled it, or a group admin /
+  /// moderator removed it). Null for older records.
+  String? get deletedBy => meta['deleted_by']?.toString();
+
+  /// Deleted for everyone by someone other than its author (a group admin).
+  bool get removedByAdmin => deleted && deletedBy != null && deletedBy!.isNotEmpty && deletedBy != author;
+
+  /// Self-destructing (a timer): never forwarded, copied or saved.
+  bool get selfDestructs => expires != null;
   bool get isPoll => kind == 'poll';
   List<String> get mentions =>
       (meta['mentions'] is List) ? (meta['mentions'] as List).map((e) => e.toString()).toList() : const [];
@@ -1369,6 +1610,7 @@ class Message {
     final metaJ = j['meta'];
     final meta = metaJ is Map ? Map<String, dynamic>.of(metaJ.cast<String, dynamic>()) : <String, dynamic>{};
     if (j['silent'] == true) meta['silent'] = true;
+    if (j['deleted_by'] is String) meta['deleted_by'] = j['deleted_by'];
     votes ??= meta['votes'];
     final body = j['body'];
     return Message(
@@ -1428,7 +1670,9 @@ class Message {
       expires: expires,
       mine: mine,
       pinned: u.containsKey('pinned') ? _b(u, 'pinned') : pinned,
-      meta: u['meta'] is Map ? (u['meta'] as Map).cast<String, dynamic>() : meta,
+      meta: u['deleted_by'] is String
+          ? {...(u['meta'] is Map ? (u['meta'] as Map).cast<String, dynamic>() : meta), 'deleted_by': u['deleted_by']}
+          : (u['meta'] is Map ? (u['meta'] as Map).cast<String, dynamic>() : meta),
       rawVotes: votes,
       fileInfo: u['file'] is Map ? (u['file'] as Map).cast<String, dynamic>() : fileInfo,
       state: st ?? state,
@@ -1650,13 +1894,129 @@ class BlockedGroup {
   factory BlockedGroup.fromJson(Map<String, dynamic> j) => BlockedGroup(gid: _s(j, 'gid'), name: _s(j, 'name'), at: _i(j, 'at'));
 }
 
+/// Community permissions (`group_roles[].perms`, `group_info.my_perms`).
+abstract final class Perm {
+  static const viewChannel = 'view_channel';
+  static const sendMessages = 'send_messages';
+  static const manageMessages = 'manage_messages';
+  static const mentionEveryone = 'mention_everyone';
+  static const connectVoice = 'connect_voice';
+  static const manageChannels = 'manage_channels';
+  static const manageRoles = 'manage_roles';
+  static const kick = 'kick';
+  static const ban = 'ban';
+  static const timeout = 'timeout';
+  static const manageBots = 'manage_bots';
+  static const manageCommunity = 'manage_community';
+
+  /// Add people / create invite links.
+  static const invite = 'invite';
+
+  /// Pin / unpin messages.
+  static const pin = 'pin';
+
+  /// Send photos, videos and files (`send_file`; voice notes need only send_messages).
+  static const sendMedia = 'send_media';
+
+  /// Every permission, in the order the settings list them.
+  static const all = [
+    viewChannel, sendMessages, sendMedia, manageMessages, mentionEveryone, connectVoice, manageChannels,
+    manageRoles, kick, ban, timeout, manageBots, invite, pin, manageCommunity,
+  ];
+
+  /// `@everyone`'s permissions in a new community (invite links are the admins'
+  /// by default — a role may give `invite` to others).
+  static const everyoneDefault = [viewChannel, sendMessages, sendMedia, connectVoice];
+
+  /// `@everyone`'s permissions in a new plain group (members may pin, like before).
+  static const everyoneGroupDefault = [viewChannel, sendMessages, sendMedia, connectVoice, pin];
+
+  static List<String> everyoneFor({required bool community}) => community ? everyoneDefault : everyoneGroupDefault;
+
+  /// Plain groups: the per-admin role of [peer] (its admin rights).
+  static String adminRoleId(String peer) => 'admin:$peer';
+
+  /// The admin rights a plain group shows as switches (ban + kick are one).
+  static const adminRights = [manageCommunity, manageMessages, ban, invite, pin, manageRoles, timeout];
+
+  /// The member permissions a plain group shows as switches.
+  static const memberRights = [sendMessages, sendMedia, invite, pin, manageCommunity];
+
+  /// An admin without an `admin:<peer>` rights role (made before rights
+  /// existed): every permission, in communities and plain groups alike.
+  static List<String> legacyAdmin({required bool community}) => all;
+
+  /// The built-in `admin` role: every permission, `manage_community` included
+  /// (owner decision 2026-11-07; dissolving stays owner-only).
+  static const admin = all;
+}
+
+/// A community role (`group_roles`). Built-in: `everyone` and `admin`.
+/// Neutral colour of `@everyone` and of roles without a colour (Lumora muted).
+const kDefaultRoleColor = '#9AA0C3';
+
+/// Colour of the built-in admin role and of per-admin roles (Lumora primary).
+const kAdminRoleColor = '#6C5CE7';
+
+class GroupRole {
+  const GroupRole({required this.id, required this.name, this.color = kDefaultRoleColor, this.perms = const [], this.position = 0, this.builtin = false});
+  static const everyoneId = 'everyone';
+  static const adminId = 'admin';
+  final String id;
+  final String name;
+
+  /// `#RRGGBB`.
+  final String color;
+  final List<String> perms;
+  final int position;
+  final bool builtin;
+  bool get isEveryone => id == everyoneId;
+  bool get isAdmin => id == adminId;
+
+  /// A plain group's per-admin rights role (`admin:<peer>`): never shown as a role.
+  bool get isAdminRights => id.startsWith('admin:');
+
+  /// [color] as a Flutter colour value (0xAARRGGBB); grey when unreadable.
+  int get argb {
+    final h = color.replaceAll('#', '');
+    final v = int.tryParse(h.length == 6 ? h : '', radix: 16);
+    return v == null ? 0xFF9AA0C3 : 0xFF000000 | v;
+  }
+
+  factory GroupRole.fromJson(Map<String, dynamic> j) => GroupRole(
+        id: _s(j, 'id'),
+        name: _s(j, 'name'),
+        color: _s(j, 'color', kDefaultRoleColor),
+        perms: _ls(j, 'perms'),
+        position: _i(j, 'position'),
+        builtin: _b(j, 'builtin'),
+      );
+}
+
 class GroupMember {
-  const GroupMember({required this.peer, required this.name, this.role = 'member'});
+  const GroupMember({required this.peer, required this.name, this.role = 'member', this.roles = const [], this.timeoutUntil = 0, this.online});
   final String peer;
   final String name;
   final String role; // owner | admin | member
+
+  /// Custom role ids (never `everyone` / `admin`: those follow from [role]).
+  final List<String> roles;
+
+  /// Timed out (may not post / talk) until this epoch ms; 0 = not.
+  final int timeoutUntil;
+
+  /// The core's presence hint, when it sends one.
+  final bool? online;
+  bool timedOut([int? nowMs]) => timeoutUntil > (nowMs ?? DateTime.now().millisecondsSinceEpoch);
   factory GroupMember.fromJson(Map<String, dynamic> j) {
-    final m = GroupMember(peer: _s(j, 'peer'), name: _s(j, 'name'), role: _s(j, 'role', 'member'));
+    final m = GroupMember(
+      peer: _s(j, 'peer'),
+      name: _s(j, 'name'),
+      role: _s(j, 'role', 'member'),
+      roles: _ls(j, 'roles'),
+      timeoutUntil: _i(j, 'timeout_until'),
+      online: j['online'] is bool ? j['online'] as bool : null,
+    );
     PeerNames.learn(m.peer, m.name);
     return m;
   }
@@ -1674,13 +2034,94 @@ class GroupInfo {
     this.channels = const [],
     this.description = '',
     this.hasAvatar = false,
+    this.hasCover = false,
+    this.coverRev = '',
     this.adminsOnly = false,
     this.slowModeS = 0,
     this.banned = const [],
     this.bots = const [],
     this.handle,
-  });
+    this.roles = const [],
+    this.botRoles = const {},
+    List<String>? myPerms,
+    this.approveJoins = false,
+    this.joinRequests = const [],
+    this.rulesV2 = true,
+  }) : _myPerms = myPerms;
+
+  /// The group follows the Community 2.0 rules (`rules_v2`); false: an older group
+  /// an admin may upgrade ([LumoraApi.groupUpgradeRules]) once every member runs 1.0.8+.
+  final bool rulesV2;
+
+  /// "Approve new members": invite-link joins wait in [joinRequests].
+  final bool approveJoins;
+  final List<JoinRequest> joinRequests;
+
+  /// Bot peer → its custom role ids (`bots[].roles`).
+  final Map<String, List<String>> botRoles;
   final bool adminsOnly;
+
+  /// Community roles, highest first (empty from an older core).
+  final List<GroupRole> roles;
+  final List<String>? _myPerms;
+
+  /// My permissions here: `my_perms` from the core, else what my fixed role
+  /// gives (owner and admins: all; member: @everyone's).
+  List<String> get myPerms {
+    final p = _myPerms;
+    if (p != null) return p;
+    return switch (myRole) {
+      'owner' => Perm.all,
+      'admin' => Perm.legacyAdmin(community: community),
+      'none' => const [],
+      _ => roles.where((r) => r.isEveryone).firstOrNull?.perms ?? Perm.everyoneFor(community: community),
+    };
+  }
+
+  bool can(String perm) => myRole == 'owner' || myPerms.contains(perm);
+
+  /// Owner or the built-in admin role (sees private channels, posts anywhere).
+  bool get isAdminish => myRole == 'owner' || myRole == 'admin';
+
+  GroupRole? roleById(String id) => roles.where((r) => r.id == id).firstOrNull;
+
+  /// Roles a person picks from (no built-ins, no per-admin rights roles).
+  List<GroupRole> get customRoles => roles.where((r) => !r.builtin && !r.isAdminRights).toList();
+
+  /// Plain groups: [peer]'s admin rights (their `admin:<peer>` role), or every
+  /// admin right when they were made admin before rights existed.
+  Set<String> adminRightsOf(String peer) {
+    final r = roleById(Perm.adminRoleId(peer));
+    final m = member(peer);
+    if (m?.role == 'owner') return Perm.all.toSet();
+    if (r == null || !(m?.roles.contains(r.id) ?? false)) return Perm.legacyAdmin(community: community).toSet();
+    return r.perms.toSet();
+  }
+
+  /// [m]'s roles, highest first: the built-in admin role when they hold it,
+  /// then their custom roles (never `@everyone`).
+  List<GroupRole> rolesOf(GroupMember m) {
+    final ids = {if (m.role == 'admin' || m.role == 'owner') GroupRole.adminId, ...m.roles};
+    return roles.where((r) => ids.contains(r.id) && !r.isEveryone && !r.isAdminRights).toList()..sort((a, b) => b.position.compareTo(a.position));
+  }
+
+  /// [m]'s highest role (null: only `@everyone`).
+  GroupRole? topRole(GroupMember m) => rolesOf(m).firstOrNull;
+
+  GroupMember? member(String peer) => members.where((m) => m.peer == peer).firstOrNull;
+
+  /// I may post in [ch]: not timed out, `send_messages`, and in an announcement
+  /// channel `manage_messages` or a role on its allow list (owner/admins always).
+  bool canPostIn(Channel ch, String me) {
+    if (isAdminish) return true;
+    final mine = member(me);
+    if (mine == null) return false;
+    if (mine.timedOut()) return false;
+    if (!can(Perm.sendMessages)) return false;
+    if (adminsOnly) return false;
+    if (ch.announce && !can(Perm.manageMessages) && !ch.allowRoles.contains(GroupRole.everyoneId) && !mine.roles.any(ch.allowRoles.contains)) return false;
+    return true;
+  }
   final int slowModeS;
   final List<String> banned;
 
@@ -1692,6 +2133,10 @@ class GroupInfo {
   bool get isPublic => handle != null && handle!.isNotEmpty;
   final String description;
   final bool hasAvatar;
+  final bool hasCover;
+
+  /// Id of the latest cover change ("" = none): a new value → fetch it again.
+  final String coverRev;
   final bool community;
   final List<Channel> channels;
   final String gid;
@@ -1712,6 +2157,8 @@ class GroupInfo {
         community: _i(j, 'kind') == 1 || _b(j, 'community'),
         description: _s(j, 'description'),
         hasAvatar: _b(j, 'has_avatar'),
+        hasCover: _b(j, 'has_cover'),
+        coverRev: _s(j, 'cover_rev'),
         adminsOnly: _b(j, 'admins_only'),
         slowModeS: _i(j, 'slow_mode_s'),
         banned: (j['banned'] as List? ?? const []).map((e) => e is Map ? (e['peer']?.toString() ?? '') : e.toString()).toList(),
@@ -1721,6 +2168,57 @@ class GroupInfo {
         ],
         handle: _so(j, 'handle'),
         channels: _list(j['channels']).map(Channel.fromJson).toList(),
+        roles: (_list(j['roles']).map(GroupRole.fromJson).toList()..sort((a, b) => b.position.compareTo(a.position))),
+        myPerms: j['my_perms'] is List ? _ls(j, 'my_perms') : null,
+        approveJoins: _b(j, 'approve_joins'),
+        rulesV2: j['rules_v2'] != false,
+        joinRequests: _list(j['join_requests']).map(JoinRequest.fromJson).toList(),
+        botRoles: {
+          for (final b in (j['bots'] as List? ?? const []))
+            if (b is Map && b['roles'] is List) b['peer']?.toString() ?? '': [for (final r in b['roles'] as List) r.toString()],
+        },
+      );
+}
+
+/// Someone waiting to join through an invite link ("approve new members").
+class JoinRequest {
+  const JoinRequest({required this.peer, this.name = '', this.at = 0});
+  final String peer;
+  final String name;
+  final int at;
+  factory JoinRequest.fromJson(Map<String, dynamic> j) => JoinRequest(peer: _s(j, 'peer'), name: _s(j, 'name'), at: _i(j, 'at'));
+}
+
+/// One of my live invite links (`group_invite_links`).
+class InviteLink {
+  const InviteLink({required this.id, required this.link, this.created = 0, this.expires = 0});
+  final String id;
+  final String link;
+  final int created;
+
+  /// Epoch ms (0 = never).
+  final int expires;
+  factory InviteLink.fromJson(Map<String, dynamic> j) => InviteLink(id: _s(j, 'id'), link: _s(j, 'link'), created: _i(j, 'created'), expires: _i(j, 'expires'));
+}
+
+/// An invitation to a group waiting for my answer (`group_invites`).
+class GroupInvite {
+  const GroupInvite({required this.gid, required this.name, this.community = false, this.by = '', this.byName = '', this.at = 0, this.members = 0});
+  final String gid;
+  final String name;
+  final bool community;
+  final String by;
+  final String byName;
+  final int at;
+  final int members;
+  factory GroupInvite.fromJson(Map<String, dynamic> j) => GroupInvite(
+        gid: _s(j, 'gid'),
+        name: _s(j, 'name'),
+        community: _i(j, 'kind') == 1,
+        by: _s(j, 'by'),
+        byName: _s(j, 'by_name'),
+        at: _i(j, 'at'),
+        members: _i(j, 'members'),
       );
 }
 
@@ -1731,14 +2229,38 @@ class Channel {
     required this.voice,
     required this.conv,
     this.participants = const [],
+    this.muted = const [],
     this.unread = 0,
     this.category = '',
+    this.topic = '',
+    this.position = 0,
+    this.private = false,
+    this.allowRoles = const [],
+    this.announce = false,
   });
   final String id;
   final String name;
   final bool voice;
   final String conv;
+
+  /// Shown under the channel's name in its header.
+  final String topic;
+
+  /// Order inside its category (lower first).
+  final int position;
+
+  /// Only [allowRoles] (plus owner / admins) see it.
+  final bool private;
+  final List<String> allowRoles;
+
+  /// Announcement channel: only `manage_messages` (or [allowRoles]) may post.
+  final bool announce;
+
+  /// Voice channel: who is in the room right now (accounts).
   final List<String> participants;
+
+  /// Voice channel: participants with their microphone off.
+  final List<String> muted;
   final int unread;
   final String category;
   factory Channel.fromJson(Map<String, dynamic> j) => Channel(
@@ -1747,22 +2269,51 @@ class Channel {
         voice: _s(j, 'kind') == 'voice' || _b(j, 'voice'),
         conv: _s(j, 'conv'),
         participants: _ls(j, 'participants'),
+        muted: _ls(j, 'muted'),
         unread: _i(j, 'unread'),
         category: _s(j, 'category'),
+        topic: _s(j, 'topic'),
+        position: _i(j, 'position'),
+        private: _b(j, 'private'),
+        allowRoles: _ls(j, 'allow_roles'),
+        announce: _b(j, 'announce'),
       );
 }
 
 class Space {
-  const Space({required this.id, required this.name, this.channels = const [], this.members = 0});
+  const Space({
+    required this.id,
+    required this.name,
+    this.channels = const [],
+    this.members = 0,
+    this.hasCover = false,
+    this.coverRev = '',
+    this.myRole = 'member',
+    this.owner = '',
+  });
   final String id;
   final String name;
   final List<Channel> channels;
   final int members;
+  final bool hasCover;
+
+  /// Id of the latest cover change ("" = none).
+  final String coverRev;
+
+  /// `owner` | `admin` | `member`.
+  final String myRole;
+  final String owner;
+  bool get isOwner => myRole == 'owner';
+  bool get canManage => myRole == 'owner' || myRole == 'admin';
   factory Space.fromJson(Map<String, dynamic> j) => Space(
         id: _s(j, 'id'),
         name: _s(j, 'name'),
         channels: _list(j['channels']).map(Channel.fromJson).toList(),
         members: _i(j, 'members'),
+        hasCover: _b(j, 'has_cover'),
+        coverRev: _s(j, 'cover_rev'),
+        myRole: _s(j, 'my_role', 'member'),
+        owner: _s(j, 'owner'),
       );
 }
 
@@ -1782,6 +2333,7 @@ class CallState {
     this.quality = 3,
     this.accounts = const {},
     this.names = const {},
+    this.room = false,
   });
   final String callId;
   final String conv;
@@ -1806,7 +2358,13 @@ class CallState {
   /// Participant (device key) → the name the core knows (`participants[].name`).
   final Map<String, String> names;
 
+  /// A community voice channel (drop-in room): never rings, goes on alone.
+  final bool room;
+
   String accountOf(String participant) => accounts[participant] ?? participant;
+
+  /// Whether `account` (or one of its devices) is talking right now.
+  bool speakingAccount(String account) => speaking.contains(account) || speaking.any((p) => accountOf(p) == account);
 
   /// The camera stream of `account` (keyed by its account or by one of its devices).
   int? streamOf(String account) {
@@ -1831,6 +2389,7 @@ class CallState {
         quality: quality ?? this.quality,
         accounts: accounts ?? this.accounts,
         names: names ?? this.names,
+        room: room,
       );
 
   factory CallState.fromJson(Map<String, dynamic> j) {
@@ -1880,6 +2439,7 @@ class CallState {
       quality: _i(j, 'quality', 3).clamp(0, 3),
       accounts: accounts,
       names: names,
+      room: _b(j, 'room'),
     );
   }
 }
@@ -1892,8 +2452,12 @@ class RemoteStatus {
     this.allowControl = true,
     this.wayland = const {},
     this.allowPower = false,
+    this.allowIncoming = true,
   });
   final bool allowPower;
+
+  /// Control requests reach this device at all (off: all refused).
+  final bool allowIncoming;
   final String myShortId;
   final String password;
   final bool unattended;
@@ -1906,11 +2470,13 @@ class RemoteStatus {
         unattended: _b(j, 'unattended'),
         allowControl: _b(j, 'allow_control', true),
         allowPower: _b(j, 'allow_power'),
+        allowIncoming: _b(j, 'allow_incoming', true),
         wayland: j['diagnostics'] is Map ? _map(j['diagnostics']) : _map(j['wayland']),
       );
 
-  RemoteStatus copyWith({String? password, bool? unattended, bool? allowControl, bool? allowPower}) => RemoteStatus(
+  RemoteStatus copyWith({String? password, bool? unattended, bool? allowControl, bool? allowPower, bool? allowIncoming}) => RemoteStatus(
         allowPower: allowPower ?? this.allowPower,
+        allowIncoming: allowIncoming ?? this.allowIncoming,
         myShortId: myShortId,
         password: password ?? this.password,
         unattended: unattended ?? this.unattended,
@@ -2191,6 +2757,14 @@ class Story {
   Story markSeen() => Story(id: id, author: author, created: created, text: text, hasImage: hasImage, bg: bg, seen: true, views: views);
 }
 
+/// One person who saw my story ([ts]: when, ms; 0 = unknown).
+class StoryView {
+  const StoryView(this.peer, {this.ts = 0, this.name = ''});
+  final String peer;
+  final int ts;
+  final String name;
+}
+
 /// Location body: {lat, lon, accuracy_m, label, live_until, updated}.
 class LocationData {
   const LocationData(this.lat, this.lon, {this.accuracy = 0, this.label = '', this.liveUntil = 0, this.updated = 0, this.stopped = false});
@@ -2292,7 +2866,7 @@ class BotInfo {
   }
 }
 
-/// A bot owned by me (BotFather).
+/// A bot owned by me (Bot Studio).
 class BotAccount {
   const BotAccount({required this.username, required this.name, this.handle = '', this.peer = '', this.shortId = '', this.token, this.created = 0});
   final String username;

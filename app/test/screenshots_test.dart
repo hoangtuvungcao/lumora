@@ -111,7 +111,8 @@ final shots = <Shot>[
   }),
   Shot('05_space', (t, sv, d) async {
     sv.nav.go(Section.space, space: sv.spaces.spaces.first.id);
-    sv.spaces.toggleVoice(sv.spaces.spaces.first.channels.firstWhere((c) => c.voice).conv, sv.session.me!.peer);
+    // (joinVoice awaits the core: in real time, a fake-clock timer would never fire here)
+    await t.runAsync(() => sv.spaces.joinVoice(sv.spaces.spaces.first.channels.firstWhere((c) => c.voice).conv));
     return null;
   }),
   Shot('06_friends', (t, sv, d) async {
@@ -276,7 +277,8 @@ final shots = <Shot>[
   }, video: true),
   Shot('43_voice_stage', (t, sv, d) async {
     sv.nav.go(Section.space, space: sv.spaces.spaces.first.id);
-    sv.spaces.toggleVoice(sv.spaces.spaces.first.channels.firstWhere((c) => c.voice).conv, sv.session.me!.peer);
+    // (joinVoice awaits the core: in real time, a fake-clock timer would never fire here)
+    await t.runAsync(() => sv.spaces.joinVoice(sv.spaces.spaces.first.channels.firstWhere((c) => c.voice).conv));
     return null;
   }, mobile: false),
   Shot('44_welcome_tour', (t, sv, d) async {

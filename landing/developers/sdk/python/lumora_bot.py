@@ -1,4 +1,4 @@
-"""Lumora Bot SDK for Python: build bots for the Lumora messenger.
+"""Lumora Bot SDK for Python: build bots for the Lumora messaging app.
 
 A bot is a normal Lumora account run by your code through **Lumora Bot Runner**
 (``lumorad``). Users find it by its 9-digit ID or ``@name·tag`` and chat with it like
@@ -8,7 +8,7 @@ Quick start::
 
     from lumora_bot import Bot
 
-    bot = Bot()                                 # token from LUMORA_BOT_TOKEN (BotFather)
+    bot = Bot()                                 # token from LUMORA_BOT_TOKEN (Bot Studio)
 
     @bot.command("start", "Start")
     def start(ctx):
@@ -104,7 +104,7 @@ _BLOCKED_PREFIXES = ("remote_",)
 
 def is_blocked_command(cmd: str) -> bool:
     """True when ``cmd`` is a core command bots may not use (remote control, recovery
-    phrase, backups, passwords, calls, BotFather management)."""
+    phrase, backups, passwords, calls, Bot Studio management)."""
     return cmd in _BLOCKED or cmd.startswith(_BLOCKED_PREFIXES)
 
 
@@ -721,11 +721,11 @@ class Bot:
     """A Lumora bot.
 
     Args:
-        name: Display name for a bot made without BotFather (testing). Not needed with a token.
+        name: Display name for a bot made without Bot Studio (testing). Not needed with a token.
         data_dir: Folder for the bot's identity, messages, storage and downloads. Keep it
             private and back it up; one folder per bot.
         binary: Path to ``lumorad`` (default: ``$LUMORAD``, then ``lumorad`` on ``PATH``).
-        token: BotFather token (default: ``$LUMORA_BOT_TOKEN``). Never hard-code it in
+        token: Bot Studio token (default: ``$LUMORA_BOT_TOKEN``). Never hard-code it in
             public code.
         about: Short description shown on the bot's profile.
         lan: Also find users on the local network.
@@ -758,10 +758,10 @@ class Bot:
         _setup_logging(log_json, log_level)
         #: The SDK's logger (``logging.getLogger("lumora_bot")``); use it in handlers too.
         self.log = log
-        # token from the in-app BotFather (recommended): name/@username come from it
+        # token from the in-app Bot Studio (recommended): name/@username come from it
         self.token = token or os.environ.get("LUMORA_BOT_TOKEN")
         if not name and not self.token:
-            raise ValueError("give the bot a name, or a token created in the app (BotFather)")
+            raise ValueError("give the bot a name, or a token created in the app (Bot Studio)")
         self.name = name
         self.data_dir = data_dir
         self.binary = binary or os.environ.get("LUMORAD") or shutil.which("lumorad") or "lumorad"

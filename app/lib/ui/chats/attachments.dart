@@ -1,4 +1,4 @@
-// Inline media & file attachments (Telegram/Zalo style):
+// Inline media & file attachments:
 // image bubbles (thumb → full crossfade, progress ring), albums, video
 // poster cards, typed file cards, and a full-screen media viewer.
 
@@ -492,12 +492,14 @@ class FileCard extends StatelessWidget {
             if (viewable) _Suggest(icon: AppIcons.show, label: s('fpv_view'), onTap: () => openFileViewer(context, path: f.path, name: ref.name, mime: ref.mime)),
             // in-app files: "Mở bằng ứng dụng khác" lives in the viewer
             if (!viewable) _Suggest(icon: AppIcons.openExternal, label: s('open'), onTap: () => openFile(context, f.path)),
-            _Suggest(icon: AppIcons.download, label: s('save'), onTap: () => saveCopy(context, f)),
-            _Suggest(icon: AppIcons.forward, label: s('forward'), onTap: () async {
-              final chat = context.read<ChatStore>();
-              final to = await pickConversation(context, title: s('forward_to'));
-              if (to != null) await chat.forward(message, to);
-            }),
+            // self-destructing: no copies (save / forward)
+            if (!message.selfDestructs) _Suggest(icon: AppIcons.download, label: s('save'), onTap: () => saveCopy(context, f)),
+            if (!message.selfDestructs)
+              _Suggest(icon: AppIcons.forward, label: s('forward'), onTap: () async {
+                final chat = context.read<ChatStore>();
+                final to = await pickForwardTarget(context, title: s('forward_to'));
+                if (to != null) await chat.forward(message, to.conv, hideSender: to.hideSender);
+              }),
           ]),
         ],
         if (transferring) ...[
@@ -671,16 +673,17 @@ class _MediaViewerState extends State<MediaViewer> {
                       ),
                       Text('${_index + 1} / ${widget.items.length}', style: const TextStyle(color: Colors.white70)),
                       const SizedBox(width: 8),
-                      IconButton(onPressed: () => _save(context), icon: const Icon(AppIcons.download, color: Colors.white), tooltip: s('pe_save_device')),
-                      IconButton(
-                        onPressed: () async {
-                          final chat = context.read<ChatStore>();
-                          final to = await pickConversation(context, title: s('forward_to'));
-                          if (to != null) await chat.forward(m, to);
-                        },
-                        icon: const Icon(AppIcons.forward, color: Colors.white),
-                        tooltip: s('forward'),
-                      ),
+                      if (!m.selfDestructs) IconButton(onPressed: () => _save(context), icon: const Icon(AppIcons.download, color: Colors.white), tooltip: s('pe_save_device')),
+                      if (!m.selfDestructs)
+                        IconButton(
+                          onPressed: () async {
+                            final chat = context.read<ChatStore>();
+                            final to = await pickForwardTarget(context, title: s('forward_to'));
+                            if (to != null) await chat.forward(m, to.conv, hideSender: to.hideSender);
+                          },
+                          icon: const Icon(AppIcons.forward, color: Colors.white),
+                          tooltip: s('forward'),
+                        ),
                       IconButton(
                         onPressed: () {
                           final p = _pathOf(context, m, r);

@@ -1,6 +1,6 @@
 # Performance & resource budget
 
-Goal: an always-on messenger that stays light for months of uptime.
+Goal: an always-on messaging app that stays light for months of uptime.
 
 | Area | Budget / technique |
 |---|---|

@@ -176,7 +176,8 @@ void main() {
 
   testWidgets('avatars: a group change refetches a cached one; a removed avatar goes', (t) async {
     final sv = await makeServices(t);
-    final gid = _group(sv).substring(2);
+    // a group I own: changing the picture needs manage_community ("change group info")
+    final gid = sv.chat.convs.values.firstWhere((c) => c.id.startsWith('g:') && !c.isCommunity && c.title.startsWith('Dự án')).id.substring(2);
     // cached "no avatar" (before the group got one)
     sv.avatars.group(gid);
     await _flush(t);
@@ -350,6 +351,12 @@ void main() {
     expect(AndroidBridge.cancelKeysFor({'event': 'call', 'state': 'incoming'}), isEmpty);
     expect(AndroidBridge.cancelKeysFor({'event': 'call', 'state': 'ended', 'reason': 'answered_elsewhere'}), ['call']);
     expect(AndroidBridge.cancelKeysFor({'event': 'call', 'state': 'active'}), ['call']);
+    // 1.0.8 review: a "Join" banner (or another call) ending leaves the ringing call's
+    // notification alone; the ringing call's own end removes it
+    expect(AndroidBridge.cancelKeysFor({'event': 'call', 'call_id': 'ring', 'state': 'incoming'}), isEmpty);
+    expect(AndroidBridge.cancelKeysFor({'event': 'call', 'call_id': 'banner', 'state': 'available'}), isEmpty);
+    expect(AndroidBridge.cancelKeysFor({'event': 'call', 'call_id': 'banner', 'state': 'ended'}), isEmpty);
+    expect(AndroidBridge.cancelKeysFor({'event': 'call', 'call_id': 'ring', 'state': 'ended'}), ['call']);
     expect(AndroidBridge.cancelKeysFor({'event': 'conversation', 'id': 'd:x', 'unread': 0}), ['d:x']);
     expect(AndroidBridge.cancelKeysFor({'event': 'conversation', 'id': 'd:x', 'unread': 2}), isEmpty);
     final old = AndroidBridge.convTitle;

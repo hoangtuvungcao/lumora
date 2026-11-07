@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lumora-bot"
 version = "1.1.0"
-description = "Lumora Bot SDK for Python: build bots for the Lumora messenger (commands, buttons, groups, files, checklists, reminders)."
+description = "Lumora Bot SDK for Python: build bots for the Lumora messaging app (commands, buttons, groups, files, checklists, reminders)."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
 authors = [{ name = "Lumora" }]
-keywords = ["lumora", "bot", "chatbot", "messenger", "sdk", "end-to-end-encryption"]
+keywords = ["lumora", "bot", "chatbot", "messaging", "sdk", "end-to-end-encryption"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",

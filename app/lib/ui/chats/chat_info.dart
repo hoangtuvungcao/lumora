@@ -8,6 +8,7 @@ import '../../state/stores.dart';
 import '../devices/contact_devices.dart';
 import '../friends/safety_number.dart';
 import '../groups/group_info.dart';
+import '../calls/group_call.dart' show startCallIn;
 import '../theme.dart';
 import '../widgets/peer_avatar.dart';
 import '../widgets/common.dart';
@@ -48,7 +49,6 @@ class _DirectInfo extends StatelessWidget {
     final ttl = context.select<ChatStore, int>((x) => x.ttlByConv[conv] ?? 0);
     final files = context.select<FilesStore, List<FileItem>>((f) => f.sorted.where((x) => x.conv == conv).toList());
     final chat = context.read<ChatStore>();
-    final calls = context.read<CallStore>();
     if (c == null) return EmptyState(icon: AppIcons.removeUser, title: s('unknown_contact'));
     return Column(children: [
       PaneHeader(
@@ -86,8 +86,8 @@ class _DirectInfo extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            _Action(icon: AppIcons.call, label: s('call'), onTap: () => calls.start(conv)),
-            _Action(icon: AppIcons.video, label: s('video'), onTap: () => calls.start(conv, video: true)),
+            _Action(icon: AppIcons.call, label: s('call'), onTap: () => startCallIn(context, conv)),
+            _Action(icon: AppIcons.video, label: s('video'), onTap: () => startCallIn(context, conv, video: true)),
             _Action(
               icon: (convo?.muted ?? false) ? AppIcons.mute : AppIcons.bell,
               label: (convo?.muted ?? false) ? s('unmute') : s('mute'),

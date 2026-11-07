@@ -251,13 +251,20 @@ impl Node {
                 }
                 cur
             };
+            // closed by the peer on purpose (not a timeout / reset): it may never have had
+            // this connection (its attempt was dropped while ours had already picked it) —
+            // a live replaced / duplicate one is then the one it uses
+            let by_peer = matches!(&reason, quinn::ConnectionError::ApplicationClosed(ac) if ac.error_code == quinn::VarInt::from_u32(0) && &ac.reason[..] != b"bye");
+            if still_current && by_peer && !*node.shutdown.borrow() && node.fallback_to_standby(&pc) {
+                return;
+            }
             if still_current {
                 let _ = node.store.set_contact_field(&pc.account, "last_seen", rusqlite::types::Value::Integer(now_ms() as i64));
                 node.store.device_touch(&pc.peer, None);
                 // an account is offline only once none of its devices is connected
                 node.emit(
                     "presence",
-                    json!({"peer": pc.account.to_base32(), "device": pc.peer.to_base32(), "online": node.is_online(&pc.account) && !pc.own, "own": pc.own, "device_online": false}),
+                    json!({"peer": pc.account.to_base32(), "device": pc.peer.to_base32(), "online": node.shows_online(&pc.account) && !pc.own, "own": pc.own, "device_online": false}),
                 );
                 if pc.own {
                     node.emit_devices();
@@ -299,7 +306,7 @@ impl Node {
         self.store.device_touch(&peer, None);
         self.emit(
             "presence",
-            json!({"peer": pc.account.to_base32(), "device": peer.to_base32(), "own": pc.own, "online": !pc.own, "device_online": true, "path": pc.path,
+            json!({"peer": pc.account.to_base32(), "device": peer.to_base32(), "own": pc.own, "online": !pc.own && self.shows_online(&pc.account), "device_online": true, "path": pc.path,
                    "remote_addr": crate::util::canon(pc.conn.remote_address()).to_string()}),
         );
         if pc.own {
@@ -566,6 +573,10 @@ impl Node {
                 }
                 self.record_peer_proto(&dev, version);
                 pc.proto.store(version, std::sync::atomic::Ordering::Relaxed);
+                if version >= proto::PROTO_V4 {
+                    // (maybe the last member device that was missing for a rules upgrade)
+                    self.maybe_upgrade_rules();
+                }
                 self.store.device_touch(&dev, Some(version));
                 *pc.name.write() = name.clone();
                 if !pc.own {
@@ -1783,15 +1794,26 @@ impl Node {
         if !(pc.own || self.store.is_friend(&pc.account)) || !self.dev_speaks_v3(&pc.peer) {
             return;
         }
-        let body = DhtKeyMsg { key: self.own_dht_key().to_vec() };
+        // a friend also gets back a message it signed in our 1-1 chat: if it ever restores
+        // its account from the phrase, that proves our friendship to it (node/recovery.rs)
+        let proof = if pc.own { vec![] } else { self.store.wire_proof(&direct_conv(&pc.account), &pc.account.0, super::recovery::PROOF_MAX).unwrap_or_default() };
+        let body = DhtKeyMsg { key: self.own_dht_key().to_vec(), proof };
         let _ = pc.ctl.try_send(proto::ext(proto::ext::DHT_KEY, &body));
     }
 
     pub(crate) fn on_dht_key(&self, pc: &Arc<PeerConn>, body: &[u8]) -> Result<()> {
+        let m: DhtKeyMsg = proto::ext_body(body)?;
         if !(pc.own || self.store.is_friend(&pc.account)) {
+            // only friends send it: an account restored from its phrase (no contacts yet)
+            // asks these peers for its history — but only when they hand back a message
+            // this account signed in a 1-1 chat with them (anyone can send DHT_KEY;
+            // strangers must never learn that the account is recovering)
+            if self.recovering() && self.recovery_proof_ok(&pc.account, &m.proof) {
+                self.recovery_note_proven(&pc.account);
+                self.recovery_on_hello(pc);
+            }
             return Ok(());
         }
-        let m: DhtKeyMsg = proto::ext_body(body)?;
         let key: [u8; 32] = m.key.as_slice().try_into().map_err(|_| anyhow!("bad dht key"))?;
         self.store.kv_set(&format!("dhtk.{}", pc.peer.to_base32()), &key)?;
         // signals to this device now go to its friends' inbox
@@ -1851,7 +1873,7 @@ impl Node {
         }
         if let Some(c) = self.store.contact(p) {
             let mut v = serde_json::to_value(&c).unwrap_or(Value::Null);
-            v["online"] = Value::Bool(self.is_online(p));
+            v["online"] = Value::Bool(self.shows_online(p));
             // a linked device reaches this friend's old app only through my main device
             v["bridged"] = Value::Bool(!self.is_primary() && !self.speaks_multidevice(p));
             self.emit("contact", v);
@@ -1865,6 +1887,10 @@ impl Node {
 pub(crate) struct DhtKeyMsg {
     #[serde(with = "serde_bytes", default)]
     pub key: Vec<u8>,
+    /// a `ChatMsg` the RECEIVING account signed in our 1-1 chat (MessagePack), when kept:
+    /// proof of the friendship for an account restored from its phrase (node/recovery.rs)
+    #[serde(with = "serde_bytes", default)]
+    pub proof: Vec<u8>,
 }
 
 #[cfg(test)]
@@ -2160,6 +2186,78 @@ mod review_regression_tests {
         }
         a.shutdown();
         b.shutdown();
+    }
+
+    /// NAT lab gate 1.0.8 (sr-fc, no STUN/relay, ~1 in 10): both sides' attempts complete
+    /// together; the peer drops its losing attempt (a spray endpoint) right after the
+    /// handshake, but our dedupe had already picked that connection and retired the one the
+    /// peer keeps → we went offline and `connect` failed. Now we fall back to the live
+    /// replaced connection, and its retirement never closes it once it is in use again.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn peer_dropping_our_picked_duplicate_falls_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (a, b) = pair(tmp.path()).await;
+        let first = link(&a, &b).await;
+        let addr: SocketAddr = format!("127.0.0.1:{}", b.net.local_port()).parse().unwrap();
+        let mut switched = 0;
+        for round in 0..8 {
+            // a's second attempt reaches b (b installs it, maybe as the one in use)…
+            let c2 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
+            let t2 = conn_tiebreak_id(&c2);
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            if b.peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == t2) {
+                switched += 1;
+            }
+            // …and a drops it without ever installing it (closed with code 0)
+            drop(c2);
+            let end = Instant::now() + Duration::from_secs(3);
+            let same = || b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == conn_tiebreak_id(&first.conn));
+            while Instant::now() < end && !same() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            assert!(same(), "round {round}: b is not back on the connection a uses");
+        }
+        assert!(switched > 0, "b never picked the duplicate: the test proves nothing");
+        // the retirement of the connection in use again must not close it
+        tokio::time::sleep(Duration::from_secs(11)).await;
+        assert!(first.alive(), "a re-adopted connection was closed by its old retirement");
+        assert!(b.usable_peer(&a.device).is_some_and(|c| conn_tiebreak_id(&c.conn) == conn_tiebreak_id(&first.conn)));
+        a.shutdown();
+        b.shutdown();
+    }
+
+    /// NAT lab samenat-hp: behind a hairpinning NAT one side sees a connection as LAN while
+    /// the other sees it (and the hairpin duplicate) as direct; the tiebreak then picked the
+    /// hairpin path about half the time. The side that sees the LAN path keeps it and says
+    /// `PATH_CHOSEN`; the other follows — both end on the LAN connection.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn lan_path_seen_by_one_side_wins_on_both() {
+        for round in 0..6 {
+            let tmp = tempfile::tempdir().unwrap();
+            let (a, b) = pair(tmp.path()).await;
+            let addr: SocketAddr = format!("127.0.0.1:{}", b.net.local_port()).parse().unwrap();
+            // a: one "direct" (hairpin) and one LAN connection; b sees both alike
+            let c1 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
+            let c2 = a.net.dial_direct(b.device, vec![addr], Duration::from_secs(5)).await.unwrap();
+            let (lan_first, (lan, direct)) = if round % 2 == 0 { (true, (c1, c2)) } else { (false, (c2, c1)) };
+            let t_lan = conn_tiebreak_id(&lan);
+            if lan_first {
+                a.clone().setup_conn(lan, PathKind::Lan, a.device, None).await.unwrap();
+                a.clone().setup_conn(direct, PathKind::Direct, a.device, None).await.unwrap();
+            } else {
+                a.clone().setup_conn(direct, PathKind::Direct, a.device, None).await.unwrap();
+                a.clone().setup_conn(lan, PathKind::Lan, a.device, None).await.unwrap();
+            }
+            let end = Instant::now() + Duration::from_secs(5);
+            let on_lan = |n: &Node, p: &PeerId| n.peer(p).is_some_and(|c| conn_tiebreak_id(&c.conn) == t_lan);
+            while Instant::now() < end && !(on_lan(&a, &b.device) && on_lan(&b, &a.device)) {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            assert!(on_lan(&a, &b.device), "round {round}: a left the LAN connection");
+            assert!(on_lan(&b, &a.device), "round {round}: b did not follow onto the LAN connection");
+            a.shutdown();
+            b.shutdown();
+        }
     }
 
     /// #12: an offer captured earlier and replayed (after strangers flooded the dedupe

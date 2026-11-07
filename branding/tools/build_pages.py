@@ -390,7 +390,8 @@ def build_legal():
           "   from branding/tools/legal_content.py; edit that file instead. Loads before app.js. */\n"
           "(function () {\n  \"use strict\";\n  var page = document.documentElement.getAttribute(\"data-page\");\n"
           f"  var EN = {json.dumps(en, ensure_ascii=False, indent=2)};\n"
-          "  EN[\"meta.desc\"] = page === \"terms\" ? EN[\"tm.meta\"] : EN[\"pv.meta\"];\n"
+          "  var PRE = {\"privacy\": \"pv\", \"terms\": \"tm\", \"child-safety\": \"cs\", \"delete-account\": \"da\"};\n"
+          "  EN[\"meta.desc\"] = EN[(PRE[page] || \"pv\") + \".meta\"];\n"
           "  window.LUMORA_I18N = EN;\n})();\n")
     write(L / "assets" / "js" / "legal.js", js)
 

@@ -64,6 +64,25 @@ class _MyDevicesPageState extends State<MyDevicesPage> {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _Summary(count: devices.length, primary: list.primary, mainName: main == null ? null : deviceTitle(s, main)),
       if (history.active) ...[const SizedBox(height: 12), _HistoryRow(status: history)],
+      if (list.primary && store.relist.isNotEmpty) ...[
+        SectionLabel(s('dv_relist_section'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
+        LCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(children: [
+            for (final (i, r) in store.relist.indexed) ...[
+              if (i > 0) Divider(height: 1, indent: 72, color: context.lc.divider),
+              ListTile(
+                key: ValueKey('relist-${r.device}'),
+                leading: IconTile(deviceKindIcon(r.kind), color: deviceKindColor(r.kind), size: IconTileSize.sm),
+                title: Text(relistName(s, r)),
+                subtitle: Text(deviceKindName(s, r.kind)),
+                trailing: const Icon(AppIcons.chevronRight, size: 18),
+                onTap: () => showRelistPrompt(context, r),
+              ),
+            ],
+          ]),
+        ),
+      ],
       SectionLabel(s('dv_list_title'), padding: const EdgeInsets.fromLTRB(4, 20, 4, 8)),
       LCard(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -111,6 +130,43 @@ class _MyDevicesPageState extends State<MyDevicesPage> {
         SecureNote('${s('dv_lost_title')} ${s('dv_lost_body')}', icon: AppIcons.shieldCheck, color: LC.success),
       ],
     ]);
+  }
+}
+
+String relistName(S s, RelistRequest r) => r.name.trim().isNotEmpty ? r.name.trim() : deviceKindName(s, r.kind);
+
+/// "A device wants to rejoin your account": after a restore with the recovery
+/// phrase, an old device of the account asks to be listed again. It is only
+/// listed when the user allows it; "Not mine" signs it out (a lost or stolen
+/// device that was signed out while offline must never come back by itself).
+Future<void> showRelistPrompt(BuildContext context, RelistRequest r) async {
+  final s = S.read(context);
+  final store = context.read<DevicesStore>();
+  final name = relistName(s, r);
+  final overlay = Navigator.of(context, rootNavigator: true).overlay;
+  final approve = await showDialog<bool>(
+    context: context,
+    routeSettings: RouteSettings(name: 'relist-${r.device}'),
+    builder: (c) => AlertDialog(
+      icon: IconTile(deviceKindIcon(r.kind), color: deviceKindColor(r.kind)),
+      title: Text(s('dv_relist_title')),
+      content: Text(s('dv_relist_body', {'name': name, 'kind': deviceKindName(s, r.kind)})),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(c).pop(false),
+          style: TextButton.styleFrom(foregroundColor: LC.danger),
+          child: Text(s('dv_relist_refuse')),
+        ),
+        FilledButton(onPressed: () => Navigator.of(c).pop(true), child: Text(s('dv_relist_allow'))),
+      ],
+    ),
+  );
+  if (approve == null || !context.mounted) return; // dismissed: stays in My devices
+  try {
+    await store.answerRelist(r.device, approve: approve);
+    showTopToast(null, s(approve ? 'dv_relist_allowed' : 'dv_relist_refused', {'name': name}), duration: const Duration(seconds: 3), overlay: overlay);
+  } catch (e) {
+    if (context.mounted) toastError(context, e);
   }
 }
 
@@ -490,6 +546,7 @@ Future<void> signOutHere(BuildContext context) async {
             await api.deviceLogout(primaryOk: primary, passphrase: needsPass ? pass.text : null);
             if (c.mounted) Navigator.pop(c, true);
           } catch (e) {
+            if (!c.mounted) return;
             set(() {
               busy = false;
               error = e is ApiException && e.code == 'err.wrong_passphrase' ? s('err_wrong_passphrase') : deviceError(s, e);
@@ -497,49 +554,53 @@ Future<void> signOutHere(BuildContext context) async {
           }
         }
 
-        return AlertDialog(
-          icon: const IconTile(AppIcons.signOut, color: LC.danger, size: IconTileSize.lg, circle: true),
-          title: Text(s(primary ? 'dv_logout_main_title' : 'dv_logout_self_title'), textAlign: TextAlign.center),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text(s(primary ? 'dv_logout_main_body' : 'dv_logout_self_body'), style: c.tt.bodyMedium?.copyWith(height: 1.5, color: c.lc.muted)),
-                if (needsPass) ...[
-                  const SizedBox(height: 14),
-                  PasswordField(
-                    controller: pass,
-                    label: s('dv_logout_password'),
-                    autofocus: true,
-                    policy: false,
-                    errorText: error,
-                    onChanged: (_) => set(() => error = null),
-                    onSubmitted: (_) => go(),
-                  ),
-                ] else if (error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(error!, style: const TextStyle(color: LC.danger)),
-                ],
-                if (primary)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton.icon(
-                      onPressed: () => showRecoveryPhraseDialog(c),
-                      icon: const Icon(AppIcons.recoveryPhrase, size: 18),
-                      label: Text(s('dv_logout_main_show')),
+        // no dismissing (barrier tap, back) while the sign-out runs
+        return PopScope(
+          canPop: !busy,
+          child: AlertDialog(
+            icon: const IconTile(AppIcons.signOut, color: LC.danger, size: IconTileSize.lg, circle: true),
+            title: Text(s(primary ? 'dv_logout_main_title' : 'dv_logout_self_title'), textAlign: TextAlign.center),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text(s(primary ? 'dv_logout_main_body' : 'dv_logout_self_body'), style: c.tt.bodyMedium?.copyWith(height: 1.5, color: c.lc.muted)),
+                  if (needsPass) ...[
+                    const SizedBox(height: 14),
+                    PasswordField(
+                      controller: pass,
+                      label: s('dv_logout_password'),
+                      autofocus: true,
+                      policy: false,
+                      errorText: error,
+                      onChanged: (_) => set(() => error = null),
+                      onSubmitted: (_) => go(),
                     ),
-                  ),
-              ]),
+                  ] else if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(error!, style: const TextStyle(color: LC.danger)),
+                  ],
+                  if (primary)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => showRecoveryPhraseDialog(c),
+                        icon: const Icon(AppIcons.recoveryPhrase, size: 18),
+                        label: Text(s('dv_logout_main_show')),
+                      ),
+                    ),
+                ]),
+              ),
             ),
+            actions: [
+              TextButton(onPressed: busy ? null : () => Navigator.pop(c, false), child: Text(s('cancel'))),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: LC.danger),
+                onPressed: busy || (needsPass && pass.text.isEmpty) ? null : go,
+                child: Text(s('dv_signout_action')),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: busy ? null : () => Navigator.pop(c, false), child: Text(s('cancel'))),
-            FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: LC.danger),
-              onPressed: busy || (needsPass && pass.text.isEmpty) ? null : go,
-              child: Text(s('dv_signout_action')),
-            ),
-          ],
         );
       },
     ),

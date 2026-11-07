@@ -1,4 +1,4 @@
-// Account state that follows the user to every device: the BotFather chat
+// Account state that follows the user to every device: the Bot Studio chat
 // (kept by the core, not just the open screen) and locked chats (an account
 // setting: locked on the phone = hidden, without notification text, on the
 // laptop too). The PIN itself stays per device.
@@ -34,7 +34,7 @@ Future<void> _done(WidgetTester t, AppServices sv) async {
 void main() {
   setUpAll(loadFonts);
 
-  group('BotFather chat', () {
+  group('Bot Studio chat', () {
     testWidgets('the conversation is still there after leaving the chat', (t) async {
       final api = MockLumoraApi(timers: false);
       final sv = await makeServices(t, api: api);

@@ -12,8 +12,8 @@ import { Bot, Button, LumoraError } from "lumora-bot";
 
 A Lumora bot.
 
-Options: `name` (display name for a bot made without BotFather, for tests), `token`
-(BotFather token; default `$LUMORA_BOT_TOKEN`, never hard-code it in public code),
+Options: `name` (display name for a bot made without Bot Studio, for tests), `token`
+(Bot Studio token; default `$LUMORA_BOT_TOKEN`, never hard-code it in public code),
 `dataDir` (identity, messages, storage and downloads; default `./lumora-bot`, one folder
 per bot, keep it private and back it up), `binary` (path to `lumorad`; default
 `$LUMORAD`, then `lumorad`), `about`, `lan` (also find users on the local network),
@@ -1725,7 +1725,7 @@ The command is not available to bots (code `sdk.not_for_bots`).
 #### `isBlockedCommand(cmd)` {#is-blocked-command}
 
 True when `cmd` is a core command bots may not use (remote control, recovery phrase,
-backups, passwords, calls, BotFather management).
+backups, passwords, calls, Bot Studio management).
 
 **Parameters**
 

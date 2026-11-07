@@ -7,7 +7,7 @@
 ## Hai SDK, một bộ tính năng | Two SDKs, one feature set
 
 <!-- vi -->
-SDK Python và JavaScript có cùng tính năng, cùng quy tắc và cùng định dạng lưu trữ. Tên hàm theo thói quen của từng ngôn ngữ: `send_checklist` trong Python là `sendChecklist` trong JavaScript; tham số từ khóa của Python là đối tượng tùy chọn trong JavaScript; mọi hàm JavaScript làm việc với Lumora trả về `Promise`.
+SDK Python và JavaScript có cùng tính năng, cùng quy tắc và cùng định dạng lưu trữ. Tên hàm theo thói quen của từng ngôn ngữ: `send_checklist` trong Python là `sendChecklist` trong JavaScript; tham số từ khoá của Python là đối tượng tuỳ chọn trong JavaScript; mọi hàm JavaScript làm việc với Lumora trả về `Promise`.
 
 - [Tham chiếu SDK Python](https://getlumora.pages.dev/developers/reference/python/): tạo tự động từ docstring của `lumora_bot.py`.
 - [Tham chiếu SDK JavaScript](https://getlumora.pages.dev/developers/reference/js/): tạo tự động từ JSDoc của `lumora-bot.mjs` (kiểu TypeScript trong `lumora-bot.d.ts`).

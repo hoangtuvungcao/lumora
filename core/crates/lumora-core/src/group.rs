@@ -13,6 +13,7 @@
 use crate::crypto::{aead_decrypt, aead_encrypt};
 use crate::devices::Signer;
 use crate::identity::PeerId;
+use crate::community::{self, perm, ChanMeta, Community, RoleDef};
 use crate::proto::{ChatMsg, MsgAction};
 use anyhow::{anyhow, bail, Result};
 use serde::{Deserialize, Serialize};
@@ -63,7 +64,54 @@ pub enum GroupOp {
     Settings { slow_mode_s: u32, admins_only: bool },
     /// Group picture (≤96 KB) and description.
     Meta { #[serde(with = "serde_bytes")] avatar: Vec<u8>, description: String },
+    /// Cover / banner picture (JPEG ≤ [`MAX_COVER`]; empty = removed). Its own op so a
+    /// description or avatar change never re-sends the large cover. Same rights as the
+    /// avatar: communities → admins/owner; group chats → any member (rate-limited).
+    Cover { #[serde(with = "serde_bytes")] cover: Vec<u8> },
+    /// The owner deletes the group for everyone: final — every member's device forgets
+    /// it and nothing (op or content) is accepted for it afterwards.
+    Dissolve,
+    // ---- Community 2.0 (docs/src/dev/community2-contract.md). Appended: older variants
+    // keep their encoding.
+    /// Create / change a role (`everyone`: its permissions only; `admin:<peer>`: a plain
+    /// group's per-admin rights, owner only). `position`: 1 = just above @everyone.
+    RoleSet { id: String, name: String, color: String, perms: u32, position: Option<u32> },
+    RoleDelete { id: String },
+    /// A member's (or bot's) custom roles, replacing the previous set.
+    MemberRoles { peer: PeerId, roles: Vec<String> },
+    /// Muted until `until_ms` (epoch ms; 0 lifts it).
+    Timeout { peer: PeerId, until_ms: u64 },
+    /// Channel settings; `name` is the channel's key (its conversation never changes).
+    ChannelUpdate {
+        name: String,
+        new_name: Option<String>,
+        topic: Option<String>,
+        category: Option<String>,
+        position: Option<u32>,
+        private: Option<bool>,
+        allow_roles: Option<Vec<String>>,
+        announce: Option<bool>,
+    },
+    /// The owner hands the group over (and becomes an admin).
+    TransferOwner { peer: PeerId },
+    /// Revoke one invite link (`community::invite_id`), or every link made so far.
+    RevokeInvite { id: Option<[u8; 8]> },
+    /// "Approve new members": invite-link joins wait for an admin.
+    JoinApproval { on: bool },
+    /// The group switches to the Community 2.0 rules (permissions, roles, admin-only re-adds,
+    /// succession by join order) for every op after it in fold order. Groups made by 1.0.8+
+    /// carry it right after their Create; older groups switch when an admin publishes it
+    /// (every member must run 1.0.8+: older apps can't read the new op kinds).
+    RulesV2,
 }
+
+/// Lower bound for [`GroupOp::RulesV2`] (2026-11-07 UTC): one dated earlier is never
+/// applied. The rules themselves are a per-group switch (the op), never a date: a 1.0.7
+/// member keeps folding by the old rules, so a date cutoff would split mixed groups.
+pub const V2_RULES_HLC: u64 = 1_794_009_600_000 << 8;
+
+/// Largest group cover picture (bytes).
+pub const MAX_COVER: usize = 300 * 1024;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum Payload {
@@ -204,6 +252,10 @@ pub struct GroupState {
     /// highest hlc of an applied op (live ops far older than this are rejected)
     #[serde(default)]
     pub last_op_hlc: u64,
+    /// Roles, permissions, channel settings, timeouts… (derived from `ops`, never
+    /// serialized: older versions read this struct as a fixed array).
+    #[serde(skip)]
+    pub ext: Community,
 }
 
 /// Verified ops the fold rejected, kept per group for later folds (see `with_op`).
@@ -216,6 +268,51 @@ const MAX_LOSER_EPOCH_LAG: u64 = 4;
 const MEMBER_META_GAP_MS: u64 = 10 * 60_000;
 /// … and one rename per minute (admins are not limited).
 const MEMBER_RENAME_GAP_MS: u64 = 60_000;
+/// Largest group picture (bytes).
+pub const MAX_GROUP_AVATAR: usize = 96 * 1024;
+/// Held (rejected, verified) ops kept per group, in bytes: pictures are large, so the op
+/// count alone doesn't bound what the held list stores and rewrites.
+pub const MAX_HELD_BYTES: usize = 2 * 1024 * 1024;
+/// An owner's Dissolve racing its own Leave (e.g. from two of its devices): still final if
+/// it was signed at most this long after the Leave (an ex-owner can't dissolve later).
+pub(crate) const DISSOLVE_AFTER_LEAVE_MS: u64 = 3_600_000;
+/// Picture ops of each kind (cover, avatar) that keep their bytes in the op log.
+const KEEP_PICTURES: usize = 2;
+/// Prefix fold snapshots kept per group (`prefix_state`).
+const MAX_SNAPSHOTS: usize = 48;
+
+/// Folds of op-log prefixes, shared by the clones of a group's state: judging late content
+/// by the rules of its time (`state_for`, `role_at`) walks forward from the nearest
+/// snapshot instead of re-folding the whole prefix for every message (catch-up on a big
+/// community would be quadratic). Keyed by a hash of the prefix's op ids, so a snapshot is
+/// only ever used for exactly the ops it was folded from.
+#[derive(Clone, Default)]
+pub struct Snapshots(std::sync::Arc<parking_lot::Mutex<Vec<Snapshot>>>);
+
+/// (hash of the prefix's op ids, its length, its fold)
+type Snapshot = ([u8; 32], usize, std::sync::Arc<GroupState>);
+
+impl std::fmt::Debug for Snapshots {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Snapshots({})", self.0.lock().len())
+    }
+}
+
+/// The state content is judged by (see `GroupState::state_for`).
+pub enum StateAt<'a> {
+    Now(&'a GroupState),
+    Then(std::sync::Arc<GroupState>),
+}
+
+impl std::ops::Deref for StateAt<'_> {
+    type Target = GroupState;
+    fn deref(&self) -> &GroupState {
+        match self {
+            StateAt::Now(s) => s,
+            StateAt::Then(s) => s,
+        }
+    }
+}
 
 pub fn key_commit(gid: &Gid, epoch: u64, key: &[u8; 32]) -> [u8; 32] {
     let mut h = blake3::Hasher::new_derive_key("lumora group key commit v1");
@@ -232,8 +329,36 @@ impl GroupState {
     pub fn role(&self, p: &PeerId) -> Option<Role> {
         self.members.get(p).copied()
     }
+    /// A member now (nobody is, once the group is dissolved).
     pub fn is_member(&self, p: &PeerId) -> bool {
+        self.members.contains_key(p) && !self.dissolved()
+    }
+    /// Was `p` a member when the group was dissolved (or is it one now)? For serving the
+    /// Dissolve to members that were offline.
+    pub fn was_member(&self, p: &PeerId) -> bool {
         self.members.contains_key(p)
+    }
+    /// Deleted by its owner. Dissolve is final (the fold applies nothing after it), so it
+    /// is always the last applied op.
+    pub fn dissolved(&self) -> bool {
+        matches!(self.ops.last().map(|o| &o.payload), Some(Payload::Op(GroupOp::Dissolve)))
+    }
+    /// The latest applied cover op (None: no cover ever set).
+    fn cover_op(&self) -> Option<(&Signed, &Vec<u8>)> {
+        // (one whose bytes were stripped is skipped: the one before it still shows)
+        self.ops.iter().rev().find_map(|o| match &o.payload {
+            Payload::Op(GroupOp::Cover { cover }) if !Self::stripped(o) => Some((o, cover)),
+            _ => None,
+        })
+    }
+    /// The cover picture (empty: none). Derived from the op log — the op is kept there
+    /// anyway, so a copy in the state would only double what is stored and sent.
+    pub fn cover(&self) -> &[u8] {
+        self.cover_op().map(|(_, c)| c.as_slice()).unwrap_or(&[])
+    }
+    /// Changes whenever the cover does ("" when there is none): lets the UI cache it.
+    pub fn cover_rev(&self) -> String {
+        self.cover_op().filter(|(_, c)| !c.is_empty()).map(|(o, _)| hex::encode(o.id)).unwrap_or_default()
     }
     /// Members that hold the group key (everyone except privacy-mode bots).
     pub fn key_holders(&self) -> Vec<PeerId> {
@@ -330,6 +455,93 @@ impl GroupState {
         }
     }
 
+    /// An op no fold can ever apply, whatever else arrives (a picture over its size cap, a
+    /// second Create, a plain member's picture in a community): never held, never stored.
+    /// Always a subset of what `apply` rejects, so dropping it can't change a fold.
+    pub fn never_valid(&self, s: &Signed) -> bool {
+        // (never by the author's role: the role it had when it signed — what the fold
+        // judges by — may differ from the one it has now)
+        match &s.payload {
+            Payload::Op(GroupOp::Create { .. }) => self.ops.first().map(|c| c.id != s.id).unwrap_or(false),
+            Payload::Op(GroupOp::Cover { cover }) => cover.len() > MAX_COVER,
+            Payload::Op(GroupOp::Meta { avatar, .. }) => avatar.len() > MAX_GROUP_AVATAR,
+            _ => false,
+        }
+    }
+
+    /// Superseded pictures: only the latest applied Cover / Meta matters (`cover()`, the
+    /// avatar, `compact_ops`), so the bytes of the older ones are dropped from the op log —
+    /// a member changing the cover every 10 minutes would otherwise grow the state (and
+    /// every save of it) by 300 KB each time. The ops themselves stay (same id, hlc,
+    /// author, signature), so every fold — rate limits included — is unchanged.
+    ///
+    /// The latest [`KEEP_PICTURES`] of each kind keep their bytes: the newest one may still
+    /// be rejected by a later re-fold (a demotion that sorts before it arrives), and the
+    /// one before it then shows instead of an empty picture. A stripped op that becomes the
+    /// latest anyway changes nothing (see `apply`, `cover_op`).
+    fn strip_superseded_pictures(&mut self) {
+        let (mut covers, mut metas) = (0usize, 0usize);
+        for o in self.ops.iter_mut().rev() {
+            match &mut o.payload {
+                Payload::Op(GroupOp::Cover { cover }) => {
+                    covers += 1;
+                    if covers > KEEP_PICTURES && !cover.is_empty() {
+                        *cover = Vec::new();
+                    }
+                }
+                Payload::Op(GroupOp::Meta { avatar, .. }) => {
+                    metas += 1;
+                    if metas > KEEP_PICTURES && !avatar.is_empty() {
+                        *avatar = Vec::new();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Ids of the picture ops whose stored envelopes are no longer needed: every Cover /
+    /// Meta in the op log except the latest applied one of each, and those still held
+    /// (rejected; their copy in `held` is what a later fold uses).
+    pub fn superseded_picture_ids(&self, held: &[Signed]) -> Vec<[u8; 16]> {
+        let is_pic = |o: &Signed| matches!(o.payload, Payload::Op(GroupOp::Cover { .. } | GroupOp::Meta { .. }));
+        let latest = |cover: bool| {
+            self.ops
+                .iter()
+                .rev()
+                .filter(move |o| matches!((&o.payload, cover), (Payload::Op(GroupOp::Cover { .. }), true) | (Payload::Op(GroupOp::Meta { .. }), false)))
+                .take(KEEP_PICTURES)
+                .map(|o| o.id)
+        };
+        let keep: Vec<[u8; 16]> = latest(true).chain(latest(false)).collect();
+        self.ops.iter().chain(held.iter()).filter(|o| is_pic(o) && !keep.contains(&o.id)).map(|o| o.id).collect()
+    }
+
+    /// `p` is out because of its own Leave, made while it was the owner, at most
+    /// [`DISSOLVE_AFTER_LEAVE_MS`] before `hlc`.
+    fn left_as_owner_before(&self, p: &PeerId, hlc: u64) -> bool {
+        let Some(i) = self.ops.iter().rposition(|o| match &o.payload {
+            Payload::Op(GroupOp::Leave) => o.author == *p,
+            Payload::Op(GroupOp::Remove { peer } | GroupOp::Ban { peer } | GroupOp::Add { peer } | GroupOp::AddBot { peer, .. }) => peer == p,
+            _ => false,
+        }) else {
+            return false;
+        };
+        let leave = &self.ops[i];
+        if !matches!(leave.payload, Payload::Op(GroupOp::Leave)) || leave.hlc.saturating_add(DISSOLVE_AFTER_LEAVE_MS << 8) < hlc {
+            return false;
+        }
+        // Only a Dissolve racing the Leave itself: once anything else was applied after the
+        // Leave (the successor, or anyone, acted), the ex-owner has no say any more — it
+        // can't come back within the hour and delete the group from under its new owner.
+        // (Ops apply in creation order, so this is the same on every member.)
+        if i + 1 < self.ops.len() {
+            return false;
+        }
+        // the owner just before that Leave (ownership only ever moves on an owner's Leave)
+        GroupState::fold(self.gid, self.ops[..i].to_vec()).map(|st| st.owner == *p).unwrap_or(false)
+    }
+
     /// Apply one more signed op: incremental when it sorts after every op we have (the
     /// common case — no O(n) re-fold per message), a full fold otherwise. Returns the new
     /// state and whether the op was applied.
@@ -339,6 +551,9 @@ impl GroupState {
     /// the fold of everything received whatever the arrival order; on return it holds the
     /// ops that are still rejected (bounded, newest kept).
     pub fn with_op(&self, op: Signed, held: &mut Vec<Signed>) -> Result<(GroupState, bool)> {
+        if self.never_valid(&op) {
+            return Ok((self.clone(), false));
+        }
         let key = |o: &Signed| (o.hlc, o.author.0, o.id, o.sig.clone());
         let id = op.id;
         let k = key(&op);
@@ -347,7 +562,11 @@ impl GroupState {
             let mut st = self.clone();
             if st.apply(&op) {
                 st.last_op_hlc = st.last_op_hlc.max(op.hlc);
+                let pic = matches!(op.payload, Payload::Op(GroupOp::Cover { .. } | GroupOp::Meta { .. }));
                 st.ops.push(op);
+                if pic {
+                    st.strip_superseded_pictures();
+                }
                 return Ok((st, true));
             }
             held.push(op);
@@ -370,19 +589,53 @@ impl GroupState {
         Ok((st, applied.contains(&(id, op.sig))))
     }
 
+    /// Newest kept: at most [`MAX_HELD_OPS`] ops and [`MAX_HELD_BYTES`] bytes.
     fn bound_held(held: &mut Vec<Signed>) {
-        if held.len() > MAX_HELD_OPS {
+        let bytes: usize = held.iter().map(Self::held_weight).sum();
+        if held.len() > MAX_HELD_OPS || bytes > MAX_HELD_BYTES {
             held.sort_by_key(|h| std::cmp::Reverse(h.hlc));
-            held.truncate(MAX_HELD_OPS);
+            let mut total = 0usize;
+            let keep = held
+                .iter()
+                .take(MAX_HELD_OPS)
+                .take_while(|h| {
+                    total += Self::held_weight(h);
+                    total <= MAX_HELD_BYTES
+                })
+                .count();
+            held.truncate(keep);
             held.sort_by(|a, b| (a.hlc, a.author.0, a.id).cmp(&(b.hlc, b.author.0, b.id)));
         }
+    }
+
+    /// Approximate stored size of a held op (its variable-length parts + a fixed overhead).
+    fn held_weight(o: &Signed) -> usize {
+        160 + o.sig.len()
+            + match &o.payload {
+                Payload::Op(GroupOp::Cover { cover }) => cover.len(),
+                Payload::Op(GroupOp::Meta { avatar, description }) => avatar.len() + description.len(),
+                Payload::Op(GroupOp::Create { name, members, .. }) => name.len() + members.len() * 33,
+                Payload::Op(GroupOp::Rename { name } | GroupOp::Channel { name, .. }) => name.len(),
+                Payload::Op(GroupOp::Visibility { handle, .. }) => handle.len(),
+                Payload::Op(GroupOp::RoleSet { id, name, color, .. }) => id.len() + name.len() + color.len(),
+                Payload::Op(GroupOp::RoleDelete { id }) => id.len(),
+                Payload::Op(GroupOp::MemberRoles { roles, .. }) => roles.iter().map(|r| r.len() + 2).sum(),
+                Payload::Op(GroupOp::ChannelUpdate { name, new_name, topic, category, allow_roles, .. }) => {
+                    name.len()
+                        + new_name.as_ref().map_or(0, |x| x.len())
+                        + topic.as_ref().map_or(0, |x| x.len())
+                        + category.as_ref().map_or(0, |x| x.len())
+                        + allow_roles.as_ref().map_or(0, |v| v.iter().map(|r| r.len() + 2).sum())
+                }
+                _ => 0,
+            }
     }
 
     /// The ops a new member needs: superseded group settings (an older picture, name,
     /// slow-mode setting or visibility a later applied op replaced in full) are left out —
     /// dozens of 96 KB pictures would otherwise make the Welcome too large to deliver.
     pub fn compact_ops(&self) -> Vec<Signed> {
-        let mut seen = [false; 4];
+        let mut seen = [false; 5];
         let mut out: Vec<Signed> = self
             .ops
             .iter()
@@ -393,14 +646,30 @@ impl GroupState {
                     Payload::Op(GroupOp::Rename { .. }) => 1,
                     Payload::Op(GroupOp::Settings { .. }) => 2,
                     Payload::Op(GroupOp::Visibility { .. }) => 3,
+                    Payload::Op(GroupOp::Cover { .. }) => 4,
                     _ => return true,
                 };
+                // (a picture op whose bytes were stripped here — see
+                // `strip_superseded_pictures` — no longer verifies: never sent; the latest
+                // one that still has its bytes goes instead)
+                if (slot == 0 || slot == 4) && Self::stripped(o) {
+                    return false;
+                }
                 !std::mem::replace(&mut seen[slot], true)
             })
             .cloned()
             .collect();
         out.reverse();
         out
+    }
+
+    /// A picture op whose bytes `strip_superseded_pictures` dropped (it no longer verifies).
+    fn stripped(o: &Signed) -> bool {
+        match &o.payload {
+            Payload::Op(GroupOp::Cover { cover }) => cover.is_empty() && !o.verify(),
+            Payload::Op(GroupOp::Meta { avatar, .. }) => avatar.is_empty() && !o.verify(),
+            _ => false,
+        }
     }
 
     /// Slow mode / announcement mode in effect at `hlc` (content is judged by the settings
@@ -419,7 +688,7 @@ impl GroupState {
 
     /// `p`'s role at `hlc` (None: not a member then).
     pub fn role_at(&self, p: &PeerId, hlc: u64) -> Option<Role> {
-        let owner_left = |o: &Signed| matches!(o.payload, Payload::Op(GroupOp::Leave)) && o.author != *p;
+        let owner_left = |o: &Signed| (matches!(o.payload, Payload::Op(GroupOp::Leave)) && o.author != *p) || matches!(o.payload, Payload::Op(GroupOp::TransferOwner { .. }));
         let touches = |o: &Signed| match &o.payload {
             Payload::Op(
                 GroupOp::Add { peer } | GroupOp::AddBot { peer, .. } | GroupOp::Remove { peer } | GroupOp::Ban { peer } | GroupOp::SetRole { peer, .. },
@@ -432,8 +701,7 @@ impl GroupState {
         if !self.ops.iter().rev().take_while(|o| o.hlc > hlc).any(|o| touches(o) || owner_left(o)) {
             return self.role(p);
         }
-        let prefix: Vec<Signed> = self.ops.iter().take_while(|o| o.hlc <= hlc).cloned().collect();
-        GroupState::fold(self.gid, prefix).ok().and_then(|st| st.role(p))
+        self.prefix_state(self.ops.partition_point(|o| o.hlc <= hlc)).role(p)
     }
 
     /// When `p` last joined (the op that added it, or the group's creation).
@@ -458,16 +726,105 @@ impl GroupState {
             .count() as u64
     }
 
-    /// Creation time of the latest op that took rights away from `p` (removed, banned,
-    /// demoted, left). Ops `p` dates well before it are not accepted any more: an
-    /// ex-admin can't backdate ops to when it still was one.
-    pub fn rights_cut(&self, p: &PeerId) -> Option<u64> {
-        self.ops.iter().rev().find_map(|o| match &o.payload {
-            Payload::Op(GroupOp::Remove { peer } | GroupOp::Ban { peer }) if peer == p => Some(o.hlc),
-            Payload::Op(GroupOp::SetRole { peer, role: Role::Member }) if peer == p => Some(o.hlc),
-            Payload::Op(GroupOp::Leave) if o.author == *p => Some(o.hlc),
-            _ => None,
-        })
+    /// Creation time of the latest op dated after `after` that took rights away from `p`:
+    /// removed, banned, demoted, left, timed out, or a role / permission change (its roles,
+    /// a role's permissions, a deleted role, the ownership handed over) that lowered `p`'s
+    /// permissions. What `p` dates well before it is not accepted any more: an ex-admin
+    /// can't backdate ops to when it still was one.
+    pub fn rights_cut_after(&self, p: &PeerId, after: u64) -> Option<u64> {
+        let start = self.ops.partition_point(|o| o.hlc <= after).max(1);
+        if start >= self.ops.len() {
+            return None;
+        }
+        let tail = &self.ops[start..];
+        let simple = |o: &Signed| match &o.payload {
+            Payload::Op(GroupOp::Remove { peer } | GroupOp::Ban { peer }) => peer == p,
+            Payload::Op(GroupOp::SetRole { peer, role: Role::Member }) => peer == p,
+            Payload::Op(GroupOp::Timeout { peer, until_ms }) => peer == p && *until_ms > 0,
+            Payload::Op(GroupOp::Leave) => o.author == *p,
+            _ => false,
+        };
+        let perms_op = |o: &Signed| {
+            matches!(&o.payload, Payload::Op(GroupOp::MemberRoles { .. } | GroupOp::RoleSet { .. } | GroupOp::RoleDelete { .. } | GroupOp::TransferOwner { .. } | GroupOp::SetRole { .. }))
+        };
+        let mut cut = tail.iter().rev().find(|o| simple(o)).map(|o| o.hlc);
+        if tail.iter().any(perms_op) {
+            // replay from the prefix: did `p`'s permissions lose a bit at such an op?
+            let mut st = (*self.prefix_state(start)).clone();
+            for o in tail {
+                let before = st.perms_of(p);
+                if st.apply(o) {
+                    st.ops.push(o.clone());
+                }
+                if perms_op(o) && before & !st.perms_of(p) != 0 {
+                    cut = cut.max(Some(o.hlc));
+                }
+            }
+        }
+        cut
+    }
+
+    /// Did an op dated after `after` change what `p` may post (its membership, roles,
+    /// timeout, a role's permissions, a channel's settings, the group's announcement mode)?
+    pub fn posting_rules_changed_after(&self, p: &PeerId, after: u64) -> bool {
+        self.ops.iter().rev().take_while(|o| o.hlc > after).any(|o| Self::matters_for(o, p) || matches!(o.payload, Payload::Op(GroupOp::Settings { .. })))
+    }
+
+    /// The fold of the first `len` ops (len ≥ 1), from the snapshot cache.
+    pub fn prefix_state(&self, len: usize) -> std::sync::Arc<GroupState> {
+        let len = len.clamp(1, self.ops.len().max(1));
+        if len >= self.ops.len() {
+            let mut me = self.clone();
+            me.ext.snapshots = Snapshots::default();
+            return std::sync::Arc::new(me);
+        }
+        // hashes of every prefix a snapshot has the length of (one pass over the ids)
+        let lens: Vec<usize> = self.ext.snapshots.0.lock().iter().map(|(_, l, _)| *l).filter(|l| *l <= len).collect();
+        let mut h = blake3::Hasher::new_derive_key("lumora group prefix v1");
+        let mut at: Vec<(usize, [u8; 32])> = vec![];
+        for (i, o) in self.ops[..len].iter().enumerate() {
+            h.update(&o.id);
+            h.update(&o.sig);
+            if lens.contains(&(i + 1)) || i + 1 == len {
+                at.push((i + 1, *h.clone().finalize().as_bytes()));
+            }
+        }
+        let key = at.last().map(|(_, k)| *k).unwrap_or_default();
+        let base = {
+            let snaps = self.ext.snapshots.0.lock();
+            if let Some((_, _, st)) = snaps.iter().find(|(k, l, _)| *l == len && *k == key) {
+                return st.clone();
+            }
+            snaps.iter().filter(|(k, l, _)| at.iter().any(|(al, ak)| al == l && ak == k)).max_by_key(|(_, l, _)| *l).map(|(_, l, st)| (*l, st.clone()))
+        };
+        let st = match base {
+            Some((l, b)) => {
+                let mut st = (*b).clone();
+                for o in &self.ops[l..len] {
+                    if st.apply(o) {
+                        st.last_op_hlc = st.last_op_hlc.max(o.hlc);
+                        st.ops.push(o.clone());
+                    }
+                }
+                st
+            }
+            None => match GroupState::fold(self.gid, self.ops[..len].to_vec()) {
+                Ok(st) => st,
+                Err(_) => self.clone(),
+            },
+        };
+        let mut st = st;
+        st.ext.snapshots = Snapshots::default(); // (no Arc cycle through the cache)
+        let st = std::sync::Arc::new(st);
+        let mut snaps = self.ext.snapshots.0.lock();
+        if snaps.len() >= MAX_SNAPSHOTS {
+            // catch-up walks forward: the shortest prefixes are the least useful
+            if let Some(i) = snaps.iter().enumerate().min_by_key(|(_, (_, l, _))| *l).map(|(i, _)| i) {
+                snaps.swap_remove(i);
+            }
+        }
+        snaps.push((key, len, st.clone()));
+        st
     }
 
     /// Channel names ever declared (messages written to a channel that was later removed
@@ -519,6 +876,7 @@ impl GroupState {
             bots: BTreeMap::new(),
             public: false,
             handle: String::new(),
+            ext: Community::default(),
         };
         st.members.insert(first.author, Role::Owner);
         for m in members {
@@ -530,27 +888,69 @@ impl GroupState {
                 st.ops.push(op);
             }
         }
+        st.strip_superseded_pictures();
         Ok(st)
     }
 
     /// Validate + apply one op. Returns false if rejected (no permission / invalid).
     fn apply(&mut self, s: &Signed) -> bool {
         let Payload::Op(op) = &s.payload else { return false };
+        if self.dissolved() {
+            return false; // deleted: final
+        }
         let actor = match self.role(&s.author) {
             Some(r) => r,
-            None => return false,
+            // the owner's Dissolve stays final even though its own Leave sorts first (signed
+            // concurrently, e.g. on two of its devices): otherwise the outcome would depend
+            // on which of the two a member received first
+            None => return matches!(op, GroupOp::Dissolve) && self.left_as_owner_before(&s.author, s.hlc),
         };
+        // Community 2.0 rules (permissions) once the group switched to them; before that
+        // exactly the rules 1.0.7 folds by (it may still be a member)
+        let v2 = self.ext.rules_v2;
+        let a = &s.author;
         match op {
             GroupOp::Create { .. } => false,
-            GroupOp::Add { peer } => {
-                if actor < Role::Admin && self.kind == 1 {
-                    return false; // communities: only admins add
+            GroupOp::RulesV2 => {
+                if v2 || actor < Role::Admin || s.hlc < V2_RULES_HLC {
+                    return false;
                 }
-                if self.banned.contains(peer) && actor < Role::Admin {
-                    return false; // only admins can bring back a banned member
+                self.ext.rules_v2 = true;
+                true
+            }
+            // the Community 2.0 kinds only exist under its rules
+            GroupOp::RoleSet { .. }
+            | GroupOp::RoleDelete { .. }
+            | GroupOp::MemberRoles { .. }
+            | GroupOp::Timeout { .. }
+            | GroupOp::ChannelUpdate { .. }
+            | GroupOp::TransferOwner { .. }
+            | GroupOp::RevokeInvite { .. }
+            | GroupOp::JoinApproval { .. }
+                if !v2 =>
+            {
+                false
+            }
+            GroupOp::Add { peer } => {
+                if v2 {
+                    if !self.has(a, perm::INVITE) {
+                        return false;
+                    }
+                    // banned or removed by an admin: only admins bring them back
+                    if (self.banned.contains(peer) || self.ext.removed.contains(peer)) && actor < Role::Admin {
+                        return false;
+                    }
+                } else {
+                    if actor < Role::Admin && self.kind == 1 {
+                        return false; // communities: only admins add
+                    }
+                    if self.banned.contains(peer) && actor < Role::Admin {
+                        return false; // only admins can bring back a banned member
+                    }
                 }
                 self.left.retain(|p| p != peer);
                 self.banned.retain(|p| p != peer);
+                self.ext.removed.retain(|p| p != peer);
                 self.members.entry(*peer).or_insert(Role::Member);
                 true
             }
@@ -559,13 +959,22 @@ impl GroupState {
                     Some(r) => r,
                     None => return false,
                 };
-                if actor < Role::Admin || target >= actor {
+                if v2 {
+                    let bot = self.bots.contains_key(peer);
+                    if !(self.has(a, perm::KICK) || (bot && self.has(a, perm::MANAGE_BOTS))) || !self.may_moderate(a, peer) {
+                        return false;
+                    }
+                } else if actor < Role::Admin || target >= actor {
                     return false;
                 }
                 self.members.remove(peer);
                 self.bots.remove(peer);
                 if !self.left.contains(peer) {
                     self.left.push(*peer);
+                }
+                self.ext.forget_member(peer);
+                if !self.ext.removed.contains(peer) {
+                    self.ext.removed.push(*peer);
                 }
                 true
             }
@@ -574,28 +983,38 @@ impl GroupState {
                     return false;
                 }
                 self.members.insert(*peer, *role);
+                if v2 && *role == Role::Member {
+                    // an admin's rights role means nothing to a member: gone with the demotion
+                    let rid = format!("{}{}", community::ADMIN_RIGHTS_PREFIX, peer.to_base32());
+                    if let Some(v) = self.ext.member_roles.get_mut(peer) {
+                        v.retain(|r| *r != rid);
+                    }
+                    self.ext.member_roles.retain(|_, v| !v.is_empty());
+                }
                 true
             }
             GroupOp::Rename { name } => {
-                if actor < Role::Admin && (self.kind == 1 || self.recent_op_by(&s.author, s.hlc, MEMBER_RENAME_GAP_MS, |o| matches!(o, GroupOp::Rename { .. }))) {
+                let limited = actor < Role::Admin && self.recent_op_by(a, s.hlc, MEMBER_RENAME_GAP_MS, |o| matches!(o, GroupOp::Rename { .. }));
+                let ok = if v2 { self.has(a, perm::MANAGE_COMMUNITY) && !limited } else { actor >= Role::Admin || (self.kind != 1 && !limited) };
+                if !ok {
                     return false;
                 }
                 self.name = name.chars().take(64).collect();
                 true
             }
             GroupOp::Leave => {
-                self.members.remove(&s.author);
-                if !self.left.contains(&s.author) {
-                    self.left.push(s.author);
+                self.members.remove(a);
+                if !self.left.contains(a) {
+                    self.left.push(*a);
                 }
-                if s.author == self.owner {
-                    // Succession: longest-standing admin, else longest member (BTreeMap order is stable).
-                    let next = self
-                        .members
-                        .iter()
-                        .find(|(_, r)| **r == Role::Admin)
-                        .or_else(|| self.members.iter().next())
-                        .map(|(p, _)| *p);
+                self.ext.forget_member(a);
+                if *a == self.owner {
+                    let next = if v2 {
+                        self.successor()
+                    } else {
+                        // (before 2.0: longest-standing admin, else longest member — by key order)
+                        self.members.iter().find(|(_, r)| **r == Role::Admin).or_else(|| self.members.iter().next()).map(|(p, _)| *p)
+                    };
                     if let Some(n) = next {
                         self.owner = n;
                         self.members.insert(n, Role::Owner);
@@ -625,7 +1044,7 @@ impl GroupState {
                     && !self.rekey_ops(*epoch).any(|c| c == commit)
             }
             GroupOp::Visibility { public, handle } => {
-                if actor < Role::Admin {
+                if !self.allowed(v2, actor, a, perm::MANAGE_COMMUNITY) {
                     return false;
                 }
                 self.public = *public;
@@ -633,45 +1052,60 @@ impl GroupState {
                 true
             }
             GroupOp::AddBot { peer, read_all } => {
-                // only admins add bots (like Telegram); bots join as plain members (no admin rights)
-                if actor < Role::Admin || self.banned.contains(peer) {
+                // bots join as plain members (no admin rights)
+                if !self.allowed(v2, actor, a, perm::MANAGE_BOTS) || self.banned.contains(peer) {
+                    return false;
+                }
+                // `manage_bots` is no back door: someone an admin removed comes back only by
+                // an admin, and a member (a person) is never turned into a bot
+                if v2 && ((self.ext.removed.contains(peer) && actor < Role::Admin) || (self.is_member(peer) && !self.bots.contains_key(peer))) {
                     return false;
                 }
                 self.left.retain(|p| p != peer);
+                self.ext.removed.retain(|p| p != peer);
                 self.members.entry(*peer).or_insert(Role::Member);
                 self.bots.insert(*peer, *read_all);
                 true
             }
             GroupOp::SetBotPolicy { peer, read_all } => {
-                if actor < Role::Admin || !self.bots.contains_key(peer) {
+                if !self.allowed(v2, actor, a, perm::MANAGE_BOTS) || !self.bots.contains_key(peer) {
                     return false;
                 }
                 self.bots.insert(*peer, *read_all);
                 true
             }
             GroupOp::Ban { peer } => {
-                let target = self.role(peer).unwrap_or(Role::Member);
-                if actor < Role::Admin || (self.is_member(peer) && target >= actor) || *peer == self.owner {
+                let ok = if v2 {
+                    self.has(a, perm::BAN) && *peer != self.owner && peer != a && (!self.is_member(peer) || self.may_moderate(a, peer))
+                } else {
+                    let target = self.role(peer).unwrap_or(Role::Member);
+                    !(actor < Role::Admin || (self.is_member(peer) && target >= actor) || *peer == self.owner)
+                };
+                if !ok {
                     return false;
                 }
                 self.members.remove(peer);
+                if v2 {
+                    self.bots.remove(peer); // (1.0.7 kept the bot flag: so do its rules)
+                }
                 if !self.left.contains(peer) {
                     self.left.push(*peer);
                 }
                 if !self.banned.contains(peer) {
                     self.banned.push(*peer);
                 }
+                self.ext.forget_member(peer);
                 true
             }
             GroupOp::Unban { peer } => {
-                if actor < Role::Admin {
+                if !self.allowed(v2, actor, a, perm::BAN) {
                     return false;
                 }
                 self.banned.retain(|p| p != peer);
                 true
             }
             GroupOp::Settings { slow_mode_s, admins_only } => {
-                if actor < Role::Admin {
+                if !self.allowed(v2, actor, a, perm::MANAGE_COMMUNITY) {
                     return false;
                 }
                 self.slow_mode_s = (*slow_mode_s).min(3600);
@@ -679,29 +1113,451 @@ impl GroupState {
                 true
             }
             GroupOp::Meta { avatar, description } => {
-                // plain members of a group chat may change the picture too, but not over and
-                // over: every change is part of the op log each new member receives
-                if (actor < Role::Admin && (self.kind == 1 || self.recent_op_by(&s.author, s.hlc, MEMBER_META_GAP_MS, |o| matches!(o, GroupOp::Meta { .. }))))
-                    || avatar.len() > 96 * 1024
-                {
+                // (an op whose picture bytes were stripped — it was superseded — that is the
+                // latest again after a re-fold: keeps the picture we have)
+                let stripped = avatar.is_empty() && Self::stripped(s);
+                // a change is part of the op log each new member receives: plain members
+                // (when allowed at all) not over and over
+                let limited = actor < Role::Admin && self.recent_op_by(a, s.hlc, MEMBER_META_GAP_MS, |o| matches!(o, GroupOp::Meta { .. }));
+                let ok = if v2 { self.has(a, perm::MANAGE_COMMUNITY) && !limited } else { actor >= Role::Admin || (self.kind != 1 && !limited) };
+                if !ok || avatar.len() > MAX_GROUP_AVATAR {
                     return false;
                 }
-                self.avatar = avatar.clone();
+                if !stripped {
+                    self.avatar = avatar.clone();
+                }
                 self.description = description.chars().take(500).collect();
                 true
             }
+            GroupOp::Cover { cover } => {
+                // the avatar's rules
+                let limited = actor < Role::Admin && self.recent_op_by(a, s.hlc, MEMBER_META_GAP_MS, |o| matches!(o, GroupOp::Cover { .. }));
+                let ok = if v2 { self.has(a, perm::MANAGE_COMMUNITY) && !limited } else { actor >= Role::Admin || (self.kind != 1 && !limited) };
+                ok && cover.len() <= MAX_COVER
+            }
+            GroupOp::Dissolve => actor == Role::Owner,
             GroupOp::Channel { name, voice, remove } => {
-                if actor < Role::Admin {
+                if !self.allowed(v2, actor, a, perm::MANAGE_CHANNELS) {
                     return false;
                 }
+                let existed = self.channels.iter().any(|c| &c.name == name);
                 self.channels.retain(|c| &c.name != name);
-                if !remove {
+                if *remove {
+                    self.ext.chan.remove(name);
+                } else {
                     self.channels.push(Channel { name: name.clone(), voice: *voice });
+                    if !existed && self.ext.chan.values().any(|m| m.position.is_some()) {
+                        // a new channel goes last
+                        let order: Vec<String> = self.channel_order().into_iter().map(|c| c.name.clone()).collect();
+                        self.set_positions(&order);
+                    }
                 }
+                true
+            }
+            GroupOp::RoleSet { id, name, color, perms, position } => {
+                if !self.has(a, perm::MANAGE_ROLES) || id == community::ADMIN || id.is_empty() || id.len() > 80 {
+                    return false;
+                }
+                let mine = self.perms_of(a);
+                let mut perms = perms & perm::ALL;
+                if id == community::EVERYONE {
+                    // (communities: managing the community is never everyone's)
+                    if self.kind == 1 {
+                        perms &= !perm::MANAGE_COMMUNITY;
+                    }
+                    let old = self.ext.everyone_perms(self.kind);
+                    if (perms & !old) & !mine != 0 {
+                        return false; // nobody grants what they don't hold
+                    }
+                    self.ext.everyone = Some(perms);
+                    return true;
+                }
+                let rights = id.starts_with(community::ADMIN_RIGHTS_PREFIX);
+                if rights && actor != Role::Owner {
+                    return false; // an admin's rights: the owner's call
+                }
+                let existing = self.ext.role(id).cloned();
+                let old = existing.as_ref().map(|r| r.perms).unwrap_or(0);
+                // nobody edits a role above its own rights (old & !mine), nor grants more
+                if old & !mine != 0 || (perms & !old) & !mine != 0 || (existing.is_none() && self.ext.roles.len() >= community::MAX_ROLES) {
+                    return false;
+                }
+                let name: String = if rights { id.clone() } else { name.trim().chars().take(32).collect() };
+                let name = if name.is_empty() {
+                    match &existing {
+                        Some(r) => r.name.clone(),
+                        None => return false,
+                    }
+                } else {
+                    name
+                };
+                let color = if rights { community::ADMIN_COLOR.to_string() } else { community::clean_color(color) };
+                self.ext.place_role(RoleDef { id: id.clone(), name, color, perms }, *position, existing.is_none());
+                true
+            }
+            GroupOp::RoleDelete { id } => {
+                if !self.has(a, perm::MANAGE_ROLES) || id == community::ADMIN || id == community::EVERYONE || self.ext.role(id).is_none() {
+                    return false;
+                }
+                if id.starts_with(community::ADMIN_RIGHTS_PREFIX) && actor != Role::Owner {
+                    return false;
+                }
+                // a role with rights its deleter lacks: not its call
+                if self.ext.role(id).is_some_and(|r| r.perms & !self.perms_of(a) != 0) {
+                    return false;
+                }
+                self.ext.delete_role(id);
+                true
+            }
+            GroupOp::MemberRoles { peer, roles } => {
+                // an admin's / the owner's roles are the owner's call
+                if !self.has(a, perm::MANAGE_ROLES) || !self.is_member(peer) || (self.role(peer).unwrap_or(Role::Member) >= Role::Admin && actor != Role::Owner) {
+                    return false;
+                }
+                let own_rights = format!("{}{}", community::ADMIN_RIGHTS_PREFIX, peer.to_base32());
+                let mut new: Vec<String> = vec![];
+                for r in roles {
+                    let known = self.ext.role(r).is_some() && (!r.starts_with(community::ADMIN_RIGHTS_PREFIX) || *r == own_rights);
+                    if known && !new.contains(r) && new.len() < community::MAX_MEMBER_ROLES {
+                        new.push(r.clone());
+                    }
+                }
+                let old = self.ext.roles_of(peer).to_vec();
+                let mine = self.perms_of(a);
+                // given or taken away: only roles within the actor's own rights
+                for r in new.iter().filter(|r| !old.contains(r)).chain(old.iter().filter(|r| !new.contains(r))) {
+                    let p = self.ext.role(r).map(|x| x.perms).unwrap_or(0);
+                    if p & !mine != 0 {
+                        return false;
+                    }
+                }
+                let rights_changed = new.iter().chain(old.iter()).any(|r| r.starts_with(community::ADMIN_RIGHTS_PREFIX) && (new.contains(r) != old.contains(r)));
+                if rights_changed && actor != Role::Owner {
+                    return false;
+                }
+                if new.is_empty() {
+                    self.ext.member_roles.remove(peer);
+                } else {
+                    self.ext.member_roles.insert(*peer, new);
+                }
+                true
+            }
+            GroupOp::Timeout { peer, until_ms } => {
+                if !self.has(a, perm::TIMEOUT) || !self.is_member(peer) || !self.may_moderate(a, peer) {
+                    return false;
+                }
+                let cap = crate::util::hlc_to_ms(s.hlc).saturating_add(366 * 86_400_000);
+                if *until_ms == 0 {
+                    self.ext.timeouts.remove(peer);
+                } else {
+                    self.ext.timeouts.insert(*peer, (*until_ms).min(cap));
+                }
+                true
+            }
+            GroupOp::ChannelUpdate { name, new_name, topic, category, position, private, allow_roles, announce } => {
+                if !self.has(a, perm::MANAGE_CHANNELS) || !self.channels.iter().any(|c| &c.name == name) {
+                    return false;
+                }
+                let new_name: Option<String> = match new_name.as_deref().map(clean_channel_name) {
+                    Some(n) if n.is_empty() => return false,
+                    Some(n) if &n == name => Some(String::new()), // back to its key
+                    Some(n) => {
+                        // a name another channel shows (or is keyed by) is taken
+                        if self.channels.iter().any(|c| &c.name != name && (c.name == n || self.channel_name(&c.name) == n)) {
+                            return false;
+                        }
+                        Some(n)
+                    }
+                    None => None,
+                };
+                let known: Vec<String> = allow_roles.as_ref().map(|v| {
+                    let mut out: Vec<String> = vec![];
+                    for r in v {
+                        if (r == community::EVERYONE || self.ext.role(r).is_some()) && !out.contains(r) && out.len() < community::MAX_MEMBER_ROLES {
+                            out.push(r.clone());
+                        }
+                    }
+                    out
+                }).unwrap_or_default();
+                let m = self.ext.chan.entry(name.clone()).or_default();
+                if let Some(n) = new_name {
+                    m.name = if n.is_empty() { None } else { Some(n) };
+                }
+                if let Some(t) = topic {
+                    m.topic = t.trim().chars().take(1024).collect();
+                }
+                if let Some(c) = category {
+                    m.category = c.trim().chars().take(32).collect();
+                }
+                if let Some(p) = private {
+                    m.private = *p;
+                }
+                if allow_roles.is_some() {
+                    m.allow_roles = known;
+                }
+                if let Some(x) = announce {
+                    m.announce = *x;
+                }
+                if let Some(p) = position {
+                    let mut order: Vec<String> = self.channel_order().into_iter().map(|c| c.name.clone()).collect();
+                    order.retain(|c| c != name);
+                    order.insert((*p as usize).min(order.len()), name.clone());
+                    self.set_positions(&order);
+                }
+                true
+            }
+            GroupOp::TransferOwner { peer } => {
+                if actor != Role::Owner || !self.is_member(peer) || peer == a || self.bots.contains_key(peer) {
+                    return false;
+                }
+                self.members.insert(*a, Role::Admin);
+                self.members.insert(*peer, Role::Owner);
+                self.owner = *peer;
+                true
+            }
+            GroupOp::RevokeInvite { id } => {
+                // one link: `invite`; every link at once: managing the community
+                if !self.has(a, perm::INVITE) || (id.is_none() && !self.has(a, perm::MANAGE_COMMUNITY)) {
+                    return false;
+                }
+                match id {
+                    Some(id) => {
+                        if !self.ext.revoked.contains(id) {
+                            if self.ext.revoked.len() >= community::MAX_REVOKED {
+                                self.ext.revoked.remove(0);
+                            }
+                            self.ext.revoked.push(*id);
+                        }
+                    }
+                    None => self.ext.revoked_before_ms = self.ext.revoked_before_ms.max(crate::util::hlc_to_ms(s.hlc)),
+                }
+                true
+            }
+            GroupOp::JoinApproval { on } => {
+                if !self.has(a, perm::MANAGE_COMMUNITY) {
+                    return false;
+                }
+                self.ext.approve_joins = *on;
                 true
             }
         }
     }
+
+    /// Before 2.0 the right was "admin or owner"; since then it is a permission.
+    fn allowed(&self, v2: bool, actor: Role, a: &PeerId, bit: u32) -> bool {
+        if v2 {
+            self.has(a, bit)
+        } else {
+            actor >= Role::Admin
+        }
+    }
+
+    /// The owner who left gets a successor: the admin who joined first, else the member
+    /// who joined first (bots only when nobody else is left). Join order is the group's
+    /// own history (`join_hlc`), the same on every member.
+    fn successor(&self) -> Option<PeerId> {
+        let order = |p: &PeerId| (self.join_hlc(p).unwrap_or(u64::MAX), *p);
+        let humans: Vec<PeerId> = self.members.keys().filter(|p| !self.bots.contains_key(p)).copied().collect();
+        humans
+            .iter()
+            .filter(|p| self.role(p) == Some(Role::Admin))
+            .min_by_key(|p| order(p))
+            .or_else(|| humans.iter().min_by_key(|p| order(p)))
+            .copied()
+            .or_else(|| self.members.keys().min_by_key(|p| order(p)).copied())
+    }
+
+    // ---------------------------------------------------------------- Community 2.0
+
+    /// Decode a stored / synced state: the derived part (`ext`) is rebuilt by re-folding
+    /// its op log (all of them were applied, in this order, so the result is the same).
+    pub fn decode(b: &[u8]) -> Result<GroupState> {
+        let st: GroupState = crate::proto::from_slice_capped(b)?;
+        Ok(st.rebuilt())
+    }
+
+    /// `ext` recomputed from `ops` (a state decoded from bytes has an empty one).
+    pub fn rebuilt(self) -> GroupState {
+        if self.ops.is_empty() {
+            return self;
+        }
+        match GroupState::fold(self.gid, self.ops.clone()) {
+            Ok(mut f) => {
+                // (only what the fold derives; everything else stays as it was saved)
+                f.last_op_hlc = f.last_op_hlc.max(self.last_op_hlc);
+                f
+            }
+            Err(_) => self,
+        }
+    }
+
+    /// `p`'s permissions now (contract "Effective permissions").
+    pub fn perms_of(&self, p: &PeerId) -> u32 {
+        match self.role(p) {
+            None => 0,
+            Some(Role::Owner) => perm::ALL,
+            Some(Role::Admin) => {
+                // a plain group's admin with an `admin:<peer>` rights role: those rights
+                let rid = format!("{}{}", community::ADMIN_RIGHTS_PREFIX, p.to_base32());
+                if self.ext.roles_of(p).contains(&rid) && self.ext.role(&rid).is_some() {
+                    self.member_perms(p)
+                } else {
+                    perm::ALL
+                }
+            }
+            Some(Role::Member) => self.member_perms(p),
+        }
+    }
+
+    fn member_perms(&self, p: &PeerId) -> u32 {
+        self.roles_in_effect(p).filter_map(|r| self.ext.role(r)).fold(self.ext.everyone_perms(self.kind), |acc, r| acc | r.perms)
+    }
+
+    /// `p`'s custom roles that count: an `admin:<peer>` rights role only while `p` is an admin.
+    pub fn roles_in_effect<'a>(&'a self, p: &PeerId) -> impl Iterator<Item = &'a String> + 'a {
+        let admin = self.role(p) == Some(Role::Admin);
+        self.ext.roles_of(p).iter().filter(move |r| admin || !r.starts_with(community::ADMIN_RIGHTS_PREFIX))
+    }
+
+    pub fn has(&self, p: &PeerId, bit: u32) -> bool {
+        self.perms_of(p) & bit == bit
+    }
+
+    /// May `actor` kick / ban / time out `target`? Never itself or the owner; admins only
+    /// by the owner.
+    pub fn may_moderate(&self, actor: &PeerId, target: &PeerId) -> bool {
+        target != actor && *target != self.owner && (self.role(target).unwrap_or(Role::Member) < Role::Admin || self.role(actor) == Some(Role::Owner))
+    }
+
+    /// Timed out until (epoch ms; 0 = not).
+    pub fn timeout_until(&self, p: &PeerId) -> u64 {
+        self.ext.timeouts.get(p).copied().unwrap_or(0)
+    }
+
+    /// The name channel `key` shows.
+    pub fn channel_name<'a>(&'a self, key: &'a str) -> &'a str {
+        self.ext.chan.get(key).and_then(|m| m.name.as_deref()).unwrap_or(key)
+    }
+
+    /// The channel (key) showing `name`, or keyed by it.
+    pub fn channel_key(&self, name: &str) -> Option<&Channel> {
+        self.channels.iter().find(|c| self.channel_name(&c.name) == name).or_else(|| self.channels.iter().find(|c| c.name == name))
+    }
+
+    pub fn chan_meta(&self, key: &str) -> ChanMeta {
+        self.ext.chan.get(key).cloned().unwrap_or_default()
+    }
+
+    /// Channels in display order: uncategorised first, then each category in the order of
+    /// its first channel; inside, by position (then creation order).
+    pub fn channel_order(&self) -> Vec<&Channel> {
+        let mut list: Vec<(usize, &Channel)> = self.channels.iter().enumerate().collect();
+        list.sort_by_key(|(i, c)| (self.ext.chan.get(&c.name).and_then(|m| m.position).map(|p| p as usize).unwrap_or(*i), *i));
+        let mut cats: Vec<(String, Vec<&Channel>)> = vec![(String::new(), vec![])];
+        for (_, c) in list {
+            let cat = self.ext.chan.get(&c.name).map(|m| m.category.clone()).unwrap_or_default();
+            match cats.iter_mut().find(|(k, _)| *k == cat) {
+                Some((_, v)) => v.push(c),
+                None => cats.push((cat, vec![c])),
+            }
+        }
+        cats.into_iter().flat_map(|(_, v)| v).collect()
+    }
+
+    fn set_positions(&mut self, order: &[String]) {
+        for (i, k) in order.iter().enumerate() {
+            self.ext.chan.entry(k.clone()).or_default().position = Some(i as u32);
+        }
+    }
+
+    /// May `p` see channel `key`? Owner/admins always; others need `view_channel` and, for
+    /// a private channel, a role it allows (`everyone` opens it).
+    pub fn can_see(&self, p: &PeerId, key: &str) -> bool {
+        match self.role(p) {
+            None => return false,
+            Some(r) if r >= Role::Admin => return true,
+            _ => {}
+        }
+        if !self.has(p, perm::VIEW_CHANNEL) {
+            return false;
+        }
+        let Some(m) = self.ext.chan.get(key) else { return true };
+        !m.private || m.allow_roles.iter().any(|r| r == community::EVERYONE || self.roles_in_effect(p).any(|x| x == r))
+    }
+
+    /// Why `p` may not post in `channel` at `at_ms` (a file: `media`) — None: it may.
+    /// The codes are the user errors the sender sees (`err.*`).
+    pub fn post_refusal(&self, p: &PeerId, channel: &str, at_ms: u64, media: bool) -> Option<&'static str> {
+        let Some(role) = self.role(p) else { return Some("err.not_member") };
+        let perms = self.perms_of(p);
+        if role < Role::Admin && self.timeout_until(p) > at_ms {
+            return Some("err.timed_out");
+        }
+        if perms & perm::SEND_MESSAGES == 0 {
+            return Some("err.channel_readonly");
+        }
+        if media && perms & perm::SEND_MEDIA == 0 {
+            return Some("err.no_permission");
+        }
+        if !channel.is_empty() {
+            if !self.can_see(p, channel) {
+                return Some("err.no_permission");
+            }
+            if let Some(m) = self.ext.chan.get(channel).filter(|m| m.announce) {
+                let allowed = role >= Role::Admin
+                    || perms & perm::MANAGE_MESSAGES != 0
+                    || m.allow_roles.iter().any(|r| r == community::EVERYONE || self.roles_in_effect(p).any(|x| x == r));
+                if !allowed {
+                    return Some("err.channel_readonly");
+                }
+            }
+        }
+        None
+    }
+
+    /// The state `p`'s content created at `hlc` is judged by: this one, unless an op made
+    /// after `hlc` changed what `p` may do (then the fold of everything before it).
+    pub fn state_for(&self, p: &PeerId, hlc: u64) -> StateAt<'_> {
+        if !self.ops.iter().rev().take_while(|o| o.hlc > hlc).any(|o| Self::matters_for(o, p)) {
+            return StateAt::Now(self);
+        }
+        StateAt::Then(self.prefix_state(self.ops.partition_point(|o| o.hlc <= hlc)))
+    }
+
+    /// Does op `o` change what `p` may do with content (see `state_for`)?
+    fn matters_for(o: &Signed, p: &PeerId) -> bool {
+        match &o.payload {
+            Payload::Op(
+                GroupOp::Add { peer }
+                | GroupOp::AddBot { peer, .. }
+                | GroupOp::Remove { peer }
+                | GroupOp::Ban { peer }
+                | GroupOp::SetRole { peer, .. }
+                | GroupOp::MemberRoles { peer, .. }
+                | GroupOp::Timeout { peer, .. },
+            ) => peer == p,
+            Payload::Op(GroupOp::Leave) => true, // (an owner's Leave moves the ownership)
+            Payload::Op(
+                GroupOp::RoleSet { .. } | GroupOp::RoleDelete { .. } | GroupOp::ChannelUpdate { .. } | GroupOp::Channel { .. } | GroupOp::TransferOwner { .. } | GroupOp::RulesV2,
+            ) => true,
+            _ => false,
+        }
+    }
+
+    /// Is invite link `id` (made at `created_ms` if known, expiring at `expires_ms`) revoked?
+    pub fn invite_revoked(&self, id: &[u8; 8], created_ms: Option<u64>, expires_ms: u64) -> bool {
+        self.ext.is_revoked(id, created_ms, expires_ms)
+    }
+
+    /// Was `p` removed by an admin (and not added back since)?
+    pub fn removed_by_admin(&self, p: &PeerId) -> bool {
+        self.ext.removed.contains(p) && !self.is_member(p)
+    }
+}
+
+/// A channel name as channels are named (lower case, dashes, ≤ 32 characters).
+pub fn clean_channel_name(n: &str) -> String {
+    n.trim().to_lowercase().replace(' ', "-").chars().take(32).collect()
 }
 
 /// 6-char tag for a public group handle, derived from the group id (unforgeable).
@@ -738,7 +1594,7 @@ pub fn admin_proof(st: &GroupState, admin: &PeerId) -> Option<Vec<u8>> {
         .ops
         .iter()
         .filter_map(|o| match &o.payload {
-            Payload::Op(GroupOp::SetRole { peer, .. }) => Some(*peer),
+            Payload::Op(GroupOp::SetRole { peer, .. } | GroupOp::TransferOwner { peer }) => Some(*peer),
             _ => None,
         })
         .chain(std::iter::once(*admin))
@@ -747,7 +1603,7 @@ pub fn admin_proof(st: &GroupState, admin: &PeerId) -> Option<Vec<u8>> {
         .ops
         .iter()
         .filter(|o| match &o.payload {
-            Payload::Op(GroupOp::Create { .. } | GroupOp::SetRole { .. } | GroupOp::Leave) => true,
+            Payload::Op(GroupOp::Create { .. } | GroupOp::SetRole { .. } | GroupOp::Leave | GroupOp::TransferOwner { .. }) => true,
             Payload::Op(GroupOp::Add { peer } | GroupOp::AddBot { peer, .. } | GroupOp::Remove { peer } | GroupOp::Ban { peer }) => promoted.contains(peer),
             _ => false,
         })
@@ -776,7 +1632,44 @@ pub fn verify_admin_proof(gid: &Gid, admin: &PeerId, proof: &[u8]) -> bool {
     }
 }
 
-/// Create a new group; returns (state, create op). The creator is the account.
+/// Create a new group that follows the Community 2.0 rules from the start: its Create and
+/// the `RulesV2` op right after it (both to be stored and sent).
+pub fn create_v2(me: &Signer, hlc: u64, name: &str, members: Vec<PeerId>, kind: u8) -> Result<(GroupState, Vec<Signed>)> {
+    let (st, c) = create(me, hlc, name, members, kind)?;
+    let r = Signed::new(me, st.gid, hlc.max(V2_RULES_HLC) + 1, Payload::Op(GroupOp::RulesV2));
+    let mut held = vec![];
+    let (st, ok) = st.with_op(r.clone(), &mut held)?;
+    anyhow::ensure!(ok, "RulesV2 not applied");
+    Ok((st, vec![c, r]))
+}
+
+/// Does `s` use an op kind 1.0.7 can't decode (it would drop the whole Welcome / envelope)?
+pub fn op_is_v2_kind(s: &Signed) -> bool {
+    match &s.payload {
+        Payload::Op(op) => !matches!(
+            op,
+            GroupOp::Create { .. }
+                | GroupOp::Add { .. }
+                | GroupOp::Remove { .. }
+                | GroupOp::SetRole { .. }
+                | GroupOp::Rename { .. }
+                | GroupOp::Leave
+                | GroupOp::Rekey { .. }
+                | GroupOp::Channel { .. }
+                | GroupOp::Visibility { .. }
+                | GroupOp::AddBot { .. }
+                | GroupOp::SetBotPolicy { .. }
+                | GroupOp::Ban { .. }
+                | GroupOp::Unban { .. }
+                | GroupOp::Settings { .. }
+                | GroupOp::Meta { .. }
+        ),
+        _ => false,
+    }
+}
+
+/// Create a new group; returns (state, create op). The creator is the account. (Old rules
+/// until a `RulesV2`: see [`create_v2`].)
 pub fn create(me: &Signer, hlc: u64, name: &str, members: Vec<PeerId>, kind: u8) -> Result<(GroupState, Signed)> {
     let payload = Payload::Op(GroupOp::Create { name: name.chars().take(64).collect(), members, kind });
     let id: [u8; 16] = crate::crypto::random_bytes();
@@ -1067,5 +1960,226 @@ mod tests {
         assert_eq!(s1.name, s2.name);
         r1.sig.clear();
         assert!(!r1.verify());
+    }
+
+    /// Cover op: who may set it (communities: admins/owner; group chats: like the avatar),
+    /// the size cap, removal, and the compacted Welcome keeps only the latest one.
+    #[test]
+    fn cover_permissions_and_size_cap() {
+        let o = Identity::generate().s();
+        let a = Identity::generate().s();
+        let m = Identity::generate().s();
+        let cover = |b: u8, n: usize| Payload::Op(GroupOp::Cover { cover: vec![b; n] });
+        // community: plain members can't, admins and the owner can
+        let (st, create_op) = create(&o, 1, "Cộng đồng", vec![a.account(), m.account()], 1).unwrap();
+        let gid = st.gid;
+        let promote = Signed::new(&o, gid, 2, Payload::Op(GroupOp::SetRole { peer: a.account(), role: Role::Admin }));
+        let st = st.with_op(promote, &mut vec![]).unwrap().0;
+        assert!(st.cover().is_empty() && st.cover_rev().is_empty());
+        let (st, ok) = st.with_op(Signed::new(&m, gid, 3, cover(1, 1000)), &mut vec![]).unwrap();
+        assert!(!ok, "a plain community member set the cover");
+        let by_admin = Signed::new(&a, gid, 4, cover(2, 1000));
+        let (st, ok) = st.with_op(by_admin.clone(), &mut vec![]).unwrap();
+        assert!(ok && st.cover() == vec![2; 1000].as_slice());
+        assert_eq!(st.cover_rev(), hex::encode(by_admin.id));
+        // over the cap: rejected even for the owner; at the cap: fine
+        let (st, ok) = st.with_op(Signed::new(&o, gid, 5, cover(3, MAX_COVER + 1)), &mut vec![]).unwrap();
+        assert!(!ok && st.cover()[0] == 2);
+        let (st, ok) = st.with_op(Signed::new(&o, gid, 6, cover(4, MAX_COVER)), &mut vec![]).unwrap();
+        assert!(ok && st.cover().len() == MAX_COVER);
+        // an avatar/description change leaves the cover alone
+        let meta = Signed::new(&o, gid, 7, Payload::Op(GroupOp::Meta { avatar: vec![9; 10], description: "d".into() }));
+        let st = st.with_op(meta, &mut vec![]).unwrap().0;
+        assert_eq!(st.cover().len(), MAX_COVER);
+        // removal
+        let (st, ok) = st.with_op(Signed::new(&o, gid, 8, cover(0, 0)), &mut vec![]).unwrap();
+        assert!(ok && st.cover().is_empty() && st.cover_rev().is_empty());
+        // new members get only the latest cover op, and fold to the same picture
+        let st = st.with_op(Signed::new(&a, gid, 9, cover(5, 2000)), &mut vec![]).unwrap().0;
+        let compact = st.compact_ops();
+        assert_eq!(compact.iter().filter(|o| matches!(o.payload, Payload::Op(GroupOp::Cover { .. }))).count(), 1);
+        assert_eq!(GroupState::fold(gid, compact).unwrap().cover(), st.cover());
+        // group chat: a plain member may, but not again within 10 minutes
+        let (g, _) = create(&o, 1, "Nhóm", vec![m.account()], 0).unwrap();
+        let t = 1_000u64 << 8;
+        let (g, ok) = g.with_op(Signed::new(&m, g.gid, t, cover(6, 100)), &mut vec![]).unwrap();
+        assert!(ok);
+        let (g, ok) = g.with_op(Signed::new(&m, g.gid, t + (60_000 << 8), cover(7, 100)), &mut vec![]).unwrap();
+        assert!(!ok && g.cover()[0] == 6, "a member changed the cover twice in a minute");
+        let (g, ok) = g.with_op(Signed::new(&m, g.gid, t + ((11 * 60_000) << 8), cover(8, 100)), &mut vec![]).unwrap();
+        assert!(ok && g.cover()[0] == 8);
+        let (g, ok) = g.with_op(Signed::new(&m, g.gid, t + ((12 * 60_000) << 8), cover(9, MAX_COVER + 1)), &mut vec![]).unwrap();
+        assert!(!ok && g.cover()[0] == 8);
+        let _ = create_op;
+    }
+
+    /// Dissolve: only the owner (not an admin, not a member); afterwards nobody is a member
+    /// and every op is rejected, in any arrival order.
+    #[test]
+    fn dissolve_is_owner_only_and_final() {
+        let o = Identity::generate().s();
+        let a = Identity::generate().s();
+        let m = Identity::generate().s();
+        let x = Identity::generate().s();
+        let (st, create_op) = create(&o, 1, "Cộng đồng", vec![a.account(), m.account()], 1).unwrap();
+        let gid = st.gid;
+        let promote = Signed::new(&o, gid, 2, Payload::Op(GroupOp::SetRole { peer: a.account(), role: Role::Admin }));
+        let st = st.with_op(promote.clone(), &mut vec![]).unwrap().0;
+        for who in [&a, &m] {
+            let (s2, ok) = st.with_op(Signed::new(who, gid, 3, Payload::Op(GroupOp::Dissolve)), &mut vec![]).unwrap();
+            assert!(!ok && !s2.dissolved(), "a non-owner dissolved the group");
+        }
+        assert!(st.is_member(&m.account()));
+        let dissolve = Signed::new(&o, gid, 10, Payload::Op(GroupOp::Dissolve));
+        let (st, ok) = st.with_op(dissolve.clone(), &mut vec![]).unwrap();
+        assert!(ok && st.dissolved());
+        assert!(!st.is_member(&o.account()) && !st.is_member(&m.account()));
+        assert!(st.was_member(&m.account()) && !st.was_member(&x.account()));
+        // nothing after it: not the owner, not an admin, not a re-add, not a second dissolve
+        let later = [
+            Signed::new(&o, gid, 11, Payload::Op(GroupOp::Add { peer: x.account() })),
+            Signed::new(&o, gid, 12, Payload::Op(GroupOp::Rename { name: "again".into() })),
+            Signed::new(&a, gid, 13, Payload::Op(GroupOp::Cover { cover: vec![1; 10] })),
+            Signed::new(&m, gid, 14, Payload::Op(GroupOp::Leave)),
+            Signed::new(&o, gid, 15, Payload::Op(GroupOp::Dissolve)),
+        ];
+        let mut cur = st.clone();
+        let mut held = vec![];
+        for op in later.iter().cloned() {
+            let (s2, ok) = cur.with_op(op, &mut held).unwrap();
+            assert!(!ok, "an op was applied after the dissolve");
+            assert!(s2.dissolved());
+            cur = s2;
+        }
+        assert_eq!(cur.name, "Cộng đồng");
+        // full folds in any order agree
+        let mut all = vec![create_op, promote, dissolve];
+        all.extend(later);
+        let f1 = GroupState::fold(gid, all.clone()).unwrap();
+        all.reverse();
+        let f2 = GroupState::fold(gid, all).unwrap();
+        assert!(f1.dissolved() && f2.dissolved());
+        assert_eq!(f1.ops.len(), 3);
+        assert_eq!(f1.ops.iter().map(|o| o.id).collect::<Vec<_>>(), f2.ops.iter().map(|o| o.id).collect::<Vec<_>>());
+    }
+
+    /// The owner's Leave and its Dissolve, signed concurrently (Leave first by hlc): every
+    /// arrival order ends dissolved. Before, a member that got the Dissolve first dropped
+    /// the late Leave (dissolved), while one that got the Leave first rejected the Dissolve
+    /// (the ex-owner was no member any more) — they disagreed forever.
+    #[test]
+    fn owner_dissolve_is_final_despite_its_concurrent_leave() {
+        let o = Identity::generate().s();
+        let a = Identity::generate().s();
+        let m = Identity::generate().s();
+        let (st, create_op) = create(&o, 1 << 8, "Nhóm", vec![a.account(), m.account()], 0).unwrap();
+        let gid = st.gid;
+        let leave = Signed::new(&o, gid, 5 << 8, Payload::Op(GroupOp::Leave));
+        let dissolve = Signed::new(&o, gid, 10 << 8, Payload::Op(GroupOp::Dissolve));
+        let (d1, ok) = st.with_op(dissolve.clone(), &mut vec![]).unwrap();
+        assert!(ok && d1.dissolved());
+        let (d1, _) = d1.with_op(leave.clone(), &mut vec![]).unwrap();
+        let (l2, ok) = st.with_op(leave.clone(), &mut vec![]).unwrap();
+        assert!(ok && !l2.dissolved() && l2.owner != o.account());
+        let (d2, ok) = l2.with_op(dissolve.clone(), &mut vec![]).unwrap();
+        assert!(ok, "the owner's Dissolve was rejected because its own Leave came first");
+        let f = GroupState::fold(gid, vec![dissolve.clone(), leave.clone(), create_op.clone()]).unwrap();
+        for s in [&d1, &d2, &f] {
+            assert!(s.dissolved());
+            assert!(!s.is_member(&a.account()) && !s.is_member(&m.account()));
+        }
+        let ids = |s: &GroupState| s.ops.iter().map(|o| o.id).collect::<Vec<_>>();
+        assert_eq!(ids(&d1), ids(&d2));
+        assert_eq!(ids(&d1), ids(&f));
+
+        // not a licence for later: an ex-owner's Dissolve long after its Leave is rejected
+        // (in every order too), and so is the Dissolve of a member who left
+        let late = Signed::new(&o, gid, (5 << 8) + ((2 * DISSOLVE_AFTER_LEAVE_MS) << 8), Payload::Op(GroupOp::Dissolve));
+        let (x1, ok) = l2.with_op(late.clone(), &mut vec![]).unwrap();
+        assert!(!ok && !x1.dissolved());
+        let (x2, _) = st.with_op(late.clone(), &mut vec![]).unwrap();
+        assert!(x2.dissolved());
+        let mut held = vec![];
+        let (x2, _) = x2.with_op(leave.clone(), &mut held).unwrap();
+        assert!(!x2.dissolved(), "a re-fold must undo the Dissolve the earlier Leave invalidates");
+        assert_eq!((ids(&x1), x1.owner), (ids(&x2), x2.owner));
+        let m_leave = Signed::new(&m, gid, 6 << 8, Payload::Op(GroupOp::Leave));
+        let m_dissolve = Signed::new(&m, gid, 7 << 8, Payload::Op(GroupOp::Dissolve));
+        let g = GroupState::fold(gid, vec![create_op, m_leave, m_dissolve]).unwrap();
+        assert!(!g.dissolved());
+    }
+
+    /// Ops no fold can ever accept are not held; held ops are bounded in bytes; the bytes
+    /// of superseded pictures leave the op log without changing any fold.
+    #[test]
+    fn never_valid_ops_are_not_held_and_old_pictures_are_dropped() {
+        let o = Identity::generate().s();
+        let a = Identity::generate().s();
+        let m = Identity::generate().s();
+        let cover = |b: u8, n: usize| Payload::Op(GroupOp::Cover { cover: vec![b; n] });
+        let min = |n: u64| (n * 60_000) << 8;
+        // community: a plain member's picture / an oversized one is dropped, not held
+        let (c, _) = create(&o, 1 << 8, "Cộng đồng", vec![a.account(), m.account()], 1).unwrap();
+        let mut held = vec![];
+        // (a plain member's picture is rejected by the fold, but never "never valid": its
+        // author may have been an admin when it signed)
+        for op in [
+            Signed::new(&m, c.gid, 2 << 8, cover(1, 1000)),
+            Signed::new(&m, c.gid, 3 << 8, Payload::Op(GroupOp::Meta { avatar: vec![1; 10], description: String::new() })),
+        ] {
+            assert!(!c.never_valid(&op));
+            let mut h = vec![];
+            assert!(!c.with_op(op, &mut h).unwrap().1);
+        }
+        for op in [
+            Signed::new(&o, c.gid, 4 << 8, cover(1, MAX_COVER + 1)),
+            Signed::new(&o, c.gid, 5 << 8, Payload::Op(GroupOp::Meta { avatar: vec![1; MAX_GROUP_AVATAR + 1], description: String::new() })),
+            Signed::new(&o, c.gid, 6 << 8, Payload::Op(GroupOp::Create { name: "x".into(), members: vec![], kind: 0 })),
+        ] {
+            assert!(c.never_valid(&op));
+            let (_, ok) = c.with_op(op, &mut held).unwrap();
+            assert!(!ok);
+        }
+        assert!(held.is_empty(), "never-valid ops were held");
+        // a rate-limited cover may still become valid (an earlier op could change things):
+        // held, but the held list stays within its byte budget
+        let (mut g, create_op) = create(&o, 1 << 8, "Nhóm", vec![m.account()], 0).unwrap();
+        let gid = g.gid;
+        let mut all = vec![create_op];
+        let mut held = vec![];
+        for i in 0..30u64 {
+            // every 10 minutes: applied; plus one 5 minutes later: rate-limited → held
+            for (t, ok_expected) in [(min(10 * i + 1), true), (min(10 * i + 6), false)] {
+                let op = Signed::new(&m, gid, t, cover(i as u8, MAX_COVER));
+                all.push(op.clone());
+                let (g2, ok) = g.with_op(op, &mut held).unwrap();
+                assert_eq!(ok, ok_expected);
+                g = g2;
+            }
+        }
+        assert!(!held.is_empty());
+        assert!(held.iter().map(GroupState::held_weight).sum::<usize>() <= MAX_HELD_BYTES);
+        // only the latest two covers keep their bytes; the fold is the same as a full fold
+        let with_bytes = g.ops.iter().filter(|o| matches!(&o.payload, Payload::Op(GroupOp::Cover { cover }) if !cover.is_empty())).count();
+        assert_eq!(with_bytes, KEEP_PICTURES);
+        assert_eq!(g.cover(), vec![29u8; MAX_COVER].as_slice());
+        let f = GroupState::fold(gid, all).unwrap();
+        assert_eq!(g.ops.iter().map(|o| o.id).collect::<Vec<_>>(), f.ops.iter().map(|o| o.id).collect::<Vec<_>>());
+        assert_eq!(f.cover(), g.cover());
+        let state_bytes = rmp_serde::to_vec(&g).unwrap().len();
+        assert!(state_bytes < 3 * MAX_COVER, "superseded covers still stored in the state ({state_bytes} B)");
+        // what to blank in the envelope log: every cover but the latest two
+        let ids = g.superseded_picture_ids(&held);
+        assert_eq!(ids.len(), g.ops.iter().filter(|o| matches!(o.payload, Payload::Op(GroupOp::Cover { .. }))).count() - KEEP_PICTURES + held.len());
+        assert!(!ids.contains(&g.cover_op().unwrap().0.id));
+        // a new member gets the effective cover (which verifies), never a stripped one
+        let compact = g.compact_ops();
+        assert!(compact.iter().all(|o| o.verify()));
+        assert_eq!(GroupState::fold(gid, compact).unwrap().cover(), g.cover());
+        // a stripped op left as the newest picture (its successor invalidated later) is
+        // not sent either
+        let mut s = g.clone();
+        s.ops.retain(|o| !matches!(&o.payload, Payload::Op(GroupOp::Cover { cover }) if !cover.is_empty()));
+        assert!(s.compact_ops().iter().all(|o| o.verify()));
     }
 }

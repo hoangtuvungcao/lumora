@@ -52,23 +52,52 @@ There is no central quota and no fee: each bot runs on your own computer.
 ## Bảo mật | Security
 
 <!-- vi -->
-- **Token là chìa khóa của bot.** Ai có token là điều khiển được bot. Đặt token trong biến môi trường `LUMORA_BOT_TOKEN` hoặc tệp môi trường chỉ chủ máy đọc được (`chmod 600`); đừng đưa vào mã nguồn, ảnh chụp màn hình hay kho mã công khai. SDK chuyển token cho Lumora Bot Runner qua biến môi trường, không qua dòng lệnh.
-- **Lỡ lộ token:** trong Lumora, gửi `/mybots` cho BotFather, chọn bot, bấm **Thu hồi mã**. Token cũ ngừng hoạt động ngay; bot nhận khóa mới nên hãy chạy token mới với **thư mục dữ liệu mới**. @tên của bot giữ nguyên.
+- **Token là chìa khoá của bot.** Ai có token là điều khiển được bot. Đặt token trong biến môi trường `LUMORA_BOT_TOKEN` hoặc tệp môi trường chỉ chủ máy đọc được (`chmod 600`); đừng đưa vào mã nguồn, ảnh chụp màn hình hay kho mã công khai. SDK chuyển token cho Lumora Bot Runner qua biến môi trường, không qua dòng lệnh.
+- **Lỡ lộ token:** trong Lumora, gửi `/mybots` trong Xưởng Bot, chọn bot, bấm **Thu hồi mã**. Token cũ ngừng hoạt động ngay; bot nhận khoá mới nên hãy chạy token mới với **thư mục dữ liệu mới**. @tên của bot giữ nguyên.
 - **Thư mục dữ liệu** chứa danh tính, tin nhắn và `bot-storage.json` của bot. Chỉ cho tài khoản chạy bot đọc (`chmod 700`), sao lưu định kỳ, mỗi bot một thư mục và chỉ một tiến trình dùng nó.
 - **Quản trị viên của bot:** ghi đầy đủ `@tên·mã` (phần mã gắn với tài khoản nên không giả mạo được) hoặc mã người dùng.
-- **Dữ liệu người dùng:** tin nhắn được mã hóa đầu cuối giữa người dùng và bot, nhưng bot (và bạn) đọc được những gì gửi cho bot. Chỉ lưu thứ thật sự cần, không ghi nội dung tin nhắn vào log, cho người dùng cách hủy nhận tin.
+- **Dữ liệu người dùng:** tin nhắn được mã hoá đầu cuối giữa người dùng và bot, nhưng bot (và bạn) đọc được những gì gửi cho bot. Chỉ lưu thứ thật sự cần, không ghi nội dung tin nhắn vào log, cho người dùng cách huỷ nhận tin.
 - **Đầu vào không tin cậy:** kiểm tra `ctx.args`, cỡ tệp và loại tệp; không bao giờ chạy tệp người khác gửi.
 - **Lệnh dành cho con người:** điều khiển máy từ xa, cụm từ khôi phục, sao lưu, mật khẩu và cuộc gọi bị SDK chặn (`NotAllowedForBots`).
 - Chạy bot bằng một tài khoản hệ thống riêng, không dùng quyền quản trị (root/Administrator).
 <!-- en -->
 - **The token is your bot's key.** Whoever has it controls the bot. Keep it in the `LUMORA_BOT_TOKEN` environment variable or in an environment file only the owner can read (`chmod 600`); never put it in source code, screenshots or public repositories. The SDK hands the token to Lumora Bot Runner through the environment, never on the command line.
-- **If the token leaks:** in Lumora, send `/mybots` to BotFather, pick the bot and tap **Revoke token**. The old token stops working at once; the bot gets a new key, so run the new token with a **new data folder**. The bot's @username stays the same.
+- **If the token leaks:** in Lumora, send `/mybots` in Bot Studio, pick the bot and tap **Revoke token**. The old token stops working at once; the bot gets a new key, so run the new token with a **new data folder**. The bot's @username stays the same.
 - **The data folder** holds the bot's identity, messages and `bot-storage.json`. Make it readable only by the account running the bot (`chmod 700`), back it up, and use one folder per bot with only one process at a time.
 - **Bot admins:** use the full `@name·tag` (the tag is bound to the account, so it can't be faked) or the user id.
 - **User data:** messages are end-to-end encrypted between users and the bot, but the bot (and you) can read what is sent to it. Keep only what you need, don't log message content, and let people unsubscribe.
 - **Untrusted input:** check `ctx.args`, file sizes and file types; never execute files people send.
 - **Things only people may do:** remote control, the recovery phrase, backups, passwords and calls are blocked by the SDK (`NotAllowedForBots`).
 - Run the bot under its own system account, never as root/Administrator.
+
+<!-- section: http-api-security -->
+## Bảo mật API HTTP | HTTP API security
+
+<!-- vi -->
+[API HTTP cho bot](https://getlumora.pages.dev/developers/guides/#http-api) (`--http-api`) cho ai có token toàn quyền gửi tin thay bot, đọc tin gửi tới bot và đọc tệp trên máy chạy bot (gửi tệp bằng đường dẫn). Vì vậy:
+
+- **Mặc định chỉ trên máy này.** `--http-api 8081` hay `--http-api 127.0.0.1:8081` chỉ nghe ở `127.0.0.1`. Địa chỉ khác (`0.0.0.0:8081`, IP mạng LAN) bị từ chối trừ khi thêm `--http-api-public`.
+- **⚠️ Mở ra Internet: luôn đặt sau HTTPS.** API nói HTTP thường; token nằm trong đường dẫn nên ai nghe lén được là lấy được bot. Dùng proxy có TLS (Caddy, nginx) trên cùng máy, để bot vẫn nghe ở `127.0.0.1`, và **tắt ghi log đường dẫn** ở proxy (token nằm trong URL). Chỉ dùng `--http-api-public` khi không có cách nào khác, và chặn bằng tường lửa chỉ cho máy cần gọi.
+- **Webhook:** đặt `secret_token` và kiểm tra tiêu đề `X-Lumora-Bot-Secret` ở máy nhận; nên dùng URL `https://`.
+- **Gửi tệp bằng đường dẫn** đọc được mọi tệp mà tài khoản chạy bot đọc được: chạy bot bằng tài khoản hệ thống riêng (xem trên).
+- `bot_api.json` trong thư mục dữ liệu chứa cập nhật đang chờ và `secret_token` của webhook (quyền `600`); tệp tải lên nằm trong `bot_api_uploads/` và tự xoá sau 30 ngày.
+- Lỡ lộ token: thu hồi trong Xưởng Bot như trên; token cũ hết hiệu lực với cả API HTTP.
+<!-- en -->
+The [HTTP Bot API](https://getlumora.pages.dev/developers/guides/#http-api) (`--http-api`) gives whoever has the token full power to send as the bot, read what is sent to it, and read files on the bot's computer (sending files by path). So:
+
+- **This computer only, by default.** `--http-api 8081` or `--http-api 127.0.0.1:8081` listens on `127.0.0.1` only. Any other address (`0.0.0.0:8081`, a LAN IP) is refused unless you add `--http-api-public`.
+- **⚠️ Exposed to the Internet: always behind HTTPS.** The API speaks plain HTTP and the token is in the path, so anyone who can listen in gets the bot. Put a TLS proxy (Caddy, nginx) on the same machine, keep the bot on `127.0.0.1`, and **turn off path logging** in the proxy (the token is in the URL). Use `--http-api-public` only when there is no other way, with a firewall that lets in only the machines that need it.
+- **Webhooks:** set `secret_token` and check the `X-Lumora-Bot-Secret` header on the receiving side; prefer `https://` URLs.
+- **Sending files by path** can read any file the bot's account can read: run the bot under its own system account (see above).
+- `bot_api.json` in the data folder holds pending updates and the webhook's `secret_token` (mode `600`); uploads live in `bot_api_uploads/` and are deleted after 30 days.
+- If the token leaks: revoke it in Bot Studio as above; the old token stops working for the HTTP API too.
+<!-- all -->
+```ini
+# Caddyfile: https://bot.example.com → Lumora Bot Runner on 127.0.0.1:8081 (no access log)
+bot.example.com {
+    reverse_proxy 127.0.0.1:8081
+}
+```
 
 <!-- section: deploy -->
 ## Chạy 24/7 | Running 24/7
@@ -188,7 +217,7 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 <!-- all -->
 | | |
 |---|---|
-| `LUMORA_BOT_TOKEN` | Token từ BotFather / BotFather token |
+| `LUMORA_BOT_TOKEN` | Token từ Xưởng Bot / Bot Studio token (cũng dùng cho `--http-api` / also used by `--http-api`) |
 | `LUMORAD` | Đường dẫn Lumora Bot Runner / Path to Lumora Bot Runner |
 | `LUMORA_BOT_LOG_FORMAT` | `json` = log dạng JSON / JSON logs |
 | `LUMORA_BOT_LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -215,12 +244,12 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 |---|---|
 | `Lumora Bot Runner not found` (`sdk.runner_missing`) | Đặt `LUMORAD` trỏ đúng tệp Bot Runner; trên Linux/macOS chạy `chmod +x` cho tệp. macOS chặn tệp tải về: cho phép trong Cài đặt hệ thống → Quyền riêng tư & Bảo mật. |
 | `Lumora Bot Runner could not start` (`sdk.runner_failed`) | Xem `runner.log` trong thư mục dữ liệu. Thường do một tiến trình khác đang dùng cùng thư mục, hoặc ổ đĩa đầy. |
-| `err.bad_bot_token` | Token chép thiếu hoặc đã bị thu hồi. Lấy lại trong BotFather (`/mybots` → Mã bí mật). |
+| `err.bad_bot_token` | Token chép thiếu hoặc đã bị thu hồi. Lấy lại trong Xưởng Bot (`/mybots` → Mã bí mật). |
 | `err.bot_token_mismatch` | Thư mục dữ liệu thuộc về bot khác (hoặc token cũ trước khi thu hồi). Dùng thư mục mới cho token này. |
 | Không ai tìm thấy bot | Chờ một phút sau lần chạy đầu tiên; gửi cho người dùng mã 9 số hoặc `@tên·mã` đầy đủ. Đừng dùng `public_directory=False` khi chạy thật. |
 | `err.bot_cannot_start` | Bot chỉ nhắn được cho người đã nhắn bot trước. Hãy để người dùng gửi `/start`. |
 | Bot im lặng trong nhóm | Ở chế độ riêng tư bot chỉ thấy lệnh `/…`, tin nhắc @bot và tin trả lời bot. Thành viên vào nhóm sau khi bot được thêm cần chế độ "đọc mọi tin". Xem [Nhóm](https://getlumora.pages.dev/developers/guides/#groups). |
-| `err.group_syncing` khi sửa, xóa, ghim hay quản trị trong nhóm | Bot đang ở chế độ riêng tư: các việc này cần quyền "đọc mọi tin" (và quyền quản trị viên cho việc quản trị). |
+| `err.group_syncing` khi sửa, xoá, ghim hay quản trị trong nhóm | Bot đang ở chế độ riêng tư: các việc này cần quyền "đọc mọi tin" (và quyền quản trị viên cho việc quản trị). |
 | `err.slow_mode` | Nhóm bật chế độ chậm; cho bot làm quản trị viên hoặc gửi ít tin hơn. |
 | Gửi hàng loạt chậm | Đúng như thiết kế: 15 tin/giây để tin của bot không bị chặn như tin rác. 1.000 người ≈ 70 giây. |
 | Nhắc hẹn không báo | Bot phải đang chạy đúng giờ nhắc (nếu tắt, bot nhận nhắc khi bật lại với `late=True`, trong vòng 24 giờ). Giờ dùng múi giờ của máy chạy bot. |
@@ -231,7 +260,7 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 |---|---|
 | `Lumora Bot Runner not found` (`sdk.runner_missing`) | Point `LUMORAD` at the Bot Runner file; on Linux/macOS run `chmod +x` on it. If macOS blocks the downloaded file, allow it in System Settings → Privacy & Security. |
 | `Lumora Bot Runner could not start` (`sdk.runner_failed`) | Read `runner.log` in the data folder. Usually another process is using the same folder, or the disk is full. |
-| `err.bad_bot_token` | The token was copied incompletely or has been revoked. Get it again in BotFather (`/mybots` → Secret token). |
+| `err.bad_bot_token` | The token was copied incompletely or has been revoked. Get it again in Bot Studio (`/mybots` → Secret token). |
 | `err.bot_token_mismatch` | The data folder belongs to another bot (or to the old token before a revoke). Use a new folder for this token. |
 | Nobody can find the bot | Wait a minute after the first start; give people the 9-digit ID or the full `@name·tag`. Don't use `public_directory=False` in production. |
 | `err.bot_cannot_start` | Bots can only message people who messaged them first. Ask users to send `/start`. |

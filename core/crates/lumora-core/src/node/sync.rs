@@ -106,7 +106,7 @@ impl Node {
 
     pub(super) async fn on_ext(self: &Arc<Self>, pc: &Arc<PeerConn>, kind: u16, body: Vec<u8>) -> Result<()> {
         match kind {
-            ext::DEVICE_SYNC | ext::DEVICE_LIST | ext::DEVICE_LIST_REQUEST | ext::DEVICE_ACCEPT => self.on_device_ext(pc, kind, &body)?,
+            ext::DEVICE_SYNC | ext::DEVICE_LIST | ext::DEVICE_LIST_REQUEST | ext::DEVICE_ACCEPT | ext::DEVICE_REVOKED => self.on_device_ext(pc, kind, &body)?,
             ext::PATH_CHOSEN => self.on_path_chosen(pc),
             ext::DEVICE_REVOKE_REQUEST if pc.own => self.on_revoke_request(pc.peer, &body).await?,
             ext::GROUP_REKEY_REQUEST => self.on_rekey_request(pc.account, &body).await?,
@@ -117,12 +117,18 @@ impl Node {
             ext::LINK_HELLO..=ext::LINK_REJECT => self.on_link_ext(pc, kind, &body).await?,
             ext::SELF_SYNC if pc.own => self.on_self_sync(pc, &body)?,
             ext::HISTORY_REQUEST if pc.own => self.on_history_request(pc, &body)?,
-            ext::REMOTE_CHALLENGE_V2 | ext::REMOTE_AUTH_V2 => self.remote.on_ext(self, pc, kind, &body).await?,
+            ext::REMOTE_CHALLENGE_V2 | ext::REMOTE_AUTH_V2 | ext::REMOTE_ACTION_RESULT => self.remote.on_ext(self, pc, kind, &body).await?,
             ext::CALL_ELSEWHERE if pc.own => self.on_call_elsewhere(&body)?,
+            ext::VOICE_PRESENCE => self.on_voice_presence(pc.peer, pc.account, &body)?,
+            ext::CALL_SPEAKING => self.on_call_speaking(pc.peer, &body)?,
+            ext::GROUP_JOIN_DENIED => self.on_join_denied(pc.account, &body)?,
+            ext::GROUP_JOIN_REQUEST => self.on_join_request_fwd(pc.account, &body)?,
+            ext::CALL_AVAILABLE => self.on_call_available(pc.peer, pc.account, &body)?,
             #[cfg(feature = "media")]
             ext::VIDEO_CAPS => super::media_pipe::on_video_caps(self, pc, &body)?,
             ext::PROXY if pc.own => self.on_proxy(pc.peer, &body).await?,
             ext::DHT_KEY => self.on_dht_key(pc, &body)?,
+            ext::RECOVER_HELLO..=ext::RECOVER_BATCH => self.on_recovery_ext(pc, kind, &body)?,
             _ => tracing::debug!("ignoring ext kind {kind:#x} from {:?}", pc.peer),
         }
         Ok(())
@@ -142,6 +148,10 @@ impl Node {
             self.on_rekey_request(from, &body).await?;
         } else if kind == ext::GROUP_KEY_REQUEST {
             self.on_group_key_request(from, &body).await?;
+        } else if kind == ext::GROUP_JOIN_DENIED {
+            self.on_join_denied(from, &body)?;
+        } else if kind == ext::GROUP_JOIN_REQUEST {
+            self.on_join_request_fwd(from, &body)?;
         } else if kind == ext::GROUP_REPORT {
             self.on_group_report(from, &body)?;
         } else if kind == ext::GROUP_REPORT_DONE && from == self.me {
@@ -161,6 +171,8 @@ impl Node {
     /// A device speaking v3 said hello.
     pub(super) fn on_v3_hello(self: &Arc<Self>, pc: &Arc<PeerConn>) {
         if !pc.own {
+            // (restored from the recovery phrase: friends are asked for help once they prove
+            // the friendship with `Ext DHT_KEY`, see on_dht_key / node/recovery.rs)
             return;
         }
         self.olm_ensure_session(pc);
@@ -279,6 +291,9 @@ impl Node {
             return Ok(());
         }
         let r = self.store.sync_import(&item, &self.me, live)?;
+        if matches!(r, Imported::MsgNew { .. }) {
+            self.recovery_own_history();
+        }
         self.after_import(r, live);
         Ok(())
     }
@@ -302,9 +317,15 @@ impl Node {
                         if let (Ok(author), Some(fid)) = (PeerId::from_str_any(&m.author), m.body["file_id"].as_str().and_then(|h| hex::decode(h).ok())) {
                             if let Ok(fid) = <[u8; 16]>::try_from(fid.as_slice()) {
                                 let hash = m.body["hash"].as_str().and_then(|h| hex::decode(h).ok()).and_then(|h| <[u8; 32]>::try_from(h.as_slice()).ok());
-                                let name = m.body["name"].as_str().map(String::from).unwrap_or_else(|| format!("voice-{}.ogg", &hex::encode(fid)[..8]));
+                                let size = m.body["size"].as_u64().unwrap_or(0);
                                 if let Some(hash) = hash {
-                                    let _ = self.on_file_offer(author, fid, name, m.body["size"].as_u64().unwrap_or(0), hash, conv.clone());
+                                    // (the message kind decides "voice", never the file name)
+                                    let _ = if m.kind == "voice" {
+                                        self.on_voice_offer(author, fid, size, hash, conv.clone())
+                                    } else {
+                                        let name = m.body["name"].as_str().map(String::from).unwrap_or_else(|| format!("file-{}", &hex::encode(fid)[..8]));
+                                        self.on_file_offer(author, fid, name, size, hash, conv.clone())
+                                    };
                                 }
                             }
                         }
@@ -401,14 +422,35 @@ impl Node {
             }
             // my sticker packs changed on another device: the picker reloads
             Imported::Stickers => self.emit("stickers", json!({})),
+            // my Khoảnh khắc archive, kept the same on all my devices
+            Imported::Story { id, deleted } => {
+                if live {
+                    let id = hex::encode(id);
+                    if deleted {
+                        self.emit("story_removed", json!({"id": id}));
+                    } else {
+                        self.emit("story", json!({"id": id, "author": self.me.to_base32()}));
+                    }
+                }
+            }
+            // a member's read mark that reached another of my devices first
+            Imported::GroupRead { conv, peer, upto } => {
+                if live {
+                    self.emit("group_read", json!({"conv": conv, "peer": peer.to_base32(), "upto": upto}));
+                }
+            }
             Imported::GroupKey { gid, .. } => {
                 if let Ok(g) = <[u8; 16]>::try_from(gid.as_slice()) {
                     self.retry_pending(g);
                 }
             }
             Imported::Group { gid } => {
-                if let Some(st) = self.store.group_load(&gid).and_then(|b| crate::proto::from_slice_capped::<GroupState>(&b).ok()) {
+                if let Some(st) = self.store.group_load(&gid).and_then(|b| GroupState::decode(&b).ok()) {
                     let conv = st.conv_id();
+                    // in it (another of my devices joined): its invitation here is moot
+                    if st.is_member(&self.me) {
+                        self.drop_group_invite(&st.gid);
+                    }
                     self.groups.write().insert(st.gid, st);
                     if live {
                         self.emit_conv(&conv);
@@ -451,7 +493,7 @@ impl Node {
         self.store.kv_get_json("link.history")
     }
 
-    fn maybe_request_history(&self, pc: &Arc<PeerConn>) {
+    pub(super) fn maybe_request_history(&self, pc: &Arc<PeerConn>) {
         let Some(plan) = self.history_plan() else { return };
         if plan.done {
             return;
@@ -531,6 +573,9 @@ impl Node {
             let mut msgs = 0u64;
             for r in results {
                 if matches!(r, Imported::MsgNew { .. }) {
+                    if msgs == 0 {
+                        self.recovery_own_history();
+                    }
                     msgs += 1;
                 }
                 self.after_import(r, false);

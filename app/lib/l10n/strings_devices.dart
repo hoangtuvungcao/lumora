@@ -10,8 +10,8 @@ const Map<String, List<String>> kDeviceStrings = {
   'dv_summary': ['Bạn đang dùng Lumora trên {n} thiết bị', 'You use Lumora on {n} devices'],
   'dv_summary_one': ['Bạn đang dùng Lumora trên 1 thiết bị', 'You use Lumora on 1 device'],
   'dv_summary_sub': [
-    'Tin nhắn, cuộc gọi và danh bạ giống nhau trên mọi thiết bị của bạn, và vẫn đi thẳng giữa các thiết bị, được mã hoá.',
-    'Messages, calls and contacts are the same on all your devices, and still travel directly between them, encrypted.'
+    'Tin nhắn, cuộc gọi và bạn bè giống nhau trên mọi thiết bị của bạn, và vẫn đi thẳng giữa các thiết bị, được mã hoá.',
+    'Messages, calls and friends are the same on all your devices, and still travel directly between them, encrypted.'
   ],
   'dv_link_new': ['Liên kết thiết bị mới', 'Link a new device'],
   'dv_linked_note': ['Thiết bị mới được liên kết từ thiết bị chính của bạn ({name}).', 'New devices are linked from your main device ({name}).'],
@@ -27,6 +27,17 @@ const Map<String, List<String>> kDeviceStrings = {
   'dv_added': ['Thêm ngày {date}', 'Added {date}'],
   'dv_added_label': ['Ngày thêm', 'Added'],
   'dv_last_active': ['Hoạt động gần nhất', 'Last active'],
+  // ---- a missing device asks to come back (after a restore with the recovery phrase)
+  'dv_relist_title': ['Một thiết bị muốn quay lại tài khoản', 'A device wants to rejoin your account'],
+  'dv_relist_body': [
+    '„{name}“ ({kind}) từng là thiết bị của tài khoản này. Chỉ cho phép nếu đó là thiết bị của bạn. Nếu thiết bị đã mất hoặc bạn không nhận ra, hãy đăng xuất nó.',
+    '“{name}” ({kind}) used to be a device of this account. Only allow it if it is yours. If it was lost or you don\'t recognise it, sign it out.',
+  ],
+  'dv_relist_allow': ['Cho phép', 'Allow'],
+  'dv_relist_refuse': ['Không phải của tôi — đăng xuất', 'Not mine — sign it out'],
+  'dv_relist_section': ['Thiết bị xin quay lại', 'Devices asking to rejoin'],
+  'dv_relist_allowed': ['Đã cho {name} quay lại tài khoản', '{name} is back in your account'],
+  'dv_relist_refused': ['Đã đăng xuất {name}', '{name} was signed out'],
   'dv_kind_0': ['Thiết bị', 'Device'],
   'dv_kind_1': ['Điện thoại', 'Phone'],
   'dv_kind_2': ['Máy tính bảng', 'Tablet'],
@@ -45,15 +56,15 @@ const Map<String, List<String>> kDeviceStrings = {
   ],
   'dv_signout_wipe': ['Xoá cả ảnh và tệp đã tải trên thiết bị đó', 'Also delete downloaded photos and files on it'],
   'dv_signout_action': ['Đăng xuất', 'Sign out'],
-  'dv_logout_main_title': ['Đăng xuất khỏi máy này?', 'Sign out on this device?'],
+  'dv_logout_main_title': ['Đăng xuất khỏi thiết bị này?', 'Sign out on this device?'],
   'dv_logout_main_body': [
-    'Tài khoản, tin nhắn và cài đặt sẽ bị xoá khỏi máy này để người khác có thể đăng nhập tài khoản của họ. Các thiết bị đã liên kết vẫn dùng tiếp được. Lumora không có máy chủ giữ tài khoản, nên muốn đăng nhập lại trên máy này bạn cần 24 từ khôi phục, tệp sao lưu, hoặc liên kết từ một máy khác đang đăng nhập.',
-    'Your account, messages and settings are removed from this device so someone else can sign in with theirs. Linked devices keep working. Lumora has no server holding your account, so signing back in here needs your 24-word recovery phrase, a backup file, or a link from another signed-in device.',
+    'Tài khoản, tin nhắn và cài đặt sẽ bị xoá khỏi thiết bị này để người khác có thể đăng nhập tài khoản của họ. Các thiết bị đã liên kết vẫn dùng tiếp được. Lumora không có máy chủ giữ tài khoản, nên muốn đăng nhập lại trên thiết bị này bạn cần 24 từ khôi phục, tệp sao lưu, hoặc liên kết từ một thiết bị khác đang đăng nhập.',
+    'Your account, messages and settings are deleted from this device so someone else can sign in with theirs. Linked devices keep working. Lumora has no server holding your account, so signing back in here needs your 24-word recovery phrase, a backup file, or a link from another signed-in device.',
   ],
   'dv_logout_main_show': ['Xem 24 từ khôi phục', 'Show recovery phrase'],
   'dv_logout_password': ['Mật khẩu tài khoản', 'Account password'],
   'sign_out': ['Đăng xuất', 'Sign out'],
-  'sign_out_hint': ['Xoá tài khoản khỏi máy này để đăng nhập tài khoản khác', 'Remove your account from this device to sign in with another'],
+  'sign_out_hint': ['Xoá tài khoản khỏi thiết bị này để đăng nhập tài khoản khác', 'Remove your account from this device to sign in with another'],
   'dv_signed_out_done': ['Đã đăng xuất {name}', '{name} was signed out'],
   'dv_logout_self_title': ['Đăng xuất Lumora trên thiết bị này?', 'Sign out of Lumora on this device?'],
   'dv_logout_self_body': [
@@ -78,7 +89,7 @@ const Map<String, List<String>> kDeviceStrings = {
     'Hãy đăng xuất nó ở đây. Thiết bị đó sẽ không nhận được tin nhắn mới nữa.',
     'Sign it out here. It won’t get any new messages.'
   ],
-  'dv_history_row': ['Đang chép tin nhắn cũ… {n} tin', 'Copying older messages… {n}'],
+  'dv_history_row': ['Đang chép tin nhắn cũ… {n} tin nhắn', 'Copying older messages… {n}'],
 
   // ------------------------------------------- link a new device (existing)
   'dv_link_sub': ['Dùng tài khoản này trên một điện thoại, máy tính bảng hoặc máy tính khác.', 'Use this account on another phone, tablet or computer.'],
@@ -163,7 +174,7 @@ const Map<String, List<String>> kDeviceStrings = {
   'qr_scan_type_code': ['Nhập mã 12 số', 'Type the 12-digit code'],
   'qr_cam_denied_title': ['Lumora cần dùng camera để quét mã', 'Lumora needs the camera to scan the code'],
   'qr_cam_denied_sub': [
-    'Hãy cho phép Lumora dùng camera trong Cài đặt của máy, hoặc nhập mã 12 số thay cho việc quét.',
+    'Hãy cho phép Lumora dùng camera trong Cài đặt của thiết bị, hoặc nhập mã 12 số thay cho việc quét.',
     'Allow Lumora to use the camera in your phone’s Settings, or type the 12-digit code instead.'
   ],
   'qr_cam_open_settings': ['Mở Cài đặt', 'Open Settings'],
@@ -205,20 +216,20 @@ const Map<String, List<String>> kDeviceStrings = {
   'dv_out_title': ['Thiết bị này đã được đăng xuất khỏi tài khoản', 'This device was signed out of your account'],
   'dv_out_remote': [
     'Thiết bị này đã được đăng xuất từ thiết bị chính của bạn. Tin nhắn của tài khoản đã được xoá khỏi đây.',
-    'It was signed out from your main device. The account’s messages have been removed from it.'
+    'It was signed out from your main device. The account’s messages have been deleted from it.'
   ],
-  'dv_out_wipe': ['Ảnh và tệp đã tải cũng đã được xoá.', 'Downloaded photos and files were removed too.'],
+  'dv_out_wipe': ['Ảnh và tệp đã tải cũng đã được xoá.', 'Downloaded photos and files were deleted too.'],
   'dv_out_self': [
     'Bạn đã đăng xuất Lumora trên thiết bị này. Tài khoản vẫn còn trên các thiết bị khác của bạn.',
     'You signed out of Lumora on this device. Your account is still on your other devices.'
   ],
   'dv_out_hint': ['Bạn có thể liên kết lại thiết bị này hoặc tạo tài khoản mới bất cứ lúc nào.', 'You can link this device again or create a new account any time.'],
   'dv_out_auto': [
-    'Thiết bị chính của bạn đã đăng xuất máy này, hoặc một thiết bị khác vừa trở thành thiết bị chính của tài khoản.',
+    'Thiết bị chính của bạn đã đăng xuất thiết bị này, hoặc một thiết bị khác vừa trở thành thiết bị chính của tài khoản.',
     'Your main device signed this one out, or another device just became your account’s main device.'
   ],
   'dv_out_kept': [
-    'Tin nhắn và dữ liệu cũ trên máy này không bị xoá: Lumora cất riêng chúng khi bạn bắt đầu lại, để có thể mở lại sau.',
+    'Tin nhắn và dữ liệu cũ trên thiết bị này không bị xoá: Lumora cất riêng chúng khi bạn bắt đầu lại, để có thể mở lại sau.',
     'Your old messages and data on this device are not deleted: Lumora keeps them aside when you start over, so they can be opened again later.'
   ],
   'dv_out_continue': ['Bắt đầu lại', 'Start over'],
@@ -235,7 +246,7 @@ const Map<String, List<String>> kDeviceStrings = {
   // linked device, friend on an older Lumora (messages go via the main device)
   'dv_bridged_hint': ['Gửi qua thiết bị chính của bạn', 'Sent through your main device'],
   'dv_bridged_more': [
-    '{name} đang dùng phiên bản Lumora cũ, nên tin nhắn từ thiết bị này đi qua thiết bị chính của bạn. Tin vẫn được mã hoá.',
+    '{name} đang dùng phiên bản Lumora cũ, nên tin nhắn từ thiết bị này đi qua thiết bị chính của bạn. Tin nhắn vẫn được mã hoá.',
     '{name} uses an older version of Lumora, so messages from this device go through your main device. They stay encrypted.'
   ],
 
@@ -243,6 +254,6 @@ const Map<String, List<String>> kDeviceStrings = {
   'dv_answered_on': ['Đã trả lời trên {device}', 'Answered on {device}'],
   'dv_answered_elsewhere': ['Đã trả lời trên thiết bị khác', 'Answered on another device'],
   'dv_pick_title': ['Chọn thiết bị để điều khiển', 'Choose a device to control'],
-  'dv_pick_sub': ['Tài khoản này dùng Lumora trên nhiều máy.', 'This account uses Lumora on several devices.'],
+  'dv_pick_sub': ['Tài khoản này dùng Lumora trên nhiều thiết bị.', 'This account uses Lumora on several devices.'],
   'dv_my_ids': ['Các thiết bị khác của bạn', 'Your other devices'],
 };

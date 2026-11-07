@@ -1,6 +1,6 @@
 # lumora-bot (Python)
 
-Build bots for the [Lumora](https://getlumora.pages.dev/) messenger. A bot is a normal Lumora account
+Build bots for the [Lumora](https://getlumora.pages.dev/) messaging app. A bot is a normal Lumora account
 run by your code through **Lumora Bot Runner** (`lumorad`): users add it by its ID or `@name·tag`,
 messages are end-to-end encrypted, and there is no server to rent.
 
@@ -14,7 +14,7 @@ The SDK is one file with no dependencies (`lumora_bot.py`, Python 3.8+), so copy
 ```python
 from lumora_bot import Bot
 
-bot = Bot()                                   # token from $LUMORA_BOT_TOKEN (BotFather in the app)
+bot = Bot()                                   # token from $LUMORA_BOT_TOKEN (Bot Studio in the app)
 
 @bot.command("start", "Start")
 def start(ctx):
@@ -28,7 +28,7 @@ bot.run()
 ```
 
 ```bash
-export LUMORA_BOT_TOKEN="lumora_bot_..."      # from @BotFather in the Lumora app
+export LUMORA_BOT_TOKEN="lumora_bot_..."      # from Bot Studio in the Lumora app
 export LUMORAD=/path/to/lumorad               # Lumora Bot Runner
 python3 bot.py
 ```

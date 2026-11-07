@@ -145,7 +145,7 @@ impl Node {
     }
 
     /// Rotate the keys of my groups (where I may), or ask an admin to.
-    async fn rekey_after_revoke(self: &Arc<Self>, version: u64) {
+    pub(super) async fn rekey_after_revoke(self: &Arc<Self>, version: u64) {
         let Some((_, raw)) = self.store.device_list_get(&self.me) else { return };
         let groups: Vec<GroupStateLite> = self
             .groups
@@ -218,7 +218,9 @@ impl Node {
     /// devices keep working and one of them can become the main device with the phrase.
     /// With a password-protected install, [passphrase] must be that password (someone who just
     /// picks up an unlocked phone can't wipe the account from it).
-    pub async fn device_logout(self: &Arc<Self>, primary_ok: bool, passphrase: Option<String>) -> Result<Value> {
+    /// With [wipe] ("Delete account"), this device's downloads are deleted too and a linked
+    /// device asks the main device to revoke it with a media wipe.
+    pub async fn device_logout(self: &Arc<Self>, primary_ok: bool, passphrase: Option<String>, wipe: bool) -> Result<Value> {
         let dir = self.cfg.data_dir.clone();
         if crate::keystore::needs_passphrase(&dir) {
             let pass = passphrase.filter(|p| !p.is_empty()).ok_or_else(|| crate::i18n::user_err("err.wrong_passphrase"))?;
@@ -226,11 +228,11 @@ impl Node {
         }
         if self.is_primary() {
             anyhow::ensure!(primary_ok, crate::i18n::user_err("err.primary_logout"));
-            tracing::info!("main device signed out by its user");
-            self.self_revoke(false, true);
+            tracing::info!("main device signed out by its user (wipe: {wipe})");
+            self.self_revoke(wipe, true);
             return Ok(json!({"notified": true}));
         }
-        let msg = proto::ext(ext::DEVICE_REVOKE_REQUEST, &RevokeRequestMsg { wipe: false });
+        let msg = proto::ext(ext::DEVICE_REVOKE_REQUEST, &RevokeRequestMsg { wipe });
         let primary = self.me;
         let notified = match tokio::time::timeout(Duration::from_secs(6), self.connect(primary)).await {
             Ok(Ok(pc)) => pc.ctl.send(msg.clone()).await.is_ok(),
@@ -244,7 +246,7 @@ impl Node {
         } else {
             tokio::time::sleep(Duration::from_millis(400)).await; // let the frame leave
         }
-        self.self_revoke(false, true);
+        self.self_revoke(wipe, true);
         Ok(json!({"notified": notified}))
     }
 

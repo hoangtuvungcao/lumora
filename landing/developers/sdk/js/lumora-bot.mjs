@@ -1,5 +1,5 @@
 /**
- * Lumora Bot SDK for JavaScript (Node.js ≥ 18): build bots for the Lumora messenger.
+ * Lumora Bot SDK for JavaScript (Node.js ≥ 18): build bots for the Lumora messaging app.
  *
  * A bot is a normal Lumora account run by your code through **Lumora Bot Runner**
  * (`lumorad`). Users find it by its 9-digit ID or `@name·tag` and chat with it like with any
@@ -8,7 +8,7 @@
  * @example
  * import { Bot, Button } from "lumora-bot";
  *
- * const bot = new Bot();                       // token from LUMORA_BOT_TOKEN (BotFather)
+ * const bot = new Bot();                       // token from LUMORA_BOT_TOKEN (Bot Studio)
  * bot.command("start", "Start", (ctx) =>
  *   ctx.reply("Hi! Pick one:", [[Button("👍 Like", "like"), Button("Website", { url: "https://example.com" })]]));
  * bot.onCallback({ data: "like" }, (ctx) => ctx.reply("Thanks!"));
@@ -88,7 +88,7 @@ const BLOCKED_PREFIXES = ["remote_"];
 
 /**
  * True when `cmd` is a core command bots may not use (remote control, recovery phrase,
- * backups, passwords, calls, BotFather management).
+ * backups, passwords, calls, Bot Studio management).
  * @param {string} cmd - Command name.
  * @returns {boolean} Whether the command is blocked.
  */
@@ -674,8 +674,8 @@ const MAX_TIMER = 2 ** 31 - 1;
 /**
  * A Lumora bot.
  *
- * Options: `name` (display name for a bot made without BotFather, for tests), `token`
- * (BotFather token; default `$LUMORA_BOT_TOKEN`, never hard-code it in public code),
+ * Options: `name` (display name for a bot made without Bot Studio, for tests), `token`
+ * (Bot Studio token; default `$LUMORA_BOT_TOKEN`, never hard-code it in public code),
  * `dataDir` (identity, messages, storage and downloads; default `./lumora-bot`, one folder
  * per bot, keep it private and back it up), `binary` (path to `lumorad`; default
  * `$LUMORAD`, then `lumorad`), `about`, `lan` (also find users on the local network),
@@ -701,10 +701,10 @@ export class Bot {
     /** The SDK's logger (`debug/info/warn/error(msg, fields)`); use it in handlers too. */
     this.log = new Logger(logJson ?? (process.env.LUMORA_BOT_LOG_FORMAT || "").toLowerCase() === "json",
       logLevel || process.env.LUMORA_BOT_LOG_LEVEL || "info");
-    // token from the in-app BotFather (recommended): name/@username come from it
+    // token from the in-app Bot Studio (recommended): name/@username come from it
     /** @type {string|undefined} */
     this.token = token || process.env.LUMORA_BOT_TOKEN || undefined;
-    if (!name && !this.token) throw new Error("give the bot a name, or a token created in the app (BotFather)");
+    if (!name && !this.token) throw new Error("give the bot a name, or a token created in the app (Bot Studio)");
     this.name = name;
     this.dataDir = dataDir;
     this.about = about;

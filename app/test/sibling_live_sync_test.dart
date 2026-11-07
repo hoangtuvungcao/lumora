@@ -1,6 +1,6 @@
 // Multi-device: what changes on another device of the same account shows here
 // at once, without restarting the app or reopening the screen — sticker packs,
-// the BotFather chat and bots, privacy switches, wallpapers, mute timers,
+// the Bot Studio chat and bots, privacy switches, wallpapers, mute timers,
 // history policy, storage policy, my profile (name, cover), a friend's
 // nickname, the device list — and local search ignores case and diacritics.
 
@@ -78,7 +78,7 @@ void main() {
       await _done(t, sv);
     });
 
-    testWidgets('BotFather: chat lines and bots made on another device show in the open chat', (t) async {
+    testWidgets('Bot Studio: chat lines and bots made on another device show in the open chat', (t) async {
       setSize(t, const Size(900, 900));
       final sv = await makeServices(t, locale: 'en');
       final mock = _mock(sv);
@@ -128,7 +128,7 @@ void main() {
       final sv = await makeServices(t, locale: 'en');
       final mock = _mock(sv);
       await _show(t, sv, const SettingsSubPage(page: SettingsPage.privacy));
-      expect(_switchOf(t, 'Read receipts'), isTrue);
+      expect(_switchOf(t, 'Show read receipts'), isTrue);
       expect(_switchOf(t, 'Let strangers find me by ID'), isTrue);
 
       await t.runAsync(() => mock.request('settings_set', {'read_receipts': false, 'typing': false, 'discoverable_by_id': false}));
@@ -138,7 +138,7 @@ void main() {
       await _flush(t);
       expect(sv.settings.readReceipts, isFalse);
       expect(sv.settings.typingIndicators, isFalse);
-      expect(_switchOf(t, 'Read receipts'), isFalse);
+      expect(_switchOf(t, 'Show read receipts'), isFalse);
       expect(_switchOf(t, 'Let strangers find me by ID'), isFalse);
       final core = (await t.runAsync(() => sv.api.settingsGet()))!;
       expect(core['read_receipts'], isFalse, reason: "this device's old value never overwrites the account's");

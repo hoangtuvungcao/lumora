@@ -405,10 +405,14 @@ void main() {
     });
   });
 
+  test('bubbles are on by default (Settings › Chat bubbles can turn them off)', () {
+    expect(AndroidBridge.bubbles, isTrue);
+  });
+
   group('conversations, bubbles, opening a chat', () {
-    setUp(() => AndroidBridge.bubbles = true); // (switched on in Settings; off by default)
+    setUp(() => AndroidBridge.bubbles = true);
     tearDown(() {
-      AndroidBridge.bubbles = false;
+      AndroidBridge.bubbles = true; // the default
       AndroidBridge.onOpenConv = null;
       AndroidBridge.readingConv = () => null;
       AndroidBridge.convTitle = (_) => null;

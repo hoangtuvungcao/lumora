@@ -323,6 +323,10 @@ class FfiLumoraApi extends LumoraApi {
     'change_passphrase': Duration(minutes: 5),
     'clear_history': Duration(minutes: 2),
     'group_clear_history': Duration(minutes: 2),
+    'group_dissolve': Duration(minutes: 1),
+    // accepting / declining an invitation joins the group (and leaves it again on "no")
+    'group_invite_answer': Duration(minutes: 1),
+    'group_transfer_owner': Duration(minutes: 1),
     'delete_conversation': Duration(minutes: 2),
     'storage_stats': Duration(minutes: 2),
     'diagnostics': Duration(minutes: 2),

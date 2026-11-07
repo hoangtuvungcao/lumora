@@ -47,6 +47,31 @@ class DevicesStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Main device: own devices missing from the list (after a restore with the
+  /// recovery phrase) asking to be listed again; the user approves or refuses.
+  final List<RelistRequest> relist = [];
+
+  /// New requests as they arrive (the app asks the user right away).
+  final _relist = StreamController<RelistRequest>.broadcast();
+  Stream<RelistRequest> get relistEvents => _relist.stream;
+
+  Future<void> loadRelist() async {
+    try {
+      final r = await api.deviceRelistRequests();
+      relist
+        ..clear()
+        ..addAll(r);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  /// [approve]: listed again; otherwise signed out of the account (and wiped).
+  Future<void> answerRelist(String device, {required bool approve}) async {
+    list = await api.deviceRelist(device, approve: approve);
+    relist.removeWhere((r) => r.device == device);
+    notifyListeners();
+  }
+
   /// `link_state` / `link_request` events for the open link screen.
   final _link = StreamController<ApiEvent>.broadcast();
   Stream<ApiEvent> get linkEvents => _link.stream;
@@ -76,6 +101,7 @@ class DevicesStore extends ChangeNotifier {
     try {
       list = await api.devices();
       error = null;
+      if (list!.primary) unawaited(loadRelist());
     } catch (e) {
       error = e is ApiException ? e.message : 'internal'; // shown as plain words
     } finally {
@@ -159,6 +185,15 @@ class DevicesStore extends ChangeNotifier {
       case 'history_sync':
         _setHistory(history.update(d));
         notifyListeners();
+      case 'device_relist_request':
+        final r = RelistRequest.fromJson(d);
+        if (r.device.isEmpty) break;
+        final fresh = !relist.any((x) => x.device == r.device);
+        relist
+          ..removeWhere((x) => x.device == r.device)
+          ..add(r);
+        notifyListeners();
+        if (fresh) _relist.add(r);
       case 'link_state' || 'link_request':
         _link.add(ApiEvent(name, d));
       case 'device_revoked':
@@ -171,6 +206,7 @@ class DevicesStore extends ChangeNotifier {
   @override
   void dispose() {
     _link.close();
+    _relist.close();
     super.dispose();
   }
 }

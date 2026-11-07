@@ -1,6 +1,9 @@
 // Android "keep running in the background" sheet (first run + Settings ›
 // Notifications) and the chat-bubbles switch.
 
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumora/platform/android_bridge.dart';
@@ -39,9 +42,25 @@ void main() {
     await t.pumpWidget(_wrap(st, const NotificationSettingsGroup()));
     expect(find.text('Chat bubbles'), findsOneWidget);
     expect(find.text('Keep running in the background'), findsOneWidget);
-    expect(st.chatBubbles, isFalse, reason: 'off by default (grey bubbles on some phones)');
+    expect(st.chatBubbles, isTrue, reason: 'on by default');
+    await t.tap(find.text('Chat bubbles'));
+    await t.pump();
+    expect(st.chatBubbles, isFalse);
     await t.tap(find.text('Chat bubbles'));
     await t.pump();
     expect(st.chatBubbles, isTrue);
+  });
+
+  test('chat bubbles: stored under chat_bubbles3 — the old stopgap "off" (chat_bubbles2) does not stick', () async {
+    final dir = await Directory.systemTemp.createTemp('lumora_settings');
+    addTearDown(() => dir.delete(recursive: true));
+    final f = File('${dir.path}/settings.json');
+    await f.writeAsString(jsonEncode({'chat_bubbles2': false}));
+    final st = await Settings.load(f);
+    expect(st.chatBubbles, isTrue);
+    expect(st.toJson()['chat_bubbles3'], isTrue);
+    expect(st.toJson().containsKey('chat_bubbles2'), isFalse);
+    await f.writeAsString(jsonEncode({'chat_bubbles3': false}));
+    expect((await Settings.load(f)).chatBubbles, isFalse);
   });
 }

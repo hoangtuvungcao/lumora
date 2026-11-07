@@ -28,9 +28,22 @@ class S {
     assert(pair != null, 'Missing string: $key');
     var v = pair == null ? key : pair[vi ? 0 : 1];
     if (params.isNotEmpty) {
-      params.forEach((k, p) => v = v.replaceAll('{$k}', '$p'));
+      params.forEach((k, p) => v = v.replaceAll('{$k}', k == 'n' && p is int ? count(p) : '$p'));
     }
     return v;
+  }
+
+  /// A count as people read it: "1.284" (vi) / "1,284" (en); `{n}` in every
+  /// string is a count and goes through this.
+  String count(int n) {
+    final d = n.abs().toString();
+    if (d.length < 4) return '$n';
+    final b = StringBuffer(n < 0 ? '-' : '');
+    for (var i = 0; i < d.length; i++) {
+      if (i > 0 && (d.length - i) % 3 == 0) b.write(vi ? '.' : ',');
+      b.write(d[i]);
+    }
+    return b.toString();
   }
 
   /// Translation if [key] exists, otherwise [fallback] (e.g. core-provided text).

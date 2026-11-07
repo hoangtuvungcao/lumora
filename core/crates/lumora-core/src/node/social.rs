@@ -65,8 +65,8 @@ impl Node {
                 b
             }),
             bio: g("profile.bio"),
-            // invisible users appear offline to others
-            status: if status == "invisible" { "offline".into() } else { status },
+            // invisible users (and "who sees me online: nobody") appear offline to others
+            status: if status == "invisible" || self.who_sees_online() == "nobody" { "offline".into() } else { status },
             avatar: self.store.kv_get("profile.avatar").unwrap_or_default(),
             cover: self.store.kv_get("profile.cover").unwrap_or_default(),
         }
@@ -308,16 +308,18 @@ impl Node {
 
     // ------------------------------------------------------------ invite links
 
+    /// A new invite link (needs the `invite` permission; see `create_invite_link`).
     pub fn create_invite(&self, gid: Gid, hours: u64) -> Result<String> {
-        let g = self.groups.read().get(&gid).cloned().ok_or_else(|| crate::i18n::user_err("err.group_not_found"))?;
-        anyhow::ensure!(g.is_member(&self.me), crate::i18n::user_err("err.not_member"));
-        if g.kind == 1 {
-            anyhow::ensure!(g.role(&self.me).map(|r| r >= crate::group::Role::Admin).unwrap_or(false), crate::i18n::user_err("err.admin_only_add"));
-        }
+        let v = self.create_invite_link(gid, hours)?;
+        Ok(v["link"].as_str().unwrap_or_default().to_string())
+    }
+
+    /// Sign a link to `g` for `hours`: (link, signature, expires).
+    pub(super) fn sign_invite(&self, g: &GroupState, hours: u64) -> Result<(String, Vec<u8>, u64)> {
         let expires = now_ms() + hours.clamp(1, 24 * 30) * 3_600_000;
-        let sig = self.signer.sign(&invite_bytes(&gid, &self.me, expires));
-        let inv = Invite { gid, inviter: self.me, expires, name: g.name.clone(), sig };
-        Ok(format!("lumora://join/{}", BASE32_NOPAD.encode(&rmp_serde::to_vec(&inv)?).to_lowercase()))
+        let sig = self.signer.sign(&invite_bytes(&g.gid, &self.me, expires));
+        let inv = Invite { gid: g.gid, inviter: self.me, expires, name: g.name.clone(), sig: sig.clone() };
+        Ok((format!("lumora://join/{}", BASE32_NOPAD.encode(&rmp_serde::to_vec(&inv)?).to_lowercase()), sig, expires))
     }
 
     pub fn inspect_invite(&self, link: &str) -> Result<Value> {
@@ -336,6 +338,8 @@ impl Node {
         // a group I reported and blocked (on any of my devices): unblock it first
         anyhow::ensure!(!self.group_blocked(&inv.gid), crate::i18n::user_err("err.group_blocked"));
         self.store.kv_set(&format!("join.pending.{}", hex::encode(inv.gid)), b"1")?;
+        // (only the one I asked may turn the join down: `on_join_denied`)
+        self.store.kv_set(&format!("join.via.{}", hex::encode(inv.gid)), inv.inviter.to_base32().as_bytes())?;
         self.send_to(inv.inviter, PeerMsg::JoinRequest { gid: inv.gid, expires: inv.expires, sig: inv.sig }).await?;
         Ok(json!({"gid": hex::encode(inv.gid), "name": inv.name, "pending": true}))
     }
@@ -343,12 +347,8 @@ impl Node {
     pub(super) async fn on_join_request(self: &Arc<Self>, from: PeerId, gid: Gid, expires: u64, sig: Vec<u8>) -> Result<()> {
         anyhow::ensure!(expires > now_ms(), "expired invite");
         anyhow::ensure!(self.verify_content(&self.me, &invite_bytes(&gid, &self.me, expires), &sig), "forged invite");
-        let (member, banned) = self.groups.read().get(&gid).map(|g| (g.is_member(&from), g.banned.contains(&from))).unwrap_or((false, false));
-        // (a leaked link must not let a flood of fresh identities join without bound)
-        if !member && !banned && !self.store.is_blocked(&from) && self.join_allowed(&gid) {
-            self.group_add(gid, from).await?;
-        }
-        Ok(())
+        // revoked links, removed / banned people, "approve new members": node/community.rs
+        self.admit_by_link(from, gid, expires, &sig).await
     }
 
     // ------------------------------------------------------------ scheduled messages

@@ -20,7 +20,7 @@ class DeviceSignedOutScreen extends StatelessWidget {
     final s = S.of(context);
     final out = context.select<DevicesStore, DeviceSignOut?>((d) => d.signedOut) ?? const DeviceSignOut();
     final body = out.bySelf
-        ? s('dv_out_self')
+        ? s(out.wipe ? 'dv_out_deleted' : 'dv_out_self')
         : out.kept
             ? s('dv_out_auto')
             : '${s('dv_out_remote')}${out.wipe ? ' ${s('dv_out_wipe')}' : ''}';

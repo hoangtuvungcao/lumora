@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumora/app.dart';
 import 'package:lumora/core/mock_api.dart';
+import 'package:lumora/platform/android_bridge.dart';
 import 'package:lumora/ui/shell/home_shell.dart';
 
 import 'helpers.dart';
@@ -63,12 +64,27 @@ void main() {
     await settle(t);
     expect(sv.calls.minimized, isFalse);
     expect(find.byTooltip('Tắt micro'), findsOneWidget);
-    // Android picture-in-picture: a tiny window shows the video only
+    // A small window is NOT picture-in-picture (desktop window, split screen,
+    // foldable cover screen): the call controls stay, hang-up included.
+    setSize(t, const Size(240, 420), dpr: 2);
+    await settle(t);
+    while (t.takeException() != null) {} // (the app under the call may overflow at this size)
+    expect(find.byTooltip('Tắt micro'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pip_video')), findsNothing);
+    // Android picture-in-picture (MainActivity tells AndroidBridge): the video only
+    addTearDown(() => AndroidBridge.pip.value = false);
     setSize(t, const Size(180, 320), dpr: 2);
+    AndroidBridge.pip.value = true;
     await settle(t);
     expect(find.byTooltip('Tắt micro'), findsNothing);
+    expect(find.byKey(const ValueKey('pip_video')), findsOneWidget);
     // (the app under the black video may overflow at this size; it isn't visible)
     while (t.takeException() != null) {}
+    // leaving picture-in-picture: the call screen again
+    AndroidBridge.pip.value = false;
+    setSize(t, const Size(390, 844), dpr: 2);
+    await settle(t);
+    expect(find.byTooltip('Tắt micro'), findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 100));
     sv.dispose();

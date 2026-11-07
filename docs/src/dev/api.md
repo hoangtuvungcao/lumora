@@ -17,6 +17,7 @@ The Rust core (`lumora-core::node`) exposes one JSON API. It is reachable throug
   * Library: `liblumora_ffi.so` (Linux, Android), `lumora_ffi.dll` (Windows), `liblumora_ffi.dylib` in `Lumora.app/Contents/Frameworks` (macOS), static `liblumora_ffi.a` linked into the app on iOS (looked up with `DynamicLibrary.process()`); see [Apple platforms](../platforms/apple.md).
 * Apple/mobile helpers (JSON commands): `resume` (app back in the foreground / network changed: re-dial friends now, retry relay → direct upgrades), `set_network_hint` (`{metered, low_battery}`: either one → no birthday spraying), `settings_set` `help_friends` (bool, default on: relay for friends behind hard NATs; off stops serving at once), `lan_advert` (Bonjour name/port to advertise), `push_register` / `push_unregister` / `push_status` (iPhone wake-ups, see [push bridge](../ops/push.md))
 * **CLI daemon** (`lumorad --stdio`): one JSON request per line on stdin, responses and events as JSON lines on stdout.
+* **HTTP Bot API** (`lumorad --http-api [HOST:]PORT`, bots only): `/bot<TOKEN>/<method>` endpoints in the familiar Bot API style built on this same API (code: `core/crates/lumora-cli/src/bot_api/`; docs: `docs/src/bots/guides.md` sections `http-api`, `http-ids`, `http-examples`). Loopback only unless `--http-api-public`.
 
 ## Config (`lumora_start` / `lumorad --config`)
 ```json
@@ -132,7 +133,7 @@ Saved messages: conversation id `s:me`. Conversation flag `archived`. Events: `m
 | `remote_wake` | `peer` (or 9-digit ID) of a recent remote device | `{sent, helpers}` — magic packets on every local network, plus friends' online devices asked to send one |
 | `ui_secret_get` / `ui_secret_set` | `key` ("ui." prefix) / `key, value: string (≤ 4 KB) \| null` | string \| null / – (kept in the encrypted database) |
 | `locked_chats_get` / `locked_chats_set` | – / `chats: [conv]` (≤ 1000) | `{chats, set}` / `{chats}` — account setting `privacy.locked_chats`, synced to the account's devices; `message` events of a locked chat carry `locked: true` |
-| `botfather_history` / `botfather_append` / `botfather_clear` | – / `entries: [{mine, text, kind?, u?, ts?}]` / – | `{entries}` — BotFather chat, synced to the account's devices, last 200 lines (≤ 64 KB), tokens masked |
+| `botfather_history` / `botfather_append` / `botfather_clear` | – / `entries: [{mine, text, kind?, u?, ts?}]` / – | `{entries}` — Bot Studio chat (internal name `botfather`), synced to the account's devices, last 200 lines (≤ 64 KB), tokens masked |
 
 `settings_get`/`settings_set` gain `noise_suppression` (default on, applies mid-call) and `wake_for_friends`
 (default on: send wake-up packets when a friend asks). `remote_recent` entries gain `macs`, `online`, `can_wake`;
@@ -184,7 +185,7 @@ on change and when one of my devices connects/disconnects); `contact_devices {pe
 `history_sync {messages, convs_done, convs_total, done, from}`; `device_revoked {device, wipe, by_self, restart: true}`
 (this device was signed out: the host stops the core and starts it again — the next start wipes the account's data
 and begins as a fresh install; `lumorad` does it in-process); `profile {key, name}` (a profile setting changed on
-another device); `group_removed {gid, conv, left?}` (this account left / was removed from a group — bots too).
+another device); `group_removed {gid, conv, left?, dissolved?, name?, kind?}` (this account left / was removed from a group — bots too; `dissolved: true` when the owner deleted it for everyone).
 Calls ring every device of the callee: when another of my devices answers or declines, the ringing one gets
 `call {state: "ended", reason: "answered_elsewhere" | "declined_elsewhere", device_name}`. `call.participants[]`
 gains `account`. `remote_connect` takes `device?`: an account with several controllable devices needs one
