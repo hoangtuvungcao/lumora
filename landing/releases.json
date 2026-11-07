@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.5",
   "date": "2026-11-07",
   "repo": "hoangtuvungcao/get_lumora",
   "baseUrl": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v{version}/",
@@ -36,9 +36,9 @@
             "vi": "Cài vào máy, có biểu tượng trong menu Start, gỡ được như phần mềm thường. Phù hợp với hầu hết mọi người.",
             "en": "Installs like any app, with a Start menu entry and a normal uninstaller. Right for most people."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-windows-x86_64-setup.exe",
-          "sha256": "ced4531bed1340808efb6d5dbb89aedfa494ef1fe95434d1438226dd1b5954f1",
-          "bytes": 33453832,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-windows-x86_64-setup.exe",
+          "sha256": "2144f27c114f60e007a77c9e3a2294d26f0cd5fa91353a8ffe051af0267f3f1e",
+          "bytes": 33456274,
           "size": "32 MB"
         },
         {
@@ -55,9 +55,9 @@
             "vi": "Không cần cài: giải nén rồi mở lumora.exe. Hợp với máy công ty không cho cài phần mềm, hoặc chạy từ USB.",
             "en": "No install: unzip and open lumora.exe. Good for work PCs that block installers, or running from a USB stick."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-windows-x86_64-portable.zip",
-          "sha256": "ab885b4e9fbf3c986ad4d792667e7c72d44445ae9f207fc2c0033489cf9b9f02",
-          "bytes": 36972779,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-windows-x86_64-portable.zip",
+          "sha256": "517a6c0be060f74bf34c5f20ff03d74459b1a7c12ebdf6ab74011776eeaffced",
+          "bytes": 36971383,
           "size": "35 MB"
         }
       ]
@@ -94,9 +94,9 @@
             "vi": "Một tệp chạy được trên cả Mac chip Apple (M1–M4) và Mac chip Intel.",
             "en": "One file for both Apple-silicon (M1–M4) and Intel Macs."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-macos-universal.dmg",
-          "sha256": "7732c4401974aad6045ebecd7133b1f507d5e9e0f31177a817ed7ab447bc560d",
-          "bytes": 63070042,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-macos-universal.dmg",
+          "sha256": "e284bcdd84f539332ec9f6f5bc6763ef9572fb2571fee41b2cfe61ecc3881b00",
+          "bytes": 63079624,
           "size": "60 MB"
         }
       ]
@@ -128,8 +128,8 @@
             "vi": "Một tệp chạy trên hầu hết bản Linux (Fedora, Arch, openSUSE…), không cần cài.",
             "en": "One file that runs on most Linux distributions (Fedora, Arch, openSUSE…), no install."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-linux-x86_64.AppImage",
-          "sha256": "6c47b6bc2b9d1f80cd3646a186e3373d27768e9bbd4b16469937c34fda22c0a3",
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-linux-x86_64.AppImage",
+          "sha256": "b370ae31c86a9cfb09f4e9736a7a9ff51f85001cb699c87c94e5dbc4eb8d7767",
           "bytes": 38980088,
           "size": "37 MB"
         },
@@ -147,9 +147,9 @@
             "vi": "Cho Ubuntu, Debian, Linux Mint, Pop!_OS: cài như ứng dụng thường, có trong menu ứng dụng.",
             "en": "For Ubuntu, Debian, Linux Mint, Pop!_OS: installs like any app and appears in the app menu."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-linux-amd64.deb",
-          "sha256": "ae2b2a6677fb9b9e8dd6efc40c04a82ecc01874dbfb2a1a111b61f9c88c6c825",
-          "bytes": 30919900,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-linux-amd64.deb",
+          "sha256": "46483383a535fc4174fd84d50548bb33cbd11c8cae7d0b4b086b51e37164ea05",
+          "bytes": 30917028,
           "size": "29 MB"
         },
         {
@@ -166,9 +166,9 @@
             "vi": "Bản nén để tự giải nén vào thư mục tuỳ ý, dành cho người quen dùng dòng lệnh.",
             "en": "A plain archive to unpack anywhere, for people comfortable with the command line."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-linux-x86_64.tar.gz",
-          "sha256": "65e32bff493b8193ff0f5fddc4c02088133b84d05b127092103b29e350fe21d0",
-          "bytes": 41514450,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-linux-x86_64.tar.gz",
+          "sha256": "7bd02826ec0f66266a03194632493d375213c205a8c18ff4cf8f4e6be9ca73f6",
+          "bytes": 41515949,
           "size": "40 MB"
         }
       ]
@@ -204,10 +204,10 @@
             "en": "64-bit phones"
           },
           "primary": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-android-arm64-v8a.apk",
-          "sha256": "a43807e087a57a59b7693929de5ab7bb806dc06bef685cf0e24fab5b226980fe",
-          "bytes": 123577169,
-          "size": "118 MB"
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-android-arm64-v8a.apk",
+          "sha256": "6128dd073cf55519c376d7ee41e3b8de00225ffded3b6b972cdf8d025880b111",
+          "bytes": 61628315,
+          "size": "59 MB"
         },
         {
           "id": "android-universal",
@@ -228,8 +228,8 @@
             "en": "Any phone"
           },
           "alt": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-android-universal.apk",
-          "sha256": "0df331447d6f7ffb65de0dc3660cfe289eab803fc669d4606b52f72f4f8d5c02",
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-android-universal.apk",
+          "sha256": "35eb21b99705ba0511e0e0fdfb935e7dded5981d8c31493409893504c5f10ac9",
           "bytes": 169321579,
           "size": "161 MB"
         },
@@ -247,10 +247,10 @@
             "vi": "Cho điện thoại cũ hoặc máy giá rẻ chạy Android 32-bit (một số dòng Redmi, Android Go).",
             "en": "For older or budget phones running 32-bit Android (some Redmi models, Android Go)."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-android-armeabi-v7a.apk",
-          "sha256": "e2b1e473798a9bbb635739ef08c939521b5f5da0d84fda86627be6f1ac2e4aaa",
-          "bytes": 121774933,
-          "size": "116 MB"
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-android-armeabi-v7a.apk",
+          "sha256": "6889c2678ec7f69db54c4d6b956ba1b70c27767f6fa731acf8490c087cb68231",
+          "bytes": 50616847,
+          "size": "48 MB"
         },
         {
           "id": "android-x86_64",
@@ -266,10 +266,10 @@
             "vi": "Chỉ dùng cho máy chip Intel/AMD (x86_64), ví dụ trình giả lập Android trên máy tính.",
             "en": "Only for Intel/AMD (x86_64) devices, such as an Android emulator on a computer."
           },
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-android-x86_64.apk",
-          "sha256": "d73e6a47633ab5b9c2c414660618e97676ffbb3285362ef47cdd2e21cda7452d",
-          "bytes": 125150027,
-          "size": "119 MB"
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-android-x86_64.apk",
+          "sha256": "2ef38ccebb1c2fa4087295b5235c1b51b79778d457cd8bc8f0c37bc792807fd3",
+          "bytes": 67837843,
+          "size": "65 MB"
         }
       ]
     },
@@ -304,9 +304,9 @@
             "en": "With a free Apple ID it must be re-signed every 7 days; push notifications and screen sharing may not work."
           },
           "available": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-v1.0.3-ios-unsigned.ipa",
-          "sha256": "cbb10c4a9f7724636332f32ca021e2ae5f7302e8f124cec7e3404a2127803c7a",
-          "bytes": 28114573,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-v1.0.5-ios-unsigned.ipa",
+          "sha256": "36f95650249b5c0e16be166a23d30cb473e9e2c9668b1c53d90f7751a976a01d",
+          "bytes": 28115283,
           "size": "27 MB"
         }
       ]
@@ -333,9 +333,9 @@
           "arch": "x86_64",
           "file": "Lumora-bot-runner-v{version}-windows-x86_64.exe",
           "available": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-bot-runner-v1.0.3-windows-x86_64.exe",
-          "sha256": "6993d8e982a002035c518a8a39666825c38a89a7bf936f81bc1e5b3a36be773e",
-          "bytes": 30428672,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-bot-runner-v1.0.5-windows-x86_64.exe",
+          "sha256": "ebe6837251e8b10eace9797d621073562ecae1f8d0cf9da64ebb5c265ff25eda",
+          "bytes": 30429184,
           "size": "29 MB"
         },
         {
@@ -347,9 +347,9 @@
           "arch": "x86_64",
           "file": "Lumora-bot-runner-v{version}-linux-x86_64",
           "available": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-bot-runner-v1.0.3-linux-x86_64",
-          "sha256": "c99d9e58a9e682ba9b32b7125f546d36303c366900e78998dc3e19fe5d0fd0f7",
-          "bytes": 28784912,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-bot-runner-v1.0.5-linux-x86_64",
+          "sha256": "cafbbdcadacbd50f4a958d99075ccd46568badc878a2ec65d44de324dbf4ba8b",
+          "bytes": 28785232,
           "size": "27 MB"
         },
         {
@@ -361,9 +361,9 @@
           "arch": "Universal",
           "file": "Lumora-bot-runner-v{version}-macos-universal",
           "available": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.3/Lumora-bot-runner-v1.0.3-macos-universal",
-          "sha256": "37943c5c5b1f10e7def31874c50df5aa9f36c755eee7a9498daff3dc31008dd0",
-          "bytes": 49430928,
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.5/Lumora-bot-runner-v1.0.5-macos-universal",
+          "sha256": "d8cec63ce2b5d5c58fab86101400010292154101c25dda1311887d49b54bfab6",
+          "bytes": 49430960,
           "size": "47 MB"
         }
       ]
