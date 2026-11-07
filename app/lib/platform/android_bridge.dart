@@ -104,7 +104,7 @@ class AndroidBridge with WidgetsBindingObserver {
 
   /// Settings › Notifications › Chat bubbles (Android 11+): message
   /// notifications carry a bubble that opens the chat over other apps.
-  static bool bubbles = true;
+  static bool bubbles = false; // follows Settings.chatBubbles (off by default)
 
   /// A notification, bubble or launcher shortcut asks to open this chat
   /// (wired by AppServices).
@@ -667,7 +667,24 @@ class AndroidBridge with WidgetsBindingObserver {
     if (now != before) {
       unawaited(_service.invokeMethod('setCall', {'active': now}).catchError((_) => null));
     }
+    // A live video call: leaving Lumora (Home / Recents) keeps it on screen picture-in-picture.
+    if (ev.containsKey('video')) {
+      if (_liveCalls.contains(id) && ev['video'] == true) {
+        _videoCalls.add(id);
+      } else {
+        _videoCalls.remove(id);
+      }
+    }
+    _videoCalls.retainWhere(_liveCalls.contains);
+    final pip = _videoCalls.isNotEmpty;
+    if (pip != _pipOn) {
+      _pipOn = pip;
+      unawaited(_service.invokeMethod('setPip', {'on': pip}).catchError((_) => null));
+    }
   }
+
+  final Set<String> _videoCalls = {};
+  bool _pipOn = false;
 
   /// Is [ev] posted as a system notification? In the background: everything
   /// notifiable. In front: reminders (alarms) and messages of a chat that is

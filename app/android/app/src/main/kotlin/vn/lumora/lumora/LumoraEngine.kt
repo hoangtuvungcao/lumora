@@ -144,6 +144,11 @@ object LumoraEngine {
                     LumoraService.setCall(call.argument<Boolean>("active") ?: false)
                     result.success(true)
                 }
+                // a video call is live: leaving Lumora (Home, Recents) shows it picture-in-picture
+                "setPip" -> {
+                    MainActivity.setPipWanted(call.argument<Boolean>("on") ?: false)
+                    result.success(true)
+                }
                 "notify" -> {
                     Notifier.show(
                         app,

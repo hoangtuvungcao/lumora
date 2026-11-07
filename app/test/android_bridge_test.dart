@@ -406,8 +406,9 @@ void main() {
   });
 
   group('conversations, bubbles, opening a chat', () {
+    setUp(() => AndroidBridge.bubbles = true); // (switched on in Settings; off by default)
     tearDown(() {
-      AndroidBridge.bubbles = true;
+      AndroidBridge.bubbles = false;
       AndroidBridge.onOpenConv = null;
       AndroidBridge.readingConv = () => null;
       AndroidBridge.convTitle = (_) => null;

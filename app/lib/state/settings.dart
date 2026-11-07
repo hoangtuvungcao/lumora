@@ -44,7 +44,9 @@ class Settings extends ChangeNotifier {
   bool vibrate = true;
 
   /// Android 11+: message notifications can open the chat as a bubble.
-  bool chatBubbles = true;
+  /// Off by default: on some phones (Xiaomi / HyperOS) an expanded bubble stayed grey —
+  /// the Flutter view is shared with the main window. A new key, so earlier "on" doesn't stick.
+  bool chatBubbles = false;
 
   /// Android: the "keep Lumora running in the background" prompt was shown
   /// once (it is in Settings › Notifications afterwards).
@@ -209,7 +211,7 @@ class Settings extends ChangeNotifier {
     messageSound = j['message_sound'] as bool? ?? messageSound;
     vibrate = j['vibrate'] as bool? ?? vibrate;
     reminderSound = j['reminder_sound'] as bool? ?? reminderSound;
-    chatBubbles = j['chat_bubbles'] as bool? ?? chatBubbles;
+    chatBubbles = j['chat_bubbles2'] as bool? ?? chatBubbles;
     backgroundAsked = j['background_asked'] as bool? ?? backgroundAsked;
     mentionsOnlyChats = (j['mentions_only_chats'] as List?)?.cast<String>() ?? mentionsOnlyChats;
     snoozedReminders = (j['snoozed_reminders'] as List?)?.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList() ?? snoozedReminders;
@@ -271,7 +273,7 @@ class Settings extends ChangeNotifier {
         'message_sound': messageSound,
         'vibrate': vibrate,
         'reminder_sound': reminderSound,
-        'chat_bubbles': chatBubbles,
+        'chat_bubbles2': chatBubbles,
         'background_asked': backgroundAsked,
         'mentions_only_chats': mentionsOnlyChats,
         'snoozed_reminders': snoozedReminders,

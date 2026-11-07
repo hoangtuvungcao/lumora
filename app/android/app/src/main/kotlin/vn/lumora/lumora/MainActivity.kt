@@ -58,6 +58,14 @@ open class MainActivity : FlutterActivity() {
         /** "answer": Answer on the incoming-call notification (Dart answers once Lumora is in front). */
         const val EXTRA_CALL_ACTION = "vn.lumora.CALL_ACTION"
 
+        /** A video call is live (Dart): leaving the app goes picture-in-picture. */
+        @Volatile private var pipWanted = false
+
+        fun setPipWanted(on: Boolean) {
+            pipWanted = on
+            current()?.let { a -> a.runOnUiThread { a.applyPipParams() } }
+        }
+
         /** The Activity shown over the lock screen for a ringing call. */
         private var overLock: MainActivity? = null
         /** Matches the Dart-side consent timeout (AndroidBridge.consentTimeout). */
@@ -193,6 +201,37 @@ open class MainActivity : FlutterActivity() {
             !asked -> "undetermined"
             shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) -> "denied"
             else -> "blocked"
+        }
+    }
+
+    private fun pipParams(): android.app.PictureInPictureParams? {
+        if (Build.VERSION.SDK_INT < 26) return null
+        val b = android.app.PictureInPictureParams.Builder().setAspectRatio(android.util.Rational(9, 16))
+        // Android 12+: the system enters picture-in-picture by itself on Home / gesture
+        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(pipWanted).setSeamlessResizeEnabled(true)
+        return b.build()
+    }
+
+    /** Bubbles share this class: only the main window goes picture-in-picture. */
+    private val pipCapable get() = javaClass == MainActivity::class.java
+
+    fun applyPipParams() {
+        if (Build.VERSION.SDK_INT < 26 || !pipCapable) return
+        try {
+            pipParams()?.let { setPictureInPictureParams(it) }
+        } catch (_: Throwable) {
+            // PiP disabled for Lumora by the user / device: nothing to do
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 8–11 (12+ enters by itself via setAutoEnterEnabled)
+        if (pipWanted && pipCapable && Build.VERSION.SDK_INT in 26..30 && !isInPictureInPictureMode) {
+            try {
+                pipParams()?.let { enterPictureInPictureMode(it) }
+            } catch (_: Throwable) {
+            }
         }
     }
 

@@ -37,6 +37,15 @@ class CallLayer extends StatelessWidget {
     final ready = context.select<SessionStore, bool>((s) => s.phase == SessionPhase.ready);
     if (phase == null || !ready) return const SizedBox.shrink();
     if (phase == CallPhase.incoming) return const Positioned.fill(child: LayerHost(key: ValueKey('incoming'), child: IncomingCallOverlay()));
+    // Android picture-in-picture (Lumora left during a video call): a tiny window — the
+    // other person's video only, no controls.
+    final size = MediaQuery.sizeOf(context);
+    final video = context.select<CallStore, bool>((c) => c.call?.video ?? false);
+    if (video && phase == CallPhase.active && size.shortestSide > 0 && size.shortestSide < 260) {
+      return const Positioned.fill(child: _PipVideo());
+    }
+    // A minimised video call: a small floating video window (Messenger-style), voice: the pill.
+    if (minimized && video && phase == CallPhase.active) return const _FloatingVideo();
     // Below the status bar: Android hands touches there to the system (pull-down
     // shade), so the pill and its hang-up button could not be tapped on phones.
     if (minimized) return Positioned(top: math.max(12, MediaQuery.paddingOf(context).top + 6), left: 0, right: 0, child: const Center(child: _CallPill()));
@@ -485,12 +494,43 @@ class CallScreen extends StatelessWidget {
               ? Material(
                   elevation: 12,
                   child: Column(children: [
-                    Expanded(child: ChatView(conv: call.conv, embedded: true)),
+                    // Phones: the chat covers the call — a clear way back to it (the
+                    // call's control dock is hidden meanwhile, it sat over the composer)
+                    if (!isDesktop(context))
+                      SafeArea(
+                        bottom: false,
+                        child: Material(
+                          color: LC.primary,
+                          child: InkWell(
+                            key: const ValueKey('back_to_call'),
+                            onTap: store.toggleChat,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              child: Row(children: [
+                                const Icon(AppIcons.back, color: Colors.white, size: 20),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(s('back_to_call'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                                ),
+                                const Icon(AppIcons.call, color: Colors.white, size: 18),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                    // (no Scaffold in a layer: keep the composer above the keyboard)
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+                        child: MediaQuery.removeViewInsets(context: context, removeBottom: true, child: ChatView(conv: call.conv, embedded: true)),
+                      ),
+                    ),
                   ]),
                 )
               : const SizedBox.shrink(),
         ),
-        // Controls (glass dock).
+        // Controls (glass dock). Not over the in-call chat on a phone (it hid the composer).
+        if (isDesktop(context) || !store.chatOpen)
         Positioned(
           left: 0,
           right: 0,
@@ -1089,4 +1129,97 @@ String _participantName(ContactsStore contacts, CallState call, String participa
   if (saved.isNotEmpty) return saved;
   final known = call.names[participant] ?? '';
   return known.isNotEmpty ? known : contacts.nameOf(account);
+}
+
+
+/// The other person's video, or their avatar (picture-in-picture, floating window).
+class _RemoteVideo extends StatelessWidget {
+  const _RemoteVideo();
+  @override
+  Widget build(BuildContext context) {
+    final store = context.watch<CallStore>();
+    final call = store.call;
+    if (call == null) return const ColoredBox(color: Colors.black);
+    final stream = call.streamOf(call.peer);
+    final avatar = ColoredBox(color: Colors.black, child: Center(child: PeerAvatar(peer: call.peer, size: 56, presence: false)));
+    return ColoredBox(
+      color: Colors.black,
+      child: stream == null ? avatar : VideoView(stream: stream, maxFps: 30, placeholder: avatar),
+    );
+  }
+}
+
+class _PipVideo extends StatelessWidget {
+  const _PipVideo();
+  @override
+  Widget build(BuildContext context) => const _RemoteVideo();
+}
+
+/// Minimised video call inside the app: a draggable window with the other person's video;
+/// tap → back to the call, red button → hang up. Snaps to the nearest side.
+class _FloatingVideo extends StatefulWidget {
+  const _FloatingVideo();
+  @override
+  State<_FloatingVideo> createState() => _FloatingVideoState();
+}
+
+class _FloatingVideoState extends State<_FloatingVideo> {
+  Offset? _pos;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final screen = mq.size;
+    final w = screen.shortestSide < 600 ? 112.0 : 160.0;
+    final h = w * 16 / 9;
+    final pad = mq.padding;
+    final minX = 8.0, maxX = screen.width - w - 8;
+    final minY = pad.top + 8, maxY = screen.height - h - pad.bottom - 80;
+    final pos = _pos ?? Offset(maxX, minY + 56);
+    final store = context.read<CallStore>();
+    return Positioned(
+      left: pos.dx.clamp(minX, math.max(minX, maxX)),
+      top: pos.dy.clamp(minY, math.max(minY, maxY)),
+      child: GestureDetector(
+        key: const ValueKey('floating_video'),
+        onTap: () => store.setMinimized(false),
+        onPanUpdate: (d) => setState(() => _pos = (_pos ?? pos) + d.delta),
+        onPanEnd: (_) => setState(() {
+          final p = _pos ?? pos;
+          _pos = Offset(p.dx + w / 2 < screen.width / 2 ? minX : maxX, p.dy.clamp(minY, math.max(minY, maxY)));
+        }),
+        child: Material(
+          elevation: 10,
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: w,
+            height: h,
+            child: Stack(children: [
+              const Positioned.fill(child: _RemoteVideo()),
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: Material(
+                  color: LC.danger,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: store.hangup,
+                    // (no Tooltip: the call layer floats outside the app's Overlay)
+                    child: Semantics(
+                      button: true,
+                      label: S.of(context)('hang_up'),
+                      child: const Padding(padding: EdgeInsets.all(7), child: Icon(AppIcons.hangUp, color: Colors.white, size: 16)),
+                    ),
+                  ),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }

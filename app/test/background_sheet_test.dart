@@ -39,8 +39,9 @@ void main() {
     await t.pumpWidget(_wrap(st, const NotificationSettingsGroup()));
     expect(find.text('Chat bubbles'), findsOneWidget);
     expect(find.text('Keep running in the background'), findsOneWidget);
+    expect(st.chatBubbles, isFalse, reason: 'off by default (grey bubbles on some phones)');
     await t.tap(find.text('Chat bubbles'));
     await t.pump();
-    expect(st.chatBubbles, isFalse);
+    expect(st.chatBubbles, isTrue);
   });
 }

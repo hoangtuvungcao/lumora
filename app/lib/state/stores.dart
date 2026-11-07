@@ -745,8 +745,22 @@ class ChatStore extends ChangeNotifier {
     _conv(c.copyWith(title: name));
   }
 
-  void onConversation(Map<String, dynamic> j) =>
-      _conv(_merged(Conversation.fromJson(j), hasLastMine: j.containsKey('last_mine'), hasMentions: j.containsKey('mentions')));
+  void onConversation(Map<String, dynamic> j) {
+    final c = _merged(Conversation.fromJson(j), hasLastMine: j.containsKey('last_mine'), hasMentions: j.containsKey('mentions'));
+    _conv(c);
+    // The core sends rows without a preview (a call record that just ended, …): never
+    // leave "Bạn:" with nothing after it — derive it from the last message.
+    if (c.lastText.isEmpty && c.lastTs > 0) _fillPreview(c.id);
+  }
+
+  Future<void> _fillPreview(String conv) async {
+    try {
+      final l = await api.messages(conv, limit: 1);
+      final cur = convs[conv];
+      if (l.isEmpty || cur == null || cur.lastText.isNotEmpty) return;
+      _conv(cur.copyWith(lastText: _previewOf(l.last), lastMine: l.last.mine, lastTs: l.last.ts));
+    } catch (_) {}
+  }
 
   /// [c] (a row from the core) over what this app already knows of it.
   Conversation _merged(Conversation c, {required bool hasLastMine, required bool hasMentions}) {
@@ -850,7 +864,18 @@ class ChatStore extends ChangeNotifier {
     if (m.isSystem) return SystemText.parse(m.body)?.text ?? m.body;
     if (m.kind == 'location') return '📍 ${LocationData.parse(m.body)?.label ?? ''}';
     if (m.kind == 'voice') return '🎤';
-    if (m.kind == 'call') return '📞';
+    if (m.kind == 'call') {
+      // body {duration_s, missed, video}: the list shows "Video call" / "Missed call"
+      var video = false, missed = false;
+      try {
+        final j = jsonDecode(m.body);
+        if (j is Map) {
+          video = j['video'] == true;
+          missed = j['missed'] == true;
+        }
+      } catch (_) {}
+      return '${video ? '📹' : '📞'} ${missed ? 'Missed call' : 'Call'}';
+    }
     if (m.kind == 'contact') return '👤 ${ContactCard.parse(m.body)?.name ?? ''}';
     if (m.isPoll) return '📊 ${PollData.parse(m)?.question ?? ''}';
     if (m.kind == 'checklist') return '☑️ ${ChecklistData.parse(m)?.title ?? ''}';
