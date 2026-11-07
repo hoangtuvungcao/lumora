@@ -181,57 +181,57 @@
         "en": "Android 8 or later phones and tablets"
       },
       "requirements": {
-        "vi": "Android 8.0 trở lên · hầu hết điện thoại chọn bản 64-bit; máy cũ hoặc không chắc thì chọn \"Mọi máy\"",
-        "en": "Android 8.0 or later · most phones: the 64-bit build; older phones or unsure: \"Any phone\""
+        "vi": "Android 8.0 trở lên · không chắc thì chọn \"Mọi máy\"; máy đời mới có thể chọn bản 64-bit nhẹ hơn",
+        "en": "Android 8.0 or later · unsure: \"Any phone\"; recent phones can take the smaller 64-bit build"
       },
       "files": [
         {
-          "id": "android-arm64",
-          "label": {
-            "vi": "Điện thoại 64-bit (khuyên dùng)",
-            "en": "64-bit phones (recommended)"
-          },
-          "ext": ".apk",
-          "arch": "arm64-v8a",
-          "file": "Lumora-v{version}-android-arm64-v8a.apk",
-          "available": true,
-          "desc": {
-            "vi": "Cho hầu hết điện thoại từ 2019 trở lại đây. Nhẹ, cài nhanh.",
-            "en": "For most phones from 2019 on. Small and quick to install."
-          },
-          "short": {
-            "vi": "Điện thoại 64-bit",
-            "en": "64-bit phones"
-          },
-          "primary": true,
-          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.8/Lumora-v1.0.8-android-arm64-v8a.apk",
-          "sha256": "bb06899a76cb30241de9195a1959429efb5b47cff83963f950671d6c3c485d97",
-          "bytes": 64037059,
-          "size": "61 MB"
-        },
-        {
           "id": "android-universal",
           "label": {
-            "vi": "Mọi điện thoại Android",
-            "en": "All Android phones"
+            "vi": "Mọi điện thoại Android (khuyên dùng)",
+            "en": "All Android phones (recommended)"
           },
           "ext": ".apk",
           "arch": "universal",
           "file": "Lumora-v{version}-android-universal.apk",
           "available": true,
           "desc": {
-            "vi": "Một tệp cài được trên mọi điện thoại và máy tính bảng, kể cả máy cũ 32-bit. Nặng hơn vì chứa bản cho mọi loại chip.",
-            "en": "One file for every phone and tablet, including older 32-bit ones. Larger because it carries a build for every chip."
+            "vi": "Một tệp cài được trên mọi điện thoại và máy tính bảng, kể cả máy cũ 32-bit. Chọn bản này nếu không chắc.",
+            "en": "One file for every phone and tablet, including older 32-bit ones. Pick this one if unsure."
           },
           "short": {
             "vi": "Mọi máy",
             "en": "Any phone"
           },
-          "alt": true,
           "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.8/Lumora-v1.0.8-android-universal.apk",
           "sha256": "990f241f5a595332a8db926e193e826858885208bc03bb4f00b7667f2651e49f",
           "bytes": 176825747,
-          "size": "169 MB"
+          "size": "169 MB",
+          "primary": true
+        },
+        {
+          "id": "android-arm64",
+          "label": {
+            "vi": "Điện thoại 64-bit (nhẹ hơn)",
+            "en": "64-bit phones (smaller)"
+          },
+          "ext": ".apk",
+          "arch": "arm64-v8a",
+          "file": "Lumora-v{version}-android-arm64-v8a.apk",
+          "available": true,
+          "desc": {
+            "vi": "Cho điện thoại đời mới chip 64-bit. Nhẹ hơn, cài nhanh hơn.",
+            "en": "For recent 64-bit phones. Smaller and quicker to install."
+          },
+          "short": {
+            "vi": "Điện thoại 64-bit",
+            "en": "64-bit phones"
+          },
+          "url": "https://github.com/hoangtuvungcao/get_lumora/releases/download/v1.0.8/Lumora-v1.0.8-android-arm64-v8a.apk",
+          "sha256": "bb06899a76cb30241de9195a1959429efb5b47cff83963f950671d6c3c485d97",
+          "bytes": 64037059,
+          "size": "61 MB",
+          "alt": true
         },
         {
           "id": "android-armv7",
