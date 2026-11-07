@@ -596,7 +596,7 @@ jobs:
       # pdfrx bundles a 4 MB PDFium WebAssembly module that only web builds use
       - run: flutter pub get && dart run pdfrx:remove_wasm_modules
         working-directory: app
-      - name: version (tag vX.Y.Z → build name X.Y.Z, build number X*10000 + Y*100 + Z)
+      - name: version (tag vX.Y.Z → build name X.Y.Z, build number 100000 + X*10000 + Y*100 + Z)
         id: ver
         # Android's versionCode must grow with every release: vMAJOR.MINOR.PATCH → MAJOR*10000 +
         # MINOR*100 + PATCH (MINOR and PATCH < 100). Branch/PR builds are 0.0.0 (build number 1).
@@ -608,7 +608,9 @@ jobs:
             fi
             ma=$((10#${BASH_REMATCH[1]})); mi=$((10#${BASH_REMATCH[2]})); pa=$((10#${BASH_REMATCH[3]}))
             if [ "$mi" -ge 100 ] || [ "$pa" -ge 100 ]; then echo "::error::MINOR and PATCH must be below 100"; exit 1; fi
-            code=$((ma * 10000 + mi * 100 + pa))
+            # +100000: v1.0.1's arm64 APK went out as 12001 (--split-per-abi adds 1000×ABI);
+            # every later release must be above it or phones refuse the update ("invalid package")
+            code=$((100000 + ma * 10000 + mi * 100 + pa))
             if [ "$code" -lt 1 ]; then echo "::error::v0.0.0 cannot be released"; exit 1; fi
           else
             v=0.0.0; code=1

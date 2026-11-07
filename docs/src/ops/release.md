@@ -27,7 +27,7 @@ notarisation are optional but avoid SmartScreen/Gatekeeper warnings. Apple build
 ## Version numbers
 
 The tag is the only source of the version: `vMAJOR.MINOR.PATCH` (anything else fails the build). Linux,
-Windows and Android get `--build-name MAJOR.MINOR.PATCH --build-number MAJOR*10000 + MINOR*100 + PATCH`
+Windows gets `--build-number MAJOR*10000 + MINOR*100 + PATCH`; Android gets `100000 + MAJOR*10000 + MINOR*100 + PATCH` (above the 12001 that v1.0.1's split arm64 APK carried)
 (`v1.2.3` → build `10203`; MINOR and PATCH must stay below 100). On Android the build number is the
 `versionCode`, which must grow with every release or phones refuse the update. Branch and pull-request builds
 are `0.0.0` (build 1). macOS/iOS use the same version name and the workflow run number as build number
