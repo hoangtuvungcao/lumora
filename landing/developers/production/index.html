@@ -345,7 +345,7 @@ journalctl -u lumora-bot-hoamai -f            # xem log / follow the logs</code>
 WORKDIR /bot
 COPY lumora-bot-runner-linux-x86_64 /usr/local/bin/lumorad
 RUN chmod +x /usr/local/bin/lumorad \
- &amp;&amp; pip install --no-cache-dir https://getlumora.pages.dev/developers/packages/lumora_bot-1.1.0-py3-none-any.whl \
+ &amp;&amp; pip install --no-cache-dir lumora-bot==1.1.0 \
  &amp;&amp; useradd --system --create-home bot &amp;&amp; mkdir -p /bot/data &amp;&amp; chown bot /bot/data
 COPY bot.py .
 USER bot
@@ -358,11 +358,11 @@ docker build -t hoamai-bot .
 docker run -d --name hoamai --restart unless-stopped \
   -e LUMORA_BOT_TOKEN -v hoamai-data:/bot/data hoamai-bot
 docker logs -f hoamai</code></pre>
-<div class="l-vi"><p>Bot JavaScript: dùng <code>FROM node:20-slim</code>, cài bằng <code>npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz</code> và <code>CMD ["node", "bot.mjs"]</code>. Muốn bot tìm thấy người dùng trong cùng mạng nội bộ, chạy container với <code>--network host</code> (Linux).</p>
+<div class="l-vi"><p>Bot JavaScript: dùng <code>FROM node:20-slim</code>, cài bằng <code>npm install lumora-bot@1.1.0</code> và <code>CMD ["node", "bot.mjs"]</code>. Muốn bot tìm thấy người dùng trong cùng mạng nội bộ, chạy container với <code>--network host</code> (Linux).</p>
 <h3>Windows</h3>
 <p>Cách đơn giản: <strong>Task Scheduler</strong> → Create Task → <em>Run whether user is logged on or not</em>, trigger <em>At startup</em>, action <code>python.exe</code> với đối số <code>bot.py</code> và thư mục bắt đầu là thư mục của bot. Đặt <code>LUMORA_BOT_TOKEN</code> và <code>LUMORAD</code> trong <em>System Properties → Environment Variables</em> của tài khoản chạy bot.</p>
 <p>Muốn chạy như một dịch vụ Windows, dùng một trình bao dịch vụ như NSSM:</p></div>
-<div class="l-en" lang="en"><p>JavaScript bots: use <code>FROM node:20-slim</code>, install with <code>npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz</code> and <code>CMD ["node", "bot.mjs"]</code>. For the bot to find users on the same local network, run the container with <code>--network host</code> (Linux).</p>
+<div class="l-en" lang="en"><p>JavaScript bots: use <code>FROM node:20-slim</code>, install with <code>npm install lumora-bot@1.1.0</code> and <code>CMD ["node", "bot.mjs"]</code>. For the bot to find users on the same local network, run the container with <code>--network host</code> (Linux).</p>
 <h3>Windows</h3>
 <p>The simple way: <strong>Task Scheduler</strong> → Create Task → <em>Run whether user is logged on or not</em>, trigger <em>At startup</em>, action <code>python.exe</code> with argument <code>bot.py</code> and "Start in" set to the bot's folder. Set <code>LUMORA_BOT_TOKEN</code> and <code>LUMORAD</code> under <em>System Properties → Environment Variables</em> for the account that runs the bot.</p>
 <p>To run it as a Windows service, use a service wrapper such as NSSM:</p></div>
@@ -404,13 +404,13 @@ nssm start HoaMaiBot</code></pre>
 </section>
 <section class="doc-sec" id="operations"><h2><span class="l-vi">Cập nhật, sao lưu, theo dõi</span><span class="l-en" lang="en">Updates, backups, monitoring</span></h2>
 <div class="l-vi"><ul>
-<li><strong>Cập nhật SDK:</strong> cài lại gói mới (<code>pip install -U …whl</code>, <code>npm install …tgz</code>) rồi khởi động lại bot. Mã bot viết cho bản 1.0 vẫn chạy với 1.1. Xem <a href="https://getlumora.pages.dev/developers/reference/#changelog">nhật ký thay đổi</a>.</li>
+<li><strong>Cập nhật SDK:</strong> cài lại gói mới (<code>pip install -U lumora-bot</code>, <code>npm install lumora-bot@latest</code>) rồi khởi động lại bot. Mã bot viết cho bản 1.0 vẫn chạy với 1.1. Xem <a href="https://getlumora.pages.dev/developers/reference/#changelog">nhật ký thay đổi</a>.</li>
 <li><strong>Cập nhật Lumora Bot Runner:</strong> dừng bot, thay tệp, chạy lại. Dữ liệu được giữ nguyên.</li>
 <li><strong>Sao lưu:</strong> dừng bot (hoặc chấp nhận bản sao "đang chạy") rồi sao chép cả thư mục dữ liệu. Bot tạo bằng token có thể chạy lại từ token, nhưng lịch sử và <code>bot-storage.json</code> chỉ có trong thư mục.</li>
 <li><strong>Theo dõi:</strong> đặt <code>LUMORA_BOT_LOG_FORMAT=json</code> và gom log bằng công cụ bạn quen dùng. Các sự kiện đáng cảnh báo: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Log của Lumora Bot Runner ở <code>runner.log</code> trong thư mục dữ liệu (tự xoay vòng ở 10 MB).</li>
 </ul></div>
 <div class="l-en" lang="en"><ul>
-<li><strong>Updating the SDK:</strong> install the new package (<code>pip install -U …whl</code>, <code>npm install …tgz</code>) and restart the bot. Bots written for 1.0 run unchanged on 1.1. See the <a href="https://getlumora.pages.dev/developers/reference/#changelog">changelog</a>.</li>
+<li><strong>Updating the SDK:</strong> install the new package (<code>pip install -U lumora-bot</code>, <code>npm install lumora-bot@latest</code>) and restart the bot. Bots written for 1.0 run unchanged on 1.1. See the <a href="https://getlumora.pages.dev/developers/reference/#changelog">changelog</a>.</li>
 <li><strong>Updating Lumora Bot Runner:</strong> stop the bot, replace the file, start again. Data is kept.</li>
 <li><strong>Backups:</strong> stop the bot (or accept a "live" copy) and copy the whole data folder. A token bot can be started again from its token, but its history and <code>bot-storage.json</code> only live in the folder.</li>
 <li><strong>Monitoring:</strong> set <code>LUMORA_BOT_LOG_FORMAT=json</code> and collect the logs with the tool you already use. Events worth an alert: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Lumora Bot Runner's own log is <code>runner.log</code> in the data folder (rotated at 10 MB).</li>

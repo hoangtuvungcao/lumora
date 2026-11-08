@@ -48,15 +48,15 @@ Chọn một cách. SDK chỉ là một tệp, không cần thư viện nào kh�
 Pick one. The SDK is a single file with no dependencies.
 <!-- all -->
 ```bash
-# Python
-pip install https://getlumora.pages.dev/developers/packages/lumora_bot-1.1.0-py3-none-any.whl
-# JavaScript (Node.js)
-npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz
+# Python (PyPI)
+pip install lumora-bot
+# JavaScript (Node.js, npm)
+npm install lumora-bot
 ```
 <!-- vi -->
-Hoặc tải thẳng [lumora_bot.py](https://getlumora.pages.dev/developers/sdk/python/lumora_bot.py) / [lumora-bot.mjs](https://getlumora.pages.dev/developers/sdk/js/lumora-bot.mjs) và đặt cạnh tệp bot của bạn.
+Hoặc cài từ tệp gói ([.whl](https://getlumora.pages.dev/developers/packages/lumora_bot-1.1.0-py3-none-any.whl) / [.tgz](https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz)), hoặc tải thẳng [lumora_bot.py](https://getlumora.pages.dev/developers/sdk/python/lumora_bot.py) / [lumora-bot.mjs](https://getlumora.pages.dev/developers/sdk/js/lumora-bot.mjs) và đặt cạnh tệp bot của bạn.
 <!-- en -->
-Or download [lumora_bot.py](https://getlumora.pages.dev/developers/sdk/python/lumora_bot.py) / [lumora-bot.mjs](https://getlumora.pages.dev/developers/sdk/js/lumora-bot.mjs) and put it next to your bot file.
+Or install from the package file ([.whl](https://getlumora.pages.dev/developers/packages/lumora_bot-1.1.0-py3-none-any.whl) / [.tgz](https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz)), or download [lumora_bot.py](https://getlumora.pages.dev/developers/sdk/python/lumora_bot.py) / [lumora-bot.mjs](https://getlumora.pages.dev/developers/sdk/js/lumora-bot.mjs) and put it next to your bot file.
 
 <!-- section: code -->
 ## 3. Viết bot | 3. Write the bot

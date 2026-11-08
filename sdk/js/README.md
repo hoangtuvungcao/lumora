@@ -5,8 +5,8 @@ run by your code through **Lumora Bot Runner** (`lumorad`): users add it by its 
 messages are end-to-end encrypted, and there is no server to rent.
 
 ```bash
-npm install ./sdk/js                          # from a checkout of the Lumora repository
-npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz
+npm install lumora-bot
+npm install https://getlumora.pages.dev/developers/packages/lumora-bot-1.1.0.tgz   # or the file directly
 ```
 
 One ES module with no dependencies (`lumora-bot.mjs`, Node.js 18+) plus TypeScript types (`lumora-bot.d.ts`).

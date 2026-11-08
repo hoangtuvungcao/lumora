@@ -641,11 +641,11 @@ await bot.run();'''
       </div>
 
       <h2 class="sub-h" id="sdk">{bi("Tải SDK", "Download the SDK")} <span class="ver-pill">v{version}</span></h2>
-      <p class="sub-p">{bi("Mã nguồn thuần, không cần thư viện nào khác. Cài bằng gói hoặc chép một tệp vào cạnh bot của bạn.",
-                           "Plain source, no other libraries needed. Install the package or copy one file next to your bot.")}</p>
+      <p class="sub-p">{bi("Mã nguồn thuần, không cần thư viện nào khác. Cài từ PyPI / npm, từ tệp gói bên dưới, hoặc chép một tệp vào cạnh bot của bạn.",
+                           "Plain source, no other libraries needed. Install from PyPI / npm, from the package files below, or copy one file next to your bot.")}</p>
       <div class="sdk-grid">{dl_html}</div>
-      {code(chr(10).join([f"pip install https://getlumora.pages.dev/developers/packages/lumora_bot-{version}-py3-none-any.whl",
-                          f"npm install https://getlumora.pages.dev/developers/packages/lumora-bot-{version}.tgz"]), "bash")}
+      {code(chr(10).join(["pip install lumora-bot      # PyPI",
+                          "npm install lumora-bot      # npm"]), "bash")}
 
       <div class="glass api-cta">
         <div><h2>{bi("Cần nhiều hơn?", "Need more?")}</h2><p class="sub-p">{bi("bot.call(cmd, …) chạy được mọi lệnh trong tài liệu JSON API.", "bot.call(cmd, …) runs any command of the JSON API.")}</p></div>
