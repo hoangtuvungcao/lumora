@@ -1,7 +1,7 @@
 // Animated emoji (Noto Animated Emoji, (c) Google, CC BY 4.0).
 //
-// ~120 popular emoji ship as gzipped Lottie in assets/emoji_anim/ (see
-// tool/fetch_animated_emoji.py). Nothing is fetched at runtime and nothing is
+// Every emoji Noto animates (~880, skin tones included, ~10 MB) ships as gzipped
+// Lottie in assets/emoji_anim/ (see tool/fetch_animated_emoji.py --all). Nothing is fetched at runtime and nothing is
 // sent over the network: both sides of a chat render the animation from their
 // own bundled copy, keyed by the emoji's codepoints.
 //

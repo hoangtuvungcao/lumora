@@ -8,7 +8,8 @@ Settings > About > Open-source licenses.
 This runs at development time only. The app never fetches anything at runtime: both sides
 of a chat render the animation from their own bundled copy, keyed by the emoji codepoints.
 
-Usage: python3 tool/fetch_animated_emoji.py [--cache DIR]
+Usage: python3 tool/fetch_animated_emoji.py --api api.json [--all] [--cache DIR]
+(--all: every emoji Noto animates, not only the curated list; ~880, about 10 MB)
 Writes app/assets/emoji_anim/<key>.json.gz and lib/ui/chats/animated_emoji_set.dart, where
 <key> is the lowercase hex codepoints without U+FE0F, joined by '_'.
 """
@@ -17,6 +18,7 @@ import gzip
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 # ~120 most-used emoji in chats (faces, hearts, hands, party, Tết, everyday) that exist in
@@ -56,6 +58,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--cache', default=None, help='directory with downloaded lottie.json files')
     ap.add_argument('--api', required=True, help='path to the site\'s data/api.json (list of available emoji)')
+    ap.add_argument('--all', action='store_true', help='every animated emoji, not only the curated list')
     a = ap.parse_args()
     here = os.path.dirname(os.path.abspath(__file__))
     app = os.path.dirname(here)
@@ -63,7 +66,10 @@ def main():
     os.makedirs(out, exist_ok=True)
     avail = {x['codepoint'].replace('_fe0f', ''): x['codepoint'] for x in json.load(open(a.api))['icons']}
     seen, keys, total = set(), [], 0
-    for e in CURATED:
+    wanted = list(CURATED)
+    if a.all:
+        wanted += [''.join(chr(int(h, 16)) for h in cp.split('_')) for cp in avail.values()]
+    for e in wanted:
         k = key_of(e)
         if k in seen:
             continue
@@ -76,8 +82,12 @@ def main():
         if cached and os.path.exists(cached):
             raw = open(cached, 'rb').read()
         else:
-            with urllib.request.urlopen(URL.format(avail[k]), timeout=30) as r:
-                raw = r.read()
+            try:
+                with urllib.request.urlopen(URL.format(avail[k]), timeout=30) as r:
+                    raw = r.read()
+            except urllib.error.HTTPError as e:
+                print('skipped (%s):' % e.code, e, k, file=sys.stderr)
+                continue
             if cached:
                 os.makedirs(a.cache, exist_ok=True)
                 open(cached, 'wb').write(raw)

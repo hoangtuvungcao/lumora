@@ -257,12 +257,13 @@ void main() {
   });
 
   group('animated emoji', () {
-    test('curated set is bundled', () {
-      expect(kAnimatedEmojiKeys.length, inInclusiveRange(80, 130));
+    test('the full Noto animated set is bundled', () {
+      expect(kAnimatedEmojiKeys.length, inInclusiveRange(850, 950));
       for (final e in ['😂', '❤️', '👍', '🎉', '🔥', '😭', '🥳', '🙏', '🎆', '🐉']) {
         expect(AnimatedEmojiLibrary.has(e), isTrue, reason: e);
       }
-      expect(AnimatedEmojiLibrary.has('👍🏽'), isFalse); // toned: static glyph
+      expect(AnimatedEmojiLibrary.has('👍🏽'), isTrue); // skin tones are animated too
+      expect(AnimatedEmojiLibrary.has('©️'), isFalse); // not in the animated set: static glyph
     });
 
     testWidgets('loads, loops while visible, caps concurrency; frame cost', (t) async {
