@@ -117,6 +117,29 @@ void main() {
       expect(n.single['body'], 'hello');
     });
 
+    test('a group invitation is notified (who invited me, to which group)', () async {
+      api.ctrl.add({'event': 'group_invite', 'gid': 'g1', 'name': 'Team Hè', 'by_name': 'Alice', 'kind': 0});
+      api.ctrl.add({'event': 'group_invite', 'gid': 'c1', 'name': 'Cộng đồng ABC', 'by_name': '', 'kind': 1});
+      await _settle();
+      final n = notifications();
+      expect(n, hasLength(2));
+      expect(n[0]['kind'], 'friend');
+      expect(n[0]['key'], 'ginvite:g1');
+      expect(n[0]['title'], 'Lời mời vào nhóm');
+      expect(n[0]['body'], 'Alice mời bạn vào Team Hè');
+      expect(n[1]['title'], 'Lời mời vào cộng đồng');
+      expect(n[1]['body'], 'Cộng đồng ABC');
+    });
+
+    test('hidden content: a group invitation names nobody', () async {
+      AndroidBridge.hideContent = true;
+      api.ctrl.add({'event': 'group_invite', 'gid': 'g1', 'name': 'Team Hè', 'by_name': 'Alice', 'kind': 0});
+      await _settle();
+      final n = notifications().single;
+      expect('${n['title']} ${n['body']}', isNot(contains('Alice')));
+      expect('${n['title']} ${n['body']}', isNot(contains('Team Hè')));
+    });
+
     test('calls from a muted chat still ring', () async {
       AndroidBridge.isMuted = (_) => true;
       api.ctrl.add({'event': 'call', 'state': 'incoming', 'call_id': 'c1', 'conv': 'd:alice', 'from': 'alice'});

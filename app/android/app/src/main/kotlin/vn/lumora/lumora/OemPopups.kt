@@ -26,6 +26,8 @@ object OemPopups {
     private const val OP_BACKGROUND_START_ACTIVITY = 10021
     /** MIUI's "show on lock screen" app-op (an incoming call over the lock screen). */
     private const val OP_SHOW_WHEN_LOCKED = 10020
+    /** MIUI's "autostart" app-op (Security › Autostart). */
+    private const val OP_AUTO_START = 10008
 
     fun isXiaomi(): Boolean {
         val brand = (Build.MANUFACTURER + " " + Build.BRAND).lowercase()
@@ -56,6 +58,18 @@ object OemPopups {
         "fullScreen" to fullScreenAllowed(ctx),
         "xiaomi" to isXiaomi(),
         "popups" to (!isXiaomi() || Settings.canDrawOverlays(ctx) && miuiOp(ctx, OP_BACKGROUND_START_ACTIVITY) && miuiOp(ctx, OP_SHOW_WHEN_LOCKED)),
+    )
+
+    /**
+     * Each switch on its own, so the sheet can tick what is already on and name what is
+     * still off (Xiaomi only; elsewhere empty): `autostart`, `overlay` (display over other
+     * apps), `bgPopups` (pop-ups while running in the background), `lockScreen`.
+     */
+    fun details(ctx: Context): Map<String, Boolean> = if (!isXiaomi()) emptyMap() else mapOf(
+        "autostart" to miuiOp(ctx, OP_AUTO_START),
+        "overlay" to Settings.canDrawOverlays(ctx),
+        "bgPopups" to miuiOp(ctx, OP_BACKGROUND_START_ACTIVITY),
+        "lockScreen" to miuiOp(ctx, OP_SHOW_WHEN_LOCKED),
     )
 
     /** Android 14+: Lumora's own "full-screen notifications" switch, one tap away. */

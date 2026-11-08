@@ -382,6 +382,7 @@ open class MainActivity : FlutterActivity() {
                 "bubblesBlocked" -> result.success(OemPopups.bubblesBlocked(this))
                 "inBubble" -> result.success(current()?.isBubbleWindow == true)
                 "status" -> result.success(OemPopups.status(this))
+                "details" -> result.success(OemPopups.details(this))
                 "open" -> { OemPopups.open(this); result.success(null) }
                 "openFullScreen" -> { OemPopups.openFullScreen(this); result.success(null) }
                 else -> result.notImplemented()

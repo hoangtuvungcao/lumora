@@ -1,3 +1,4 @@
+import '../groups/group_invites_ui.dart' show showGroupInvites;
 import 'package:flutter/material.dart';
 import '../widgets/app_icons.dart';
 import 'package:provider/provider.dart';
@@ -99,6 +100,7 @@ class _NoticeTile extends StatelessWidget {
     final (icon, color, label) = switch (n.kind) {
       NoticeKind.mention => (AppIcons.mention, LC.warning, s('notice_mention', {'name': n.title})),
       NoticeKind.friendRequest => (AppIcons.addFriend, LC.primary, s('notice_friend', {'name': n.title})),
+      NoticeKind.groupInvite => (AppIcons.people, LC.primary, n.body.isEmpty ? s('notice_group_invite_plain', {'group': n.title}) : s('notice_group_invite', {'name': n.body, 'group': n.title})),
       NoticeKind.missedCall => (AppIcons.callMissed, LC.danger, s('notice_missed', {'name': n.title})),
       NoticeKind.file => (AppIcons.file, LC.accent, s('notice_file', {'name': n.title})),
       NoticeKind.remote => (AppIcons.screenShare, LC.warning, s('notice_remote', {'name': n.title})),
@@ -129,6 +131,10 @@ class _NoticeTile extends StatelessWidget {
           if (!isDesktop(context)) navigator.push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: conv)));
         } else if (n.kind == NoticeKind.friendRequest) {
           nav.go(Section.friends);
+        } else if (n.kind == NoticeKind.groupInvite) {
+          nav.go(Section.chats);
+          final root = navigator.context;
+          if (root.mounted) showGroupInvites(root);
         } else if (n.kind == NoticeKind.remote) {
           nav.go(Section.remote);
         }

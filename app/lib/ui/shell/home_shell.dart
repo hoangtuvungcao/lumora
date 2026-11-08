@@ -16,6 +16,7 @@ import '../chats/chat_view.dart';
 import '../files/files_screen.dart';
 import '../friends/friends_screen.dart';
 import '../groups/invite.dart';
+import '../../state/group_invites.dart';
 import '../groups/server_view.dart';
 import '../network/network_screen.dart';
 import '../remote/remote_home.dart';
@@ -188,7 +189,8 @@ class _Rail extends StatelessWidget {
     final nav = context.watch<NavStore>();
     // locked chats never count (rebuild when the locked list changes)
     context.select<Settings, List<String>>((x) => x.lockedChats);
-    final unread = context.select<ChatStore, int>((c) => c.totalUnread);
+    // unread messages + group invitations waiting for an answer
+    final unread = context.select<ChatStore, int>((c) => c.totalUnread) + context.select<GroupInvitesStore, int>((g) => g.invites.length);
     final pending = context.select<ContactsStore, int>((c) => c.pendingCount);
     final spaces = context.select<SpacesStore, List<Space>>((sp) => sp.spaces);
     final activeFiles = context.select<FilesStore, int>((f) => f.activeCount);
@@ -460,7 +462,8 @@ class _MobileShellState extends State<_MobileShell> {
     final s = S.of(context);
     // locked chats never count (rebuild when the locked list changes)
     context.select<Settings, List<String>>((x) => x.lockedChats);
-    final unread = context.select<ChatStore, int>((c) => c.totalUnread);
+    // unread messages + group invitations waiting for an answer
+    final unread = context.select<ChatStore, int>((c) => c.totalUnread) + context.select<GroupInvitesStore, int>((g) => g.invites.length);
     final pending = context.select<ContactsStore, int>((c) => c.pendingCount);
     final pages = [
       ChatListPane(

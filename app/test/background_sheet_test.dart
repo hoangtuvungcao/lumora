@@ -8,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lumora/platform/android_bridge.dart';
 import 'package:lumora/state/settings.dart';
@@ -61,6 +62,50 @@ void main() {
         ..parent.createSync(recursive: true)
         ..writeAsBytesSync(png!.buffer.asUint8List());
     });
+  });
+
+  testWidgets('Xiaomi, live: autostart ticks once on; the pop-ups step names what is still off', (t) async {
+    t.view.physicalSize = const Size(1080, 2600);
+    t.view.devicePixelRatio = 2.5;
+    addTearDown(t.view.reset);
+    final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    var details = {'autostart': false, 'overlay': true, 'bgPopups': false, 'lockScreen': false};
+    m.setMockMethodCallHandler(const MethodChannel('lumora/service'), (c) async => c.method == 'background' ? {'ignoring': true, 'oem': 'xiaomi', 'autostart': true} : null);
+    m.setMockMethodCallHandler(const MethodChannel('lumora/popups'), (c) async => switch (c.method) {
+          'status' => {'fullScreen': true, 'xiaomi': true, 'popups': details.values.skip(1).every((v) => v)},
+          'details' => details,
+          _ => null,
+        });
+    AndroidBridge.debugIsAndroid = true;
+    addTearDown(() {
+      AndroidBridge.debugIsAndroid = null;
+      m.setMockMethodCallHandler(const MethodChannel('lumora/service'), null);
+      m.setMockMethodCallHandler(const MethodChannel('lumora/popups'), null);
+    });
+    // to the system settings and back (the lifecycle steps Flutter expects)
+    void awayAndBack() {
+      for (final st in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused, AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+        t.binding.handleAppLifecycleStateChanged(st);
+      }
+    }
+
+    await t.pumpWidget(_wrap(Settings()..locale = 'vi', const BackgroundSheet()));
+    await t.pumpAndSettle();
+    expect(find.text('Mở cài đặt Tự khởi chạy'), findsOneWidget);
+    expect(find.textContaining('Còn tắt: "Hiển thị cửa sổ bật lên khi chạy trong nền", "Hiển thị trên màn hình khoá"'), findsOneWidget);
+    // back from the settings with autostart and one more switch on
+    details = {'autostart': true, 'overlay': true, 'bgPopups': true, 'lockScreen': false};
+    awayAndBack();
+    await t.pumpAndSettle();
+    expect(find.text('Mở cài đặt Tự khởi chạy'), findsNothing);
+    expect(find.textContaining('Lumora tự chạy lại'), findsOneWidget);
+    expect(find.textContaining('Còn tắt: "Hiển thị trên màn hình khoá"'), findsOneWidget);
+    // the last one: ticked
+    details = {'autostart': true, 'overlay': true, 'bgPopups': true, 'lockScreen': true};
+    awayAndBack();
+    await t.pumpAndSettle();
+    expect(find.textContaining('Bong bóng chat và cuộc gọi trên màn hình khoá đã sẵn sàng'), findsOneWidget);
+    expect(find.text('Xong'), findsOneWidget);
   });
 
   testWidgets('allowed, no maker screen: done (en)', (t) async {

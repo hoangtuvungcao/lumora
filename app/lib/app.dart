@@ -19,6 +19,7 @@ import 'state/data_rescue.dart';
 import 'state/devices_store.dart';
 import 'state/group_calls.dart';
 import 'state/group_invites.dart';
+import 'ui/shell/invite_banner.dart';
 import 'state/moderation.dart';
 import 'state/settings.dart';
 import 'state/reminder_snooze.dart';
@@ -919,6 +920,8 @@ class LumoraApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: sv.camera),
         ChangeNotifierProvider.value(value: sv.devices),
         ChangeNotifierProvider.value(value: sv.moderation),
+        // group invitations waiting for me: the Chats tab's badge
+        ChangeNotifierProvider.value(value: GroupInvitesStore.of(sv.api)),
       ],
       child: Builder(
         builder: (context) {
@@ -963,6 +966,7 @@ class LumoraApp extends StatelessWidget {
                               if (overlays) const RemoteLayer(),
                               if (overlays) const CallLayer(),
                               if (overlays) const ReminderBannerLayer(),
+                              if (overlays) const InviteBannerLayer(),
                               if (overlays) const _LoadProblemBanner(),
                             ],
                           ),

@@ -2517,7 +2517,7 @@ class StoryStore extends ChangeNotifier {
 
 // ---------------------------------------------------------- notifications
 
-enum NoticeKind { mention, friendRequest, missedCall, file, remote, system, reminder, scheduledFailed, storageLow, report }
+enum NoticeKind { mention, friendRequest, groupInvite, missedCall, file, remote, system, reminder, scheduledFailed, storageLow, report }
 
 class Notice {
   Notice({required this.kind, required this.title, this.body = '', this.conv, this.peer, this.ref, int? ts})
@@ -2980,6 +2980,9 @@ class EventHub {
       case 'friend_request':
         contacts.onFriendRequest(d);
         notices.add(Notice(kind: NoticeKind.friendRequest, title: d['name']?.toString() ?? '', body: d['note']?.toString() ?? '', peer: d['peer']?.toString()));
+      case 'group_invite':
+        // (the list itself: GroupInvitesStore; this is the bell and the toast)
+        notices.add(Notice(kind: NoticeKind.groupInvite, title: d['name']?.toString() ?? '', body: d['by_name']?.toString() ?? '', ref: d['gid']?.toString()));
       case 'mention':
         final conv = d['conv']?.toString();
         final c = conv == null ? null : chat.convs[conv];

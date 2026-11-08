@@ -66,6 +66,10 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
   ({bool fullScreen, bool xiaomi, bool popups}) _perms = (fullScreen: true, xiaomi: false, popups: true);
   bool _fullScreenStep = false, _popupsStep = false;
 
+  /// Xiaomi: each switch (autostart, over other apps, pop-ups in the background, lock
+  /// screen) — empty when it can't be read.
+  Map<String, bool> _details = const {};
+
   @override
   void initState() {
     super.initState();
@@ -92,15 +96,18 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
     if (widget.status != null) return;
     final s = await AndroidBridge.backgroundStatus();
     final p = await AndroidBridge.permissionStatus();
+    final d = await AndroidBridge.permissionDetails();
     if (!mounted) return;
+    final autostartNow = (_details['autostart'] == false) && (d['autostart'] == true);
     final fixed = (!_perms.popups && p.popups) || (!_perms.fullScreen && p.fullScreen);
     setState(() {
       _status = s;
       _perms = p;
+      _details = d;
       _fullScreenStep |= !p.fullScreen;
       _popupsStep |= !p.popups;
     });
-    if (fixed) toast(context, S.read(context)('bg_perm_done'));
+    if (fixed || autostartNow) toast(context, S.read(context)('bg_perm_done'));
   }
 
   @override
@@ -134,9 +141,11 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
           if (st?.autostart ?? false) ...[
             const SizedBox(height: 12),
             _Step(
+              // Xiaomi tells (MIUI app-op): ticked once on; other makers can't be read
+              done: _details['autostart'] == true,
               title: s('bg_autostart'),
-              body: s(st!.oem == 'xiaomi' ? 'bg_autostart_xiaomi' : 'bg_autostart_hint'),
-              action: s('bg_autostart_open'),
+              body: _details['autostart'] == true ? s('bg_autostart_ok') : s(st!.oem == 'xiaomi' ? 'bg_autostart_xiaomi' : 'bg_autostart_hint'),
+              action: _details['autostart'] == true ? null : s('bg_autostart_open'),
               onAction: AndroidBridge.openAutostart,
             ),
           ],
@@ -155,7 +164,7 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
             _Step(
               done: _perms.popups,
               title: s('bg_popups'),
-              body: _perms.popups ? s('bg_popups_ok') : s('bg_popups_hint'),
+              body: _perms.popups ? s('bg_popups_ok') : _popupsHint(s),
               action: _perms.popups ? null : s('bg_perm_allow'),
               onAction: AndroidBridge.openPopupPermissions,
             ),
@@ -168,6 +177,22 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
         ]),
       ),
     );
+  }
+}
+
+extension on _BackgroundSheetState {
+  /// What is still off, by name (the three switches are on one page of MIUI's settings,
+  /// turning on only one of them used to leave this step looking untouched).
+  String _popupsHint(S s) {
+    final d = _details;
+    if (d.isEmpty) return s('bg_popups_hint');
+    final missing = [
+      if (d['bgPopups'] == false) s('bg_sw_bg_popups'),
+      if (d['overlay'] == false) s('bg_sw_overlay'),
+      if (d['lockScreen'] == false) s('bg_sw_lock_screen'),
+    ];
+    if (missing.isEmpty) return s('bg_popups_hint');
+    return s('bg_popups_missing', {'list': missing.map((m) => '"$m"').join(', ')});
   }
 }
 

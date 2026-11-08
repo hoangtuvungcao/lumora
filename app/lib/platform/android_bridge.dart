@@ -448,6 +448,17 @@ class AndroidBridge with WidgetsBindingObserver {
     }
   }
 
+  /// Xiaomi: each switch on its own (`autostart`, `overlay`, `bgPopups`, `lockScreen`);
+  /// empty elsewhere, or when it can't be read.
+  static Future<Map<String, bool>> permissionDetails() async {
+    if (!isAndroid) return const {};
+    try {
+      return await _popups.invokeMapMethod<String, bool>('details') ?? const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Lumora's "full-screen notifications" switch (Android 14+: calls over the lock screen).
   static Future<void> openFullScreenPermission() async {
     if (!isAndroid) return;
@@ -649,6 +660,14 @@ class AndroidBridge with WidgetsBindingObserver {
         final who = ev['name']?.toString() ?? '';
         final note = ev['note']?.toString() ?? '';
         body = note.isEmpty ? who : '$who: $note';
+      case 'group_invite':
+        // an invitation waiting for my answer (shown in the chat list)
+        kind = 'friend';
+        key = 'ginvite:${ev['gid']}';
+        final group = ev['name']?.toString() ?? '';
+        final by = ev['by_name']?.toString() ?? '';
+        title = s(ev['kind'] == 1 ? 'nf_community_invite_title' : 'nf_group_invite_title');
+        body = by.isEmpty ? group : s('nf_group_invite_body', {'name': by, 'group': group});
       default:
         return;
     }
