@@ -473,7 +473,11 @@ class FileCard extends StatelessWidget {
         viewable
             ? btn(AppIcons.show, s('fpv_view'), () => openFileViewer(context, path: f.path, name: ref.name, mime: ref.mime))
             : btn(AppIcons.openExternal, s('open'), () => openFile(context, f.path)),
-        btn(AppIcons.folder, s('open_folder'), () => openFile(context, f.path, folder: true)),
+        // phones: the app's own folder can't be shown in a file manager — save a copy to
+        // the public Download/Lumora folder instead
+        Platform.isAndroid || Platform.isIOS
+            ? btn(AppIcons.download, s('save'), () => saveCopy(context, f))
+            : btn(AppIcons.folder, s('open_folder'), () => openFile(context, f.path, folder: true)),
       ],
       if (f?.state == FileState.failed) btn(AppIcons.refresh, s('retry'), () => retryFile(context, message, f!), c: LC.warning),
     ];

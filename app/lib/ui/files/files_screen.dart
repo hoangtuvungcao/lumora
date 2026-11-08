@@ -9,7 +9,7 @@ import '../../core/api.dart';
 import '../../l10n/strings.dart';
 import '../../state/stores.dart';
 import '../chats/message_bubble.dart';
-import '../chats/attachments.dart' show transferDetail;
+import '../chats/attachments.dart' show saveCopy, transferDetail;
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../../state/app_lock.dart';
@@ -142,7 +142,10 @@ class _TransferTile extends StatelessWidget {
               onPressed: () => store.togglePause(f.id),
             ),
           if (f.active) ToolButton(icon: AppIcons.close, tooltip: s('cancel'), onPressed: () => store.cancel(f.id)),
-          if (f.state == FileState.done) ToolButton(icon: AppIcons.folder, tooltip: s('open_folder'), onPressed: () => _openFolder(context)),
+          if (f.state == FileState.done)
+            Platform.isAndroid || Platform.isIOS
+                ? ToolButton(icon: AppIcons.download, tooltip: s('save'), onPressed: () => saveCopy(context, f))
+                : ToolButton(icon: AppIcons.folder, tooltip: s('open_folder'), onPressed: () => _openFolder(context)),
         ]),
         if (f.state == FileState.transferring || f.state == FileState.paused) ...[
           const SizedBox(height: 10),
