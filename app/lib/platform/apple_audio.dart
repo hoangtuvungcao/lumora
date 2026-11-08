@@ -23,6 +23,15 @@ class AppleAudio {
   AppleAudio._();
 
   static const _channel = MethodChannel('vn.lumora/audio_session');
+
+  /// Android: the sound moved to / away from the loudspeaker by itself (a headset
+  /// plugged in, Bluetooth, the system) — the speaker button follows.
+  static void listen(void Function(bool speaker) onSpeaker) {
+    if (kIsWeb || !Platform.isAndroid) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'speaker' && call.arguments is bool) onSpeaker(call.arguments as bool);
+    });
+  }
   static bool _active = false;
 
   static bool get _enabled => !kIsWeb && (Platform.isIOS || Platform.isAndroid);

@@ -1532,7 +1532,14 @@ class FilesStore extends ChangeNotifier {
 // ------------------------------------------------------------------ calls
 
 class CallStore extends ChangeNotifier {
-  CallStore(this.api);
+  CallStore(this.api) {
+    AppleAudio.listen((on) {
+      if (call == null || speaker == on) return;
+      speaker = on;
+      _speakerForCam = false;
+      notifyListeners();
+    });
+  }
   final LumoraApi api;
 
   CallState? call;
@@ -1787,6 +1794,13 @@ class CallStore extends ChangeNotifier {
     _roomPrepared = true;
     notifyListeners();
     return micOk;
+  }
+
+  /// Whether `account` (any of its devices in this call) has turned its camera off.
+  bool accountCamOff(String account) {
+    final c = call;
+    if (c == null) return false;
+    return peerMedia.entries.any((e) => (e.key == account || c.accountOf(e.key) == account) && e.value.cam == false);
   }
 
   /// Whether `account` (or the device it is in the room with) has its microphone

@@ -421,7 +421,8 @@ class CallScreen extends StatelessWidget {
       final remoteStream = call.streamOf(call.peer);
       stage = Stack(children: [
         Positioned.fill(
-          child: call.video && active && remoteStream != null
+          // (their camera off: their avatar, not the last frame frozen)
+          child: call.video && active && remoteStream != null && !store.accountCamOff(call.peer)
               ? VideoView(stream: remoteStream, placeholder: _AvatarStage(name: title, seed: call.peer, active: active))
               : _AvatarStage(name: title, seed: call.peer, active: active),
         ),

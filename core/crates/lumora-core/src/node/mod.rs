@@ -1168,7 +1168,11 @@ impl Node {
         // NAT every new destination takes the next port, so when both sides do this the
         // k-th probe of each (a+k → b+k, b+k → a+k) mirror each other and open a hole.
         let predicted = predicted_ports(their, matches!(mine.nat, NatKind::HardSequential(_)));
-        let rest = net::order_candidates(their.addrs.iter().copied().filter(|a| !predicted.contains(a)).collect());
+        // no IPv6 route here (IPv4-only Wi-Fi): their global IPv6 addresses can't be reached
+        let v6 = net::discovery::has_v6_route();
+        let rest = net::order_candidates(
+            their.addrs.iter().copied().filter(|a| !predicted.contains(a) && (v6 || !(a.is_ipv6() && crate::util::is_global_ip(&a.ip())))).collect(),
+        );
         let lan_ips: Vec<SocketAddr> = rest.iter().copied().filter(|a| !crate::util::is_global_ip(&a.ip())).collect();
         if !predicted.is_empty() {
             self.net.punch(&predicted, sid).await;

@@ -16,12 +16,27 @@ object CallAudio {
     private var active = false
     private var speaker = false
 
+    /** The route changed (the button, a headset plugged in, Bluetooth…): loudspeaker or not. */
+    var onSpeakerChanged: ((Boolean) -> Unit)? = null
+    private var listener: Any? = null
+
     private fun am(ctx: Context) = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     fun start(ctx: Context, video: Boolean) {
         val am = am(ctx)
         active = true
         am.mode = AudioManager.MODE_IN_COMMUNICATION
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && listener == null) {
+            val l = AudioManager.OnCommunicationDeviceChangedListener { dev ->
+                val on = dev?.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                if (active && on != speaker) {
+                    speaker = on
+                    onSpeakerChanged?.invoke(on)
+                }
+            }
+            am.addOnCommunicationDeviceChangedListener(ctx.mainExecutor, l)
+            listener = l
+        }
         route(ctx, video && !hasHeadset(am))
     }
 
@@ -37,6 +52,8 @@ object CallAudio {
         speaker = false
         val am = am(ctx)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            (listener as? AudioManager.OnCommunicationDeviceChangedListener)?.let { am.removeOnCommunicationDeviceChangedListener(it) }
+            listener = null
             am.clearCommunicationDevice()
         } else {
             @Suppress("DEPRECATION")

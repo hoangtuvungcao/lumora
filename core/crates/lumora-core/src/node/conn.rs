@@ -1542,6 +1542,8 @@ impl Node {
     /// Active connections (messages in the last 2 min, transfers) are watched closely
     /// (ping after 3 s, dead after 6 s), idle ones loosely (12 s / 16 s; keep-alive 10 s).
     fn spawn_path_watchdog(self: Arc<Self>) {
+        /// A silent direct path carrying a transfer is closed only after this long.
+        const TRANSFER_PATH_GRACE: Duration = Duration::from_secs(20);
         tokio::spawn(async move {
             let mut sd = self.shutdown.subscribe();
             loop {
@@ -1552,8 +1554,8 @@ impl Node {
                 let now = Instant::now();
                 for pc in self.connected_peers() {
                     let rx = pc.conn.stats().udp_rx.datagrams;
-                    let active = now_ms().saturating_sub(pc.active_at.load(std::sync::atomic::Ordering::Relaxed)) < 120_000
-                        || pc.busy.load(std::sync::atomic::Ordering::Relaxed) > 0;
+                    let transferring = pc.busy.load(std::sync::atomic::Ordering::Relaxed) > 0;
+                    let active = now_ms().saturating_sub(pc.active_at.load(std::sync::atomic::Ordering::Relaxed)) < 120_000 || transferring;
                     let (ping_after, dead_after) = if active { (Duration::from_secs(3), Duration::from_secs(6)) } else { (Duration::from_secs(12), Duration::from_secs(16)) };
                     // Tunnelled through a relay that is gone (friend's peer relay dropped, or a
                     // server relay's WebSocket down for more than a grace period — a brief drop
@@ -1572,10 +1574,10 @@ impl Node {
                             }
                         })
                         .unwrap_or(false);
-                    let (ping, dead) = {
+                    let (ping, dead, quiet) = {
                         let mut g = pc.rx_seen.lock();
                         if relay_down {
-                            (false, true)
+                            (false, true, Duration::ZERO)
                         } else if rx != g.0 {
                             *g = (rx, now, None);
                             // alive again long after being marked: not dead after all
@@ -1590,7 +1592,7 @@ impl Node {
                                 g.2 = Some(now);
                             }
                             let dead = quiet >= dead_after && g.2.map(|t| now.duration_since(t) >= Duration::from_millis(2500)).unwrap_or(false);
-                            (ping, dead)
+                            (ping, dead, quiet)
                         }
                     };
                     if ping {
@@ -1603,11 +1605,23 @@ impl Node {
                         pc.conn.close(0u32.into(), b"relay gone");
                         continue;
                     }
+                    // a transfer kept on a silent direct path (below): replaced by now, or
+                    // really gone — close it (the transfer resumes on the new connection)
+                    if transferring && pc.is_suspect() && pc.path != PathKind::Relay && quiet >= TRANSFER_PATH_GRACE {
+                        tracing::info!("path to {:?} still silent after {}s: closing", pc.peer, quiet.as_secs());
+                        pc.conn.close(0u32.into(), b"path dead");
+                        continue;
+                    }
                     if dead && !pc.is_suspect() {
                         tracing::info!("path to {:?} ({:?}) went silent: repairing", pc.peer, pc.path);
                         pc.mark_suspect();
                         if relay_down {
                             pc.conn.close(0u32.into(), b"relay gone");
+                        } else if pc.path != PathKind::Relay && transferring {
+                            // Mid-transfer: mobile data often drops UDP for a few seconds and
+                            // comes back. Make before break: a new connection is dialed now
+                            // (the repair below) and replaces this one; this one is not torn
+                            // down yet, so a path that recovers carries the transfer on.
                         } else if pc.path != PathKind::Relay {
                             // A direct path silent this long is dead for us (NAT rebinding,
                             // network change). Close it now rather than at the idle timeout:

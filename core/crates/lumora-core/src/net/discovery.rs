@@ -409,6 +409,12 @@ fn default_v6_source() -> Option<IpAddr> {
     crate::util::is_global_ip(&ip).then_some(ip)
 }
 
+/// Whether this device can reach the IPv6 internet at all (a default route with a global
+/// source address).
+pub fn has_v6_route() -> bool {
+    default_v6_source().is_some()
+}
+
 /// Drop global IPv6 candidates that aren't on `via` (the default route's interface).
 fn routable_v6_only(addrs: Vec<SocketAddr>, names: &[String], via: Option<&str>) -> Vec<SocketAddr> {
     addrs

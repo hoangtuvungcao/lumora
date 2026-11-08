@@ -1049,14 +1049,22 @@ impl Node {
         let got = active.bytes.load(Ordering::Relaxed);
         if let Err(e) = res {
             let paused = self.store.file_get(&file_id).map(|r| r.state == 5).unwrap_or(false);
-            let st = if paused { 5 } else if e.to_string().contains("cancel") { 4 } else { 5 };
+            let cancelled = e.to_string().contains("cancel");
+            let st = if paused { 5 } else if cancelled { 4 } else { 5 };
             self.store.file_update(&file_id, st, got as i64)?;
             self.emit_file(&file_id);
+            if !paused && !cancelled {
+                self.resume_when_connected(pc.peer, file_id);
+            }
             return Err(e);
         }
         if got != size {
+            let paused = self.store.file_get(&file_id).map(|r| r.state == 5).unwrap_or(false);
             self.store.file_update(&file_id, 5, got as i64)?;
             self.emit_file(&file_id);
+            if !paused {
+                self.resume_when_connected(pc.peer, file_id);
+            }
             return Ok(()); // paused/interrupted: resumable
         }
         // (finished by mail meanwhile: node/file_mail.rs)
@@ -1257,6 +1265,27 @@ impl Drop for BusyGuard {
 }
 
 impl Node {
+    /// A download from `peer` broke off (its connection died — mobile data dropping UDP
+    /// for a few seconds): carry on as soon as a connection to it is usable again. The
+    /// replacement connection may already be up (it was dialed while the old one went
+    /// silent), so `resume_transfers` on connect would not see this download yet.
+    pub(super) fn resume_when_connected(self: &Arc<Self>, peer: PeerId, file_id: [u8; 16]) {
+        let me = self.clone();
+        tokio::spawn(async move {
+            for _ in 0..120 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                // paused by the user meanwhile, finished by mail, or already resumed
+                if me.store.file_get(&file_id).is_none_or(|r| r.state != 5) || me.files.active.lock().contains_key(&file_id) {
+                    return;
+                }
+                if me.usable_peer(&peer).is_some() {
+                    let _ = me.accept_file(&file_id, None).await;
+                    return;
+                }
+            }
+        });
+    }
+
     /// Resume interrupted incoming transfers from this peer (called on connect).
     pub(super) fn resume_transfers(self: &Arc<Self>, peer: &PeerId) {
         let Ok(rows) = self.store.files(500) else { return };

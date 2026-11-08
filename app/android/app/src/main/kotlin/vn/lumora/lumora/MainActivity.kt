@@ -363,7 +363,9 @@ open class MainActivity : FlutterActivity() {
 
         // Xiaomi / HyperOS chat bubbles need Lumora's pop-ups allowed (OemPopups)
         // call audio (same channel name and methods as iOS: AppleAudio / CallAudio in Dart)
-        MethodChannel(messenger, "vn.lumora/audio_session").setMethodCallHandler { call, result ->
+        val audioSession = MethodChannel(messenger, "vn.lumora/audio_session")
+        CallAudio.onSpeakerChanged = { on -> audioSession.invokeMethod("speaker", on) }
+        audioSession.setMethodCallHandler { call, result ->
             when (call.method) {
                 "startCall" -> { CallAudio.start(applicationContext, call.argument<Boolean>("video") == true); result.success(CallAudio.isSpeaker()) }
                 "setSpeaker" -> {
