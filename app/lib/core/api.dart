@@ -2378,12 +2378,12 @@ class CallState {
     return null;
   }
 
-  CallState copyWith({CallPhase? phase, List<String>? participants, Map<String, int>? streams, int? startedAt, Set<String>? speaking, int? quality, Map<String, String>? accounts, Map<String, String>? names}) => CallState(
+  CallState copyWith({CallPhase? phase, bool? video, List<String>? participants, Map<String, int>? streams, int? startedAt, Set<String>? speaking, int? quality, Map<String, String>? accounts, Map<String, String>? names}) => CallState(
         callId: callId,
         conv: conv,
         peer: peer,
         phase: phase ?? this.phase,
-        video: video,
+        video: video ?? this.video,
         participants: participants ?? this.participants,
         streams: streams ?? this.streams,
         startedAt: startedAt ?? this.startedAt,

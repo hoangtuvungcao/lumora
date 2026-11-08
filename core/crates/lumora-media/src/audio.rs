@@ -610,7 +610,50 @@ mod device {
         }
     }
 
-    fn build_input<T>(dev: &cpal::Device, cfg: cpal::StreamConfig, mut framer: Framer) -> anyhow::Result<cpal::Stream>
+    /// The stream is gone (the device went away, or the system rerouted the audio — on
+    /// Android every earpiece/speaker/headset switch disconnects AAudio streams): the
+    /// owning thread opens it again.
+    fn on_stream_error(what: &'static str, lost: Arc<AtomicBool>) -> impl FnMut(cpal::Error) + Send + 'static {
+        move |e: cpal::Error| {
+            tracing::warn!("audio {what} error: {e}");
+            if matches!(e.kind(), cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated) {
+                lost.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+
+    /// Owner loop of a stream: keep it until `stop`, reopening it (a few tries) when lost.
+    fn keep_stream(mut stream: cpal::Stream, stop: &AtomicBool, lost: &AtomicBool, what: &str, mut reopen: impl FnMut() -> anyhow::Result<cpal::Stream>) {
+        let mut fails = 0u32;
+        while !stop.load(Ordering::Relaxed) {
+            std::thread::park_timeout(Duration::from_millis(100));
+            if !lost.swap(false, Ordering::Relaxed) || stop.load(Ordering::Relaxed) {
+                continue;
+            }
+            drop(stream);
+            loop {
+                match reopen() {
+                    Ok(s) => {
+                        tracing::info!("audio {what}: reopened after the device changed");
+                        stream = s;
+                        fails = 0;
+                        break;
+                    }
+                    Err(e) => {
+                        fails += 1;
+                        tracing::warn!("audio {what}: reopening failed ({fails}): {e:#}");
+                        if fails >= 20 || stop.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
+                }
+            }
+        }
+        drop(stream);
+    }
+
+    fn build_input<T>(dev: &cpal::Device, cfg: cpal::StreamConfig, mut framer: Framer, lost: Arc<AtomicBool>) -> anyhow::Result<cpal::Stream>
     where
         T: SizedSample + Send + 'static,
         f32: FromSample<T>,
@@ -618,7 +661,7 @@ mod device {
         dev.build_input_stream::<T, _, _>(
             cfg,
             move |data: &[T], _| framer.push(data.iter().map(|&s| f32::from_sample_(s))),
-            |e| tracing::warn!("audio input error: {e}"),
+            on_stream_error("input", lost),
             None,
         )
         .map_err(|e| anyhow!("cannot open microphone stream: {e}"))
@@ -637,7 +680,8 @@ mod device {
             let thread = std::thread::Builder::new()
                 .name("lumora-audio-in".into())
                 .spawn(move || {
-                    let res = (|| -> anyhow::Result<cpal::Stream> {
+                    let lost = Arc::new(AtomicBool::new(false));
+                    let open = || -> anyhow::Result<cpal::Stream> {
                         let host = cpal::default_host();
                         let dev = find_device(&host, id.as_deref(), true)?;
                         let sup = dev.default_input_config().map_err(|e| anyhow!("microphone has no usable format: {e}"))?;
@@ -650,28 +694,26 @@ mod device {
                             resampled: Vec::new(),
                             acc: Vec::with_capacity(FRAME_SAMPLES),
                             gate: NoiseGate::default(),
-                            gate_on: gate2,
-                            tx,
+                            gate_on: gate2.clone(),
+                            tx: tx.clone(),
                         };
+                        let l = lost.clone();
                         let stream = match fmt {
-                            SampleFormat::F32 => build_input::<f32>(&dev, cfg, framer)?,
-                            SampleFormat::I16 => build_input::<i16>(&dev, cfg, framer)?,
-                            SampleFormat::I32 => build_input::<i32>(&dev, cfg, framer)?,
-                            SampleFormat::U16 => build_input::<u16>(&dev, cfg, framer)?,
-                            SampleFormat::U8 => build_input::<u8>(&dev, cfg, framer)?,
-                            SampleFormat::F64 => build_input::<f64>(&dev, cfg, framer)?,
+                            SampleFormat::F32 => build_input::<f32>(&dev, cfg, framer, l)?,
+                            SampleFormat::I16 => build_input::<i16>(&dev, cfg, framer, l)?,
+                            SampleFormat::I32 => build_input::<i32>(&dev, cfg, framer, l)?,
+                            SampleFormat::U16 => build_input::<u16>(&dev, cfg, framer, l)?,
+                            SampleFormat::U8 => build_input::<u8>(&dev, cfg, framer, l)?,
+                            SampleFormat::F64 => build_input::<f64>(&dev, cfg, framer, l)?,
                             other => anyhow::bail!("unsupported microphone sample format {other:?}"),
                         };
                         stream.play().map_err(|e| anyhow!("cannot start microphone: {e}"))?;
                         Ok(stream)
-                    })();
-                    match res {
+                    };
+                    match open() {
                         Ok(stream) => {
                             let _ = ready_tx.send(Ok(()));
-                            while !stop2.load(Ordering::Relaxed) {
-                                std::thread::park_timeout(Duration::from_millis(200));
-                            }
-                            drop(stream);
+                            keep_stream(stream, &stop2, &lost, "input", open);
                         }
                         Err(e) => {
                             let _ = ready_tx.send(Err(e));
@@ -815,7 +857,7 @@ mod device {
         epoch: Instant,
     }
 
-    fn build_output<T>(dev: &cpal::Device, cfg: cpal::StreamConfig, st: Arc<Mutex<PlayState>>) -> anyhow::Result<cpal::Stream>
+    fn build_output<T>(dev: &cpal::Device, cfg: cpal::StreamConfig, st: Arc<Mutex<PlayState>>, lost: Arc<AtomicBool>) -> anyhow::Result<cpal::Stream>
     where
         T: SizedSample + FromSample<f32> + Send + 'static,
     {
@@ -834,7 +876,7 @@ mod device {
                     }
                 }
             },
-            |e| tracing::warn!("audio output error: {e}"),
+            on_stream_error("output", lost),
             None,
         )
         .map_err(|e| anyhow!("cannot open speaker stream: {e}"))
@@ -849,13 +891,23 @@ mod device {
             let thread = std::thread::Builder::new()
                 .name("lumora-audio-out".into())
                 .spawn(move || {
-                    let res = (|| -> anyhow::Result<(cpal::Stream, Arc<Mutex<PlayState>>)> {
+                    let lost = Arc::new(AtomicBool::new(false));
+                    // `reuse`: reopening after a device change keeps the jitter buffer and
+                    // decoder (and the echo canceller's player id); only the rate may change
+                    let open = |reuse: Option<&Arc<Mutex<PlayState>>>| -> anyhow::Result<(cpal::Stream, Arc<Mutex<PlayState>>)> {
                         let host = cpal::default_host();
                         let dev = find_device(&host, id.as_deref(), false)?;
                         let sup = dev.default_output_config().map_err(|e| anyhow!("speaker has no usable format: {e}"))?;
                         let fmt = sup.sample_format();
                         let cfg: cpal::StreamConfig = sup.config();
-                        let st = Arc::new(Mutex::new(PlayState {
+                        let st = if let Some(st) = reuse {
+                            {
+                                let mut s = st.lock();
+                                s.resampler = LinearResampler::new(SAMPLE_RATE, cfg.sample_rate);
+                                s.out.clear();
+                            }
+                            st.clone()
+                        } else { Arc::new(Mutex::new(PlayState {
                             player_id: NEXT_PLAYER.fetch_add(1, Ordering::Relaxed),
                             jb: JitterBuffer::default(),
                             dec: OpusDecoder::new()?,
@@ -864,26 +916,24 @@ mod device {
                             tmp_in: Vec::new(),
                             tmp_out: Vec::new(),
                             volume: 1.0,
-                        }));
+                        })) };
+                        let l = lost.clone();
                         let stream = match fmt {
-                            SampleFormat::F32 => build_output::<f32>(&dev, cfg, st.clone())?,
-                            SampleFormat::I16 => build_output::<i16>(&dev, cfg, st.clone())?,
-                            SampleFormat::I32 => build_output::<i32>(&dev, cfg, st.clone())?,
-                            SampleFormat::U16 => build_output::<u16>(&dev, cfg, st.clone())?,
-                            SampleFormat::U8 => build_output::<u8>(&dev, cfg, st.clone())?,
-                            SampleFormat::F64 => build_output::<f64>(&dev, cfg, st.clone())?,
+                            SampleFormat::F32 => build_output::<f32>(&dev, cfg, st.clone(), l)?,
+                            SampleFormat::I16 => build_output::<i16>(&dev, cfg, st.clone(), l)?,
+                            SampleFormat::I32 => build_output::<i32>(&dev, cfg, st.clone(), l)?,
+                            SampleFormat::U16 => build_output::<u16>(&dev, cfg, st.clone(), l)?,
+                            SampleFormat::U8 => build_output::<u8>(&dev, cfg, st.clone(), l)?,
+                            SampleFormat::F64 => build_output::<f64>(&dev, cfg, st.clone(), l)?,
                             other => anyhow::bail!("unsupported speaker sample format {other:?}"),
                         };
                         stream.play().map_err(|e| anyhow!("cannot start speaker: {e}"))?;
                         Ok((stream, st))
-                    })();
-                    match res {
+                    };
+                    match open(None) {
                         Ok((stream, st)) => {
-                            let _ = ready_tx.send(Ok(st));
-                            while !stop2.load(Ordering::Relaxed) {
-                                std::thread::park_timeout(Duration::from_millis(200));
-                            }
-                            drop(stream);
+                            let _ = ready_tx.send(Ok(st.clone()));
+                            keep_stream(stream, &stop2, &lost, "output", || open(Some(&st)).map(|(s, _)| s));
                         }
                         Err(e) => {
                             let _ = ready_tx.send(Err(e));

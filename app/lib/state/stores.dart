@@ -1540,6 +1540,10 @@ class CallStore extends ChangeNotifier {
   bool cam = true;
   bool screen = false;
   bool speaker = true;
+
+  /// The loudspeaker was turned on because the camera went on (not by the button):
+  /// turning the camera off goes back to the earpiece.
+  bool _speakerForCam = false;
   bool minimized = false;
   bool handRaised = false;
 
@@ -1609,7 +1613,10 @@ class CallStore extends ChangeNotifier {
     if (j['state'] == 'available') return;
     final c = CallState.fromJson(j);
     // a new call starts where the platform puts it: loudspeaker for video, earpiece for voice
-    if (c.callId != call?.callId && !inCall) speaker = c.video;
+    if (c.callId != call?.callId && !inCall) {
+      speaker = c.video;
+      _speakerForCam = false;
+    }
     if (c.phase == CallPhase.incoming) {
       if (call?.callId != c.callId) answeredElsewhere = null;
       // The core sends "ended" when the caller gives up; this is only a
@@ -1664,7 +1671,8 @@ class CallStore extends ChangeNotifier {
         conv: c.conv,
         peer: c.peer,
         phase: c.phase,
-        video: c.video,
+        // a voice call someone turned a camera on in stays a video call
+        video: c.video || (prev != null && prev.callId == c.callId && prev.video),
         participants: c.participants,
         accounts: c.accounts,
         names: c.names,
@@ -1739,7 +1747,8 @@ class CallStore extends ChangeNotifier {
     } else {
       streams[peer] = stream;
     }
-    call = c.copyWith(streams: streams);
+    // a camera in a voice call: it becomes a video call (video layout, loudspeaker)
+    call = c.copyWith(streams: streams, video: c.video || (stream != null && stream >= 0) ? true : null);
     notifyListeners();
   }
 
@@ -1918,6 +1927,8 @@ class CallStore extends ChangeNotifier {
       }
     }
     if (mic != null) this.mic = mic;
+    if (cam != null && cam != this.cam) _speakerFollowsCam(cam);
+    if (cam == true && call != null && !call!.video) call = call!.copyWith(video: true);
     if (cam != null) this.cam = cam;
     if (screen != null) this.screen = screen;
     notifyListeners();
@@ -1933,8 +1944,29 @@ class CallStore extends ChangeNotifier {
 
   void toggleSpeaker() {
     speaker = !speaker;
+    _speakerForCam = false;
     AppleAudio.setSpeaker(speaker);
     notifyListeners();
+  }
+
+  /// Camera on in a call on the earpiece: the loudspeaker, as in a video call (not
+  /// over a headset or Bluetooth device); camera off again: back to the earpiece.
+  void _speakerFollowsCam(bool camOn) {
+    if (camOn && !speaker) {
+      speaker = true;
+      _speakerForCam = true;
+      AppleAudio.setSpeaker(true, unlessHeadset: true).then((on) {
+        if (on == false && _speakerForCam) {
+          speaker = false; // a headset keeps the sound
+          _speakerForCam = false;
+          notifyListeners();
+        }
+      });
+    } else if (!camOn && _speakerForCam) {
+      speaker = false;
+      _speakerForCam = false;
+      AppleAudio.setSpeaker(false);
+    }
   }
 }
 

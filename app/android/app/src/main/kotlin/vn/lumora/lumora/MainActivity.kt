@@ -366,7 +366,10 @@ open class MainActivity : FlutterActivity() {
         MethodChannel(messenger, "vn.lumora/audio_session").setMethodCallHandler { call, result ->
             when (call.method) {
                 "startCall" -> { CallAudio.start(applicationContext, call.argument<Boolean>("video") == true); result.success(CallAudio.isSpeaker()) }
-                "setSpeaker" -> { CallAudio.setSpeaker(applicationContext, call.argument<Boolean>("on") == true); result.success(null) }
+                "setSpeaker" -> {
+                    CallAudio.setSpeaker(applicationContext, call.argument<Boolean>("on") == true, call.argument<Boolean>("unlessHeadset") == true)
+                    result.success(CallAudio.isSpeaker())
+                }
                 "endCall" -> { CallAudio.end(applicationContext); result.success(null) }
                 else -> result.notImplemented()
             }

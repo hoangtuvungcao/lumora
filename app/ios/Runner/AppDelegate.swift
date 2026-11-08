@@ -144,9 +144,13 @@ enum LumoraAudioSession {
           }
           result(nil)
         case "setSpeaker":
-          let on = ((call.arguments as? [String: Any])?["on"] as? Bool) ?? false
-          try session.overrideOutputAudioPort(on ? .speaker : .none)
-          result(nil)
+          let args = call.arguments as? [String: Any]
+          let on = (args?["on"] as? Bool) ?? false
+          // the camera turning on (unlessHeadset): only away from the earpiece
+          let headset = !session.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver || $0.portType == .builtInSpeaker })
+          let speaker = on && !(((args?["unlessHeadset"] as? Bool) ?? false) && headset)
+          try session.overrideOutputAudioPort(speaker ? .speaker : .none)
+          result(speaker)
         case "endCall":
           // A CallKit call deactivates the session when it ends (callKitDeactivated).
           if !LumoraPush.shared.ownsAudioSession && !LumoraAudioSession.callKitActive {

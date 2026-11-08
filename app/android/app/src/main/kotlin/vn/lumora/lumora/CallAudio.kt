@@ -25,9 +25,10 @@ object CallAudio {
         route(ctx, video && !hasHeadset(am))
     }
 
-    fun setSpeaker(ctx: Context, on: Boolean) {
+    /** [unlessHeadset]: the camera turned on — a headset / Bluetooth device keeps the sound. */
+    fun setSpeaker(ctx: Context, on: Boolean, unlessHeadset: Boolean = false) {
         if (!active) start(ctx, false)
-        route(ctx, on)
+        route(ctx, on && !(unlessHeadset && hasHeadset(am(ctx))))
     }
 
     fun end(ctx: Context) {

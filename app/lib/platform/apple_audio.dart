@@ -49,13 +49,16 @@ class AppleAudio {
   }
 
   /// The speaker button: loudspeaker on/off (off: earpiece, or the headset when one
-  /// is connected).
-  static Future<void> setSpeaker(bool on) async {
-    if (!_enabled) return;
+  /// is connected). [unlessHeadset]: leave a headset / Bluetooth device in charge
+  /// (the camera turning on). Returns whether the sound is on the loudspeaker now
+  /// (null: unknown).
+  static Future<bool?> setSpeaker(bool on, {bool unlessHeadset = false}) async {
+    if (!_enabled) return null;
     try {
-      await _channel.invokeMethod<void>('setSpeaker', {'on': on});
+      return await _channel.invokeMethod<bool>('setSpeaker', {'on': on, 'unlessHeadset': unlessHeadset});
     } catch (e) {
       debugPrint('audio session (speaker): $e');
+      return null;
     }
   }
 }
