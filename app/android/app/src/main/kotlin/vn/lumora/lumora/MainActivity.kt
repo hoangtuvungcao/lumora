@@ -432,6 +432,10 @@ open class MainActivity : FlutterActivity() {
                         }
                     }.start()
                 }
+                "openFile" -> {
+                    val path = call.argument<String>("path")
+                    result.success(path != null && FileOpener.open(this, path))
+                }
                 "saveToDownloads" -> {
                     val path = call.argument<String>("path")
                     val name = call.argument<String>("name")

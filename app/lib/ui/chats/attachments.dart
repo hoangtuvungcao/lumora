@@ -85,8 +85,17 @@ Future<void> openFile(BuildContext context, String path, {bool folder = false}) 
     );
     if (!go || !context.mounted) return;
   }
-  final ok = await launchUrl(Uri.file(target)).catchError((_) => false);
-  if (!ok && context.mounted) copyText(context, target, message: S.read(context)('path_copied'));
+  // Android refuses file:// links (7+): the app hands the file over as content:// itself
+  final ok = Platform.isAndroid && !folder
+      ? await const MethodChannel('lumora/media').invokeMethod<bool>('openFile', {'path': target}).then((v) => v ?? false).catchError((_) => false)
+      : await launchUrl(Uri.file(target)).catchError((_) => false);
+  if (!ok && context.mounted) {
+    if (Platform.isAndroid && !folder) {
+      toast(context, S.read(context)('no_app_opens_file'));
+    } else {
+      copyText(context, target, message: S.read(context)('path_copied'));
+    }
+  }
 }
 
 // ------------------------------------------------------------------ colours

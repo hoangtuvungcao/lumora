@@ -424,6 +424,7 @@ const Map<String, List<String>> kStrings = {
   'resume': ['Tiếp tục', 'Resume'],
   'open_folder': ['Mở thư mục', 'Open folder'],
   'path_copied': ['Đã sao chép đường dẫn', 'Path copied'],
+  'no_app_opens_file': ['Không có ứng dụng nào trên máy mở được tệp này', 'No app on this phone can open this file'],
 
   // ---------------------------------------------------------------- diagnostics
   'diagnostics': ['Chẩn đoán', 'Diagnostics'],

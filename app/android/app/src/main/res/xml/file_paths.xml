@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Files Lumora hands to another app to open (FileOpener.kt): a read grant on that one
+     content:// URI only, for as long as the opening app keeps it. -->
+<paths>
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <external-path name="external" path="." />
+</paths>
