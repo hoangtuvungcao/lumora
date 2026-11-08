@@ -406,12 +406,14 @@ nssm start HoaMaiBot</code></pre>
 <div class="l-vi"><ul>
 <li><strong>Cập nhật SDK:</strong> cài lại gói mới (<code>pip install -U lumora-bot</code>, <code>npm install lumora-bot@latest</code>) rồi khởi động lại bot. Mã bot viết cho bản 1.0 vẫn chạy với 1.1. Xem <a href="https://getlumora.pages.dev/developers/reference/#changelog">nhật ký thay đổi</a>.</li>
 <li><strong>Cập nhật Lumora Bot Runner:</strong> dừng bot, thay tệp, chạy lại. Dữ liệu được giữ nguyên.</li>
+<li><strong>Chuyển sang máy chủ khác:</strong> tốt nhất là chép cả thư mục dữ liệu. Nếu chỉ chạy lại bằng token trên thư mục mới, người dùng và nhóm của bot tự quay lại khi họ kết nối (Lumora Bot Runner 1.0.9 trở lên; người dùng có ứng dụng 1.0.8 trở lên): không ai phải kết bạn hay thêm bot lại. Lịch sử và <code>bot-storage.json</code> thì không quay lại. Nhớ dừng bản cũ trước.</li>
 <li><strong>Sao lưu:</strong> dừng bot (hoặc chấp nhận bản sao "đang chạy") rồi sao chép cả thư mục dữ liệu. Bot tạo bằng token có thể chạy lại từ token, nhưng lịch sử và <code>bot-storage.json</code> chỉ có trong thư mục.</li>
 <li><strong>Theo dõi:</strong> đặt <code>LUMORA_BOT_LOG_FORMAT=json</code> và gom log bằng công cụ bạn quen dùng. Các sự kiện đáng cảnh báo: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Log của Lumora Bot Runner ở <code>runner.log</code> trong thư mục dữ liệu (tự xoay vòng ở 10 MB).</li>
 </ul></div>
 <div class="l-en" lang="en"><ul>
 <li><strong>Updating the SDK:</strong> install the new package (<code>pip install -U lumora-bot</code>, <code>npm install lumora-bot@latest</code>) and restart the bot. Bots written for 1.0 run unchanged on 1.1. See the <a href="https://getlumora.pages.dev/developers/reference/#changelog">changelog</a>.</li>
 <li><strong>Updating Lumora Bot Runner:</strong> stop the bot, replace the file, start again. Data is kept.</li>
+<li><strong>Moving to another server:</strong> best is to copy the whole data folder. If you only start the token again in a new folder, the bot's users and groups come back by themselves as they connect (Lumora Bot Runner 1.0.9 or newer, users on app 1.0.8 or newer): nobody has to re-add it. History and <code>bot-storage.json</code> do not come back. Stop the old copy first.</li>
 <li><strong>Backups:</strong> stop the bot (or accept a "live" copy) and copy the whole data folder. A token bot can be started again from its token, but its history and <code>bot-storage.json</code> only live in the folder.</li>
 <li><strong>Monitoring:</strong> set <code>LUMORA_BOT_LOG_FORMAT=json</code> and collect the logs with the tool you already use. Events worth an alert: <code>runner_exit</code>, <code>restart_failed</code>, <code>restart_giveup</code>, <code>handler_error</code>. Lumora Bot Runner's own log is <code>runner.log</code> in the data folder (rotated at 10 MB).</li>
 </ul></div>
@@ -477,6 +479,10 @@ nssm start HoaMaiBot</code></pre>
 <td>Bot trả lời hai lần</td>
 <td>Có hai tiến trình chạy cùng bot. Mỗi bot chỉ chạy một tiến trình.</td>
 </tr>
+<tr>
+<td>Bot lúc trả lời lúc không, tin hiện "đã giao" nhưng không có trả lời</td>
+<td>Cùng một token đang chạy ở hai nơi (hai máy, hai thư mục): tin nhắn bị chia cho hai bản. Tắt một bản.</td>
+</tr>
 </tbody>
 </table></div></div>
 <div class="l-en" lang="en"><div class="table-wrap"><table class="table table--api">
@@ -538,6 +544,10 @@ nssm start HoaMaiBot</code></pre>
 <tr>
 <td>The bot answers twice</td>
 <td>Two processes are running the same bot. Run exactly one per bot.</td>
+</tr>
+<tr>
+<td>The bot answers only sometimes; messages show "delivered" but get no reply</td>
+<td>The same token runs in two places (two computers, two folders): messages are split between the copies. Stop one.</td>
 </tr>
 </tbody>
 </table></div></div>
