@@ -161,16 +161,26 @@ BUNDLED = [
      "license_file": "core/third_party/libvpx/PATENTS",
      "attribution": "Google's royalty-free patent license for its VP8/VP9 implementation (no "
                     "attribution required; reproduced for completeness)."},
-    {"name": "Noto Animated Emoji (about 120 Lottie animations, modified)", "license": "CC-BY-4.0",
+    {"name": "Noto Animated Emoji (879 Lottie animations, modified)", "license": "CC-BY-4.0",
      "platforms": "all", "kind": "bundled",
      "evidence": ["app/assets/emoji_anim/*.json.gz", "app/tool/fetch_animated_emoji.py"],
      "attribution": "Animated emoji: Noto Animated Emoji, copyright Google LLC. "
                     "https://googlefonts.github.io/noto-emoji-animation/ - licensed under CC BY 4.0 "
-                    "(https://creativecommons.org/licenses/by/4.0/legalcode). Changes: a selection of "
-                    "about 120 animations, re-encoded (numbers rounded to 3 decimals, minified, "
+                    "(https://creativecommons.org/licenses/by/4.0/legalcode). Changes: the "
+                    "animations re-encoded (numbers rounded to 3 decimals, minified, "
                     "gzip-compressed). The same attribution is shown in the app (Settings > About > "
                     "Open-source licenses).",
      "text_id": "CC-BY-4.0"},
+    {"name": "Fluent Emoji 3D and Fluent Emoji Animated (885 stickers, modified)", "license": "MIT",
+     "platforms": "all", "kind": "bundled",
+     "evidence": ["app/assets/stickers3d/*.webp", "app/tool/fetch_fluent_stickers.py"],
+     "license_file": "app/third_party_licenses/fluentui-emoji-LICENSE.txt",
+     "attribution": "The built-in 3D sticker pack: Fluent Emoji (3D style) and Fluent Emoji "
+                    "Animated, copyright Microsoft Corporation. https://github.com/microsoft/fluentui-emoji "
+                    "https://github.com/microsoft/fluentui-emoji-animated - MIT License. Changes: a "
+                    "selection resized (160 px; animated ones 128 px at a third of the frames) and "
+                    "re-encoded as WebP. The same attribution is shown in the app (Settings > About > "
+                    "Open-source licenses)."},
     {"name": "Noto Color Emoji font (COLRv1)", "license": "OFL-1.1", "platforms": "Windows, Linux",
      "kind": "bundled", "evidence": ["app/assets/desktop/NotoColorEmoji-COLRv1.ttf"],
      "evidence_grep": ("app/linux/CMakeLists.txt", r"NotoColorEmoji-COLRv1\.ttf"),

@@ -1,6 +1,6 @@
 # Third-party notices - Lumora
 
-> Generated on 2026-11-06 by `python3 -I packaging/release-repo/tools/gen_third_party_notices.py` (from `cargo metadata`, `flutter pub deps` and the hand-maintained lists inside the script). Do not edit by hand; edit the script and re-run it.
+> Generated on 2026-11-09 by `python3 -I packaging/release-repo/tools/gen_third_party_notices.py --flutter /home/vantrong/develop/flutter/bin/flutter` (from `cargo metadata`, `flutter pub deps` and the hand-maintained lists inside the script). Do not edit by hand; edit the script and re-run it.
 
 Lumora is proprietary freeware (see LICENSE.md). It is built with the open-source and third-party components listed below, which remain under their own licenses. Nothing in the Lumora license limits the rights those licenses give you for those components.
 
@@ -12,12 +12,12 @@ License under which each component is used (for "A OR B" choices the first optio
 
 | License | Rust crates | Dart packages | Other (SDK, native, assets) | Total |
 |---|---:|---:|---:|---:|
-| MIT | 425 | 38 | 4 | 467 |
-| BSD-3-Clause | 9 | 60 | 5 | 74 |
+| MIT | 425 | 38 | 5 | 468 |
+| BSD-3-Clause | 9 | 69 | 5 | 83 |
 | Apache-2.0 | 12 | 5 | 2 | 19 |
 | Unicode-3.0 | 18 | 0 | 1 | 19 |
 | ISC | 4 | 0 | 1 | 5 |
-| MPL-2.0 | 2 | 1 | 0 | 3 |
+| MPL-2.0 | 2 | 2 | 0 | 4 |
 | Zlib | 3 | 0 | 0 | 3 |
 | Apache-2.0 AND ISC | 1 | 0 | 1 | 2 |
 | CC-BY-4.0 | 0 | 0 | 2 | 2 |
@@ -41,7 +41,7 @@ License under which each component is used (for "A OR B" choices the first optio
 | LicenseRef-Microsoft-VC-Redist | 0 | 0 | 1 | 1 |
 | LicenseRef-WebM-Patent-Grant | 0 | 0 | 1 | 1 |
 | MIT AND Unicode-3.0 | 1 | 0 | 0 | 1 |
-| **Total** | **481** | **110** | **27** | **618** |
+| **Total** | **481** | **120** | **28** | **629** |
 
 ## Main components
 
@@ -51,7 +51,7 @@ License under which each component is used (for "A OR B" choices the first optio
 | Flutter framework 3.38.9 | BSD-3-Clause | Copyright 2014 The Flutter Authors |
 | Flutter engine incl. Skia, Impeller, HarfBuzz, ICU, FreeType, BoringSSL, zlib, ... | BSD-3-Clause (Skia, Impeller, engine) + per-component licenses | 71 components; full texts in the app (Settings > About > Open-source licenses) |
 | Dart SDK 3.10.8 | BSD-3-Clause | Copyright 2012 the Dart project authors |
-| Noto Animated Emoji (about 120 Lottie animations, modified) | CC-BY-4.0 | all |
+| Noto Animated Emoji (879 Lottie animations, modified) | CC-BY-4.0 | all |
 | Noto Color Emoji font (COLRv1) | OFL-1.1 | Windows, Linux |
 | Be Vietnam Pro font | OFL-1.1 | all |
 | Phosphor Icons (icon fonts via phosphor_flutter) | MIT | all |
@@ -84,6 +84,7 @@ License under which each component is used (for "A OR B" choices the first optio
 | Rust | attohttpc 0.30.1 | MPL-2.0 | MPL-2.0 |
 | Rust | option-ext 0.2.0 | MPL-2.0 | MPL-2.0 |
 | Dart | dbus 0.8.0 | MPL-2.0 | MPL-2.0 |
+| Dart | nm 0.6.0 | MPL-2.0 | MPL-2.0 |
 
 MPL-2.0 is file-level copyleft: the binary may be distributed under any terms, but recipients must be told where the MPL-covered source code can be obtained (the unmodified sources are on crates.io / pub.dev - the links in the tables satisfy this as long as Lumora does not modify those files) and the MPL notice must not be removed.
 
@@ -1585,7 +1586,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Dart packages (110, non-dev, transitive)
+### Dart packages (120, non-dev, transitive)
 
 | Package | Version | License (detected) | Repository | Copyright | Text |
 |---|---|---|---|---|---|
@@ -1594,9 +1595,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | args | 2.7.0 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/args | Copyright 2013, the Dart project authors. | [D-df29899a60d1](#d-df29899a60d1) |
 | async | 2.13.1 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/async | Copyright 2015, the Dart project authors. | [D-4f31d21986fa](#d-4f31d21986fa) |
 | audio_session | 0.2.4 | MIT | https://github.com/ryanheise/audio_session | Copyright (c) 2020 Ryan Heise and the project contributors. | [D-209f7d1936dd](#d-209f7d1936dd) |
+| camera | 0.12.0+2 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/camera/camera | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
+| camera_android_camerax | 0.7.2 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/camera/camera_android_camerax | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
+| camera_avfoundation | 0.10.3 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/camera/camera_avfoundation | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
+| camera_platform_interface | 2.14.0 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/camera/camera_platform_interface | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
+| camera_web | 0.3.5+6 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/camera/camera_web | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
 | characters | 1.4.0 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/characters | Copyright 2019, the Dart project authors. | [D-f7864e97fa91](#d-f7864e97fa91) |
 | clock | 1.1.2 | Apache-2.0 | https://github.com/dart-lang/tools/tree/main/pkgs/clock | (see license text) | [D-0ffddef9e48f](#d-0ffddef9e48f) |
 | collection | 1.19.1 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/collection | Copyright 2015, the Dart project authors. | [D-4f31d21986fa](#d-4f31d21986fa) |
+| connectivity_plus | 7.3.2 | BSD-3-Clause | https://github.com/fluttercommunity/plus_plugins/tree/main/packages/connectivity_plus/connectivity_plus | Copyright 2017 The Chromium Authors. All rights reserved. | [D-733c20e4b73a](#d-733c20e4b73a) |
+| connectivity_plus_platform_interface | 2.1.0 | BSD-3-Clause | https://github.com/fluttercommunity/plus_plugins/tree/main/packages/ | Copyright 2020 The Chromium Authors. All rights reserved. | [D-5cd32b71af05](#d-5cd32b71af05) |
 | cross_file | 0.3.5+5 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/cross_file | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
 | crypto | 3.0.8 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/crypto | Copyright 2015, the Dart project authors. | [D-4f31d21986fa](#d-4f31d21986fa) |
 | cupertino_icons | 1.0.9 | MIT | https://github.com/flutter/packages/tree/main/third_party/packages/cupertino_icons | Copyright (c) 2016 Vladimir Kharlampidi | [D-3f76a95433d6](#d-3f76a95433d6) |
@@ -1614,6 +1622,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | fixnum | 1.1.1 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/fixnum | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
 | flutter_map | 8.3.2 | BSD-3-Clause | https://github.com/fleaflet/flutter_map | Copyright (c) 2018-2026, the 'flutter_map' authors and maintainers | [D-49ae8fe03230](#d-49ae8fe03230) |
 | flutter_markdown_plus | 1.0.12 | BSD-3-Clause | https://github.com/foresightmobile/flutter_markdown_plus | Copyright 2013 The Flutter Authors. All rights reserved. | [D-b2dfea7ab005](#d-b2dfea7ab005) |
+| flutter_plugin_android_lifecycle | 2.0.35 | BSD-3-Clause | https://github.com/flutter/packages/tree/main/packages/flutter_plugin_android_lifecycle | Copyright 2013 The Flutter Authors | [D-1c16df050b1d](#d-1c16df050b1d) |
 | flutter_svg | 2.3.0 | MIT | https://github.com/flutter/packages/tree/main/third_party/packages/flutter_svg | Copyright (c) 2018 Dan Field | [D-b132a5755049](#d-b132a5755049) |
 | geolocator | 14.0.1 | MIT | https://github.com/baseflow/flutter-geolocator/tree/main/geolocator | Copyright (c) 2018 Baseflow | [D-5c3c8e81b7bb](#d-5c3c8e81b7bb) |
 | geolocator_android | 5.2.1 | MIT | https://github.com/baseflow/flutter-geolocator/tree/main/geolocator_android | Copyright (c) 2018 Baseflow | [D-5c3c8e81b7bb](#d-5c3c8e81b7bb) |
@@ -1624,7 +1633,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | http | 1.6.0 | BSD-3-Clause | https://github.com/dart-lang/http/tree/master/pkgs/http | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
 | http_parser | 4.1.2 | BSD-3-Clause | https://github.com/dart-lang/http/tree/master/pkgs/http_parser | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
 | image | 4.12.0 | Apache-2.0 AND BSD-3-Clause AND MIT | https://github.com/brendan-duncan/image | Copyright (c) 2013-2022 Brendan Duncan.; Copyright (C) 2011 notmasteryet; Copyright (c) 2010, Google Inc. All rights reserved. | [D-14e4b4a14aca](#d-14e4b4a14aca) |
-| intl | 0.20.3 | BSD-3-Clause | https://github.com/dart-lang/i18n/tree/main/pkgs/intl | Copyright 2013, the Dart project authors. | [D-df29899a60d1](#d-df29899a60d1) |
+| intl | 0.20.2 | BSD-3-Clause | https://github.com/dart-lang/i18n/tree/main/pkgs/intl | Copyright 2013, the Dart project authors. | [D-df29899a60d1](#d-df29899a60d1) |
 | jni | 1.1.2 | BSD-3-Clause | https://github.com/dart-lang/native/tree/main/pkgs/jni | Copyright 2022, the Dart project authors. | [D-53664486029b](#d-53664486029b) |
 | jni_flutter | 1.0.4+1 | BSD-3-Clause | https://github.com/dart-lang/native/tree/main/pkgs/jni_flutter | Copyright 2026, the Dart project authors. | [D-d6b499d3653f](#d-d6b499d3653f) |
 | jni_util | 1.0.0 | BSD-3-Clause | https://github.com/dart-lang/native/tree/main/pkgs/jni_util | Copyright 2026, the Dart project authors. | [D-d6b499d3653f](#d-d6b499d3653f) |
@@ -1639,6 +1648,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | mgrs_dart | 3.0.0 | MIT | https://github.com/fegyi001/mgrs_dart | Copyright (c) 2020 Gergely Padányi-Gulyás | [D-f50cf33af148](#d-f50cf33af148) |
 | mobile_scanner | 7.5.0 | BSD-3-Clause | https://github.com/juliansteenbakker/mobile_scanner | Copyright (c) 2022, Julian Steenbakker | [D-bff5bbac7f69](#d-bff5bbac7f69) |
 | nested | 1.0.0 | MIT | https://github.com/rrousselGit/nested | Copyright (c) 2019 Remi Rousselet | [D-d34e63122955](#d-d34e63122955) |
+| nm | 0.6.0 | MPL-2.0 | https://github.com/canonical/nm.dart | (see license text) | [D-a7fae6cb34ec](#d-a7fae6cb34ec) |
 | package_config | 2.2.0 | BSD-3-Clause | https://github.com/dart-lang/tools/tree/main/pkgs/package_config | Copyright 2019, the Dart project authors. | [D-f7864e97fa91](#d-f7864e97fa91) |
 | path | 1.9.1 | BSD-3-Clause | https://github.com/dart-lang/core/tree/main/pkgs/path | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
 | path_parsing | 1.1.0 | MIT | https://github.com/flutter/packages/tree/main/third_party/packages/path_parsing | Copyright (c) 2018 Dan Field | [D-b132a5755049](#d-b132a5755049) |
@@ -1673,6 +1683,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 | rxdart | 0.28.0 | Apache-2.0 | https://github.com/ReactiveX/rxdart | (see license text) | [D-0ffddef9e48f](#d-0ffddef9e48f) |
 | simple_sparse_list | 0.1.4 | BSD-3-Clause | https://github.com/mezoni/simple_sparse_list | Copyright (c) 2024, Andrew Mezoni | [D-e3f71abe47ad](#d-e3f71abe47ad) |
 | source_span | 1.10.2 | BSD-3-Clause | https://github.com/dart-lang/tools/tree/main/pkgs/source_span | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
+| stream_transform | 2.1.2 | BSD-3-Clause | https://github.com/dart-lang/tools/tree/main/pkgs/stream_transform | Copyright 2017, the Dart project authors. | [D-d17b393b9faa](#d-d17b393b9faa) |
 | string_scanner | 1.4.1 | BSD-3-Clause | https://github.com/dart-lang/tools/tree/main/pkgs/string_scanner | Copyright 2014, the Dart project authors. | [D-5f14aa861add](#d-5f14aa861add) |
 | synchronized | 3.4.0 | MIT | https://github.com/tekartik/synchronized.dart/tree/master/synchronized | Copyright (c) 2016, Alexandre Roux Tekartik. | [D-dc238e7a9753](#d-dc238e7a9753) |
 | term_glyph | 1.2.2 | BSD-3-Clause | https://github.com/dart-lang/tools/tree/main/pkgs/term_glyph | Copyright 2017, the Dart project authors. | [D-d17b393b9faa](#d-d17b393b9faa) |
@@ -1892,7 +1903,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ##### D-df29899a60d1 - BSD-3-Clause
 
-Used by: args 2.7.0, intl 0.20.3
+Used by: args 2.7.0, intl 0.20.2
 
 ```text
 Copyright 2013, the Dart project authors. 
@@ -1988,6 +1999,40 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+<a id="d-1c16df050b1d"></a>
+
+##### D-1c16df050b1d - BSD-3-Clause
+
+Used by: camera 0.12.0+2, camera_android_camerax 0.7.2, camera_avfoundation 0.10.3, camera_platform_interface 2.14.0, camera_web 0.3.5+6, cross_file 0.3.5+5, flutter_plugin_android_lifecycle 2.0.35, path_provider 2.1.6, path_provider_android 2.3.1, path_provider_foundation 2.4.4, path_provider_linux 2.2.2, path_provider_platform_interface 2.1.3, url_launcher_android 6.3.30, url_launcher_ios 6.4.2, url_launcher_linux 3.2.3, url_launcher_macos 3.2.6, url_launcher_web 2.4.3, url_launcher_windows 3.1.6, vector_graphics 1.2.3, vector_graphics_compiler 1.3.0
+
+```text
+Copyright 2013 The Flutter Authors
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution.
+    * Neither the name of Google Inc. nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 <a id="d-f7864e97fa91"></a>
@@ -2236,38 +2281,76 @@ Used by: clock 1.1.2, rxdart 0.28.0
    limitations under the License.
 ```
 
-<a id="d-1c16df050b1d"></a>
+<a id="d-733c20e4b73a"></a>
 
-##### D-1c16df050b1d - BSD-3-Clause
+##### D-733c20e4b73a - BSD-3-Clause
 
-Used by: cross_file 0.3.5+5, path_provider 2.1.6, path_provider_android 2.3.1, path_provider_foundation 2.4.4, path_provider_linux 2.2.2, path_provider_platform_interface 2.1.3, url_launcher_android 6.3.30, url_launcher_ios 6.4.2, url_launcher_linux 3.2.3, url_launcher_macos 3.2.6, url_launcher_web 2.4.3, url_launcher_windows 3.1.6, vector_graphics 1.2.3, vector_graphics_compiler 1.3.0
+Used by: connectivity_plus 7.3.2
 
 ```text
-Copyright 2013 The Flutter Authors
+Copyright 2017 The Chromium Authors. All rights reserved.
 
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
 
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-    * Neither the name of Google Inc. nor the names of its
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
-ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
-ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+<a id="d-5cd32b71af05"></a>
+
+##### D-5cd32b71af05 - BSD-3-Clause
+
+Used by: connectivity_plus_platform_interface 2.1.0
+
+```text
+Copyright 2020 The Chromium Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 <a id="d-3f76a95433d6"></a>
@@ -2384,7 +2467,7 @@ SOFTWARE.
 
 ##### D-a7fae6cb34ec - MPL-2.0
 
-Used by: dbus 0.8.0
+Used by: dbus 0.8.0, nm 0.6.0
 
 ```text
 Mozilla Public License Version 2.0
@@ -4674,41 +4757,11 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-<a id="d-dc238e7a9753"></a>
-
-##### D-dc238e7a9753 - MIT
-
-Used by: synchronized 3.4.0
-
-```text
-MIT License
-
-Copyright (c) 2016, Alexandre Roux Tekartik.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
 <a id="d-d17b393b9faa"></a>
 
 ##### D-d17b393b9faa - BSD-3-Clause
 
-Used by: term_glyph 1.2.2
+Used by: stream_transform 2.1.2, term_glyph 1.2.2
 
 ```text
 Copyright 2017, the Dart project authors. 
@@ -4738,6 +4791,36 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+<a id="d-dc238e7a9753"></a>
+
+##### D-dc238e7a9753 - MIT
+
+Used by: synchronized 3.4.0
+
+```text
+MIT License
+
+Copyright (c) 2016, Alexandre Roux Tekartik.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 <a id="d-408284d54114"></a>
@@ -5113,12 +5196,46 @@ litigation is filed.
 
 </details>
 
-#### Noto Animated Emoji (about 120 Lottie animations, modified)
+#### Noto Animated Emoji (879 Lottie animations, modified)
 
 - License: CC-BY-4.0
 - Platforms: all
-- Attribution: Animated emoji: Noto Animated Emoji, copyright Google LLC. https://googlefonts.github.io/noto-emoji-animation/ - licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/legalcode). Changes: a selection of about 120 animations, re-encoded (numbers rounded to 3 decimals, minified, gzip-compressed). The same attribution is shown in the app (Settings > About > Open-source licenses).
+- Attribution: Animated emoji: Noto Animated Emoji, copyright Google LLC. https://googlefonts.github.io/noto-emoji-animation/ - licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/legalcode). Changes: the animations re-encoded (numbers rounded to 3 decimals, minified, gzip-compressed). The same attribution is shown in the app (Settings > About > Open-source licenses).
 - License text: see CC-BY-4.0 under "License texts".
+
+#### Fluent Emoji 3D and Fluent Emoji Animated (885 stickers, modified)
+
+- License: MIT
+- Platforms: all
+- Attribution: The built-in 3D sticker pack: Fluent Emoji (3D style) and Fluent Emoji Animated, copyright Microsoft Corporation. https://github.com/microsoft/fluentui-emoji https://github.com/microsoft/fluentui-emoji-animated - MIT License. Changes: a selection resized (160 px; animated ones 128 px at a third of the frames) and re-encoded as WebP. The same attribution is shown in the app (Settings > About > Open-source licenses).
+
+<details><summary>License text</summary>
+
+```text
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+```
+
+</details>
 
 #### Noto Color Emoji font (COLRv1)
 
@@ -5582,15 +5699,6 @@ Software.
 - Attribution: Copyright (C) 1997-2025 Jordan Russell, Martijn Laan. https://jrsoftware.org/isinfo.php
 - **Review:** The setup stub compiled into the installer is Inno Setup code. Check the CURRENT Inno Setup license (https://jrsoftware.org/files/is/license.txt): recent releases changed the terms for commercial use - confirm a freeware release qualifies or buy a commercial license; keep its copyright notice in the installer.
 
-### Online services used at runtime (nothing bundled)
-
-#### OpenStreetMap map tiles (location messages)
-
-- License: ODbL-1.0 (data) / tile usage policy
-- Platforms: all
-- Attribution: (c) OpenStreetMap contributors - shown in the map widget. Tiles are fetched at runtime from tile.openstreetmap.org, nothing is bundled.
-- **Review:** The OSM Foundation tile usage policy forbids heavy use without permission and requires a valid User-Agent; consider a commercial tile provider for a public release. Also mentioned in the EULA privacy section.
-
 ### Linked but not distributed
 
 #### System libraries linked dynamically on Linux and NOT shipped: PipeWire (MIT), ALSA libasound (LGPL-2.1-or-later), libdbus (AFL-2.1 OR GPL-2.0-or-later), GTK 3 / GLib (LGPL-2.1-or-later, Flutter Linux embedder), X11/xcb libraries (MIT)
@@ -5799,7 +5907,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -5838,32 +5946,30 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ### BSD-3-Clause
 
 ```text
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
 
-1. Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
+1.  Redistributions of source code must retain the above copyright notice, this
+    list of conditions and the following disclaimer.
 
-2. Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
+2.  Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
 
-3. Neither the name of the copyright holder nor the names of its
-contributors may be used to endorse or promote products derived from
-this software without specific prior written permission.
+3.  Neither the name of the copyright holder nor the names of its
+    contributors may be used to endorse or promote products derived from
+    this software without specific prior written permission.
 
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
-IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
-TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED
-TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. 
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 ### CC-BY-4.0
@@ -6459,16 +6565,17 @@ insights.
 ### ISC
 
 ```text
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without
-fee is hereby granted, provided that the above copyright notice and this permission notice appear
-in all copies.
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS
-SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
-AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
-NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
-THIS SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
 ### MIT
@@ -6539,7 +6646,7 @@ Mozilla Public License Version 2.0
     means any form of the work other than Source Code Form.
 
 1.7. "Larger Work"
-    means a work that combines Covered Software with other material, in
+    means a work that combines Covered Software with other material, in 
     a separate file or files, that is not Covered Software.
 
 1.8. "License"
@@ -6861,7 +6968,7 @@ Exhibit A - Source Code Form License Notice
 
   This Source Code Form is subject to the terms of the Mozilla Public
   License, v. 2.0. If a copy of the MPL was not distributed with this
-  file, You can obtain one at http://mozilla.org/MPL/2.0/.
+  file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 If it is not possible or desirable to put the notice in a particular
 file, then You may include the notice in a location (such as a LICENSE
@@ -6874,7 +6981,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 ---------------------------------------------------------
 
   This Source Code Form is "Incompatible With Secondary Licenses", as
-defined by the Mozilla Public License, v. 2.0.
+  defined by the Mozilla Public License, v. 2.0.
 ```
 
 ### OFL-1.1
@@ -7046,21 +7153,13 @@ ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation a
 ### Zlib
 
 ```text
-This software is provided 'as-is', without any express or implied warranty. In
-no event will the authors be held liable for any damages arising from the use of
-this software.
+This software is provided 'as-is', without any express or implied warranty. In no event will the authors be held liable for any damages arising from the use of this software.
 
-Permission is granted to anyone to use this software for any purpose, including
-commercial applications, and to alter it and redistribute it freely, subject to
-the following restrictions:
+Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
 
-1. The origin of this software must not be misrepresented; you must not claim
-    that you wrote the original software. If you use this software in a product,
-    an acknowledgment in the product documentation would be appreciated but is
-    not required.
+1. The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
 
-2. Altered source versions must be plainly marked as such, and must not be
-    misrepresented as being the original software.
+2. Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 
 3. This notice may not be removed or altered from any source distribution.
 ```
