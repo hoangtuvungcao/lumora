@@ -266,10 +266,22 @@ void main() {
       expect(AnimatedEmojiLibrary.has('©️'), isFalse); // not in the animated set: static glyph
     });
 
+    testWidgets('a big emoji without an animation bounces', (t) async {
+      final st = Settings();
+      expect(AnimatedEmojiLibrary.has('👺'), isFalse);
+      await t.pumpWidget(_host(st, const JumboEmoji(emojis: ['👺'])));
+      await t.pump(const Duration(milliseconds: 200)); // inside the moving part
+      final moved = t.widgetList<Transform>(find.descendant(of: find.byType(JumboEmoji), matching: find.byType(Transform)));
+      expect(moved, isNotEmpty);
+      expect(moved.any((w) => w.transform != Matrix4.identity()), isTrue);
+      await t.pump(const Duration(milliseconds: 1200)); // resting part: no transform
+      expect(find.descendant(of: find.byType(JumboEmoji), matching: find.byType(Transform)), findsNothing);
+    });
+
     testWidgets('loads, loops while visible, caps concurrency; frame cost', (t) async {
       AnimatedEmojiLibrary.reset();
       final st = Settings();
-      final emojis = ['😂', '❤️', '👍', '🎉', '🔥', '😭', '🥳', '🙏'];
+      final emojis = ['😂', '❤️', '👍', '🎉', '🔥', '😭', '🥳', '🙏', '😍', '🤣', '😎', '👏'];
       LottieComposition? c;
       final load = Stopwatch()..start();
       await t.runAsync(() async {
@@ -278,7 +290,7 @@ void main() {
         }
       });
       // ignore: avoid_print
-      print('decode + parse 8 animations: ${load.elapsedMilliseconds} ms');
+      print('decode + parse ${emojis.length} animations: ${load.elapsedMilliseconds} ms');
       expect(c, isNotNull);
       expect(c!.duration, greaterThan(Duration.zero));
 
@@ -289,7 +301,7 @@ void main() {
       ));
       await t.pump();
       await t.pump();
-      // 8 visible, 6 allowed at once; the others stay as static glyphs.
+      // 12 visible, 10 allowed at once; the others stay as static glyphs.
       expect(AnimatedEmojiLibrary.playing, AnimatedEmojiLibrary.maxConcurrent);
       expect(find.byType(Lottie), findsNWidgets(AnimatedEmojiLibrary.maxConcurrent));
 

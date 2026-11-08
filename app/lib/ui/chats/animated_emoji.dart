@@ -12,6 +12,7 @@
 // for reduced motion.
 
 import 'dart:io' show gzip;
+import 'dart:math' as math;
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
@@ -25,7 +26,7 @@ import 'emoji_catalog.dart';
 
 abstract final class AnimatedEmojiLibrary {
   /// Animations allowed to run at the same time.
-  static const maxConcurrent = 6;
+  static const maxConcurrent = 10;
 
   /// Parsed compositions kept in memory.
   static const cacheSize = 24;
@@ -352,7 +353,75 @@ class JumboEmoji extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       // keep moving while on screen (animated emoji); the slot limit and the
       // off-screen pause keep it cheap
-      children: [for (final e in emojis) AnimatedEmoji(e, size: size, autoplay: true, loop: true, replayOnTap: true)],
+      children: [
+        for (final e in emojis)
+          // not in the animated set (~half of all emoji): a light bounce instead, so every
+          // big emoji moves
+          if (!AnimatedEmojiLibrary.has(e) && animatedEmojiEnabled(context))
+            _BounceEmoji(emoji: e, size: size)
+          else
+            AnimatedEmoji(e, size: size, autoplay: true, loop: true, replayOnTap: true),
+      ],
+    );
+  }
+}
+
+/// A big emoji without an animation: a short bounce-and-wiggle every few seconds, and
+/// again on tap. Transform only (no repaint of the glyph's raster).
+class _BounceEmoji extends StatefulWidget {
+  const _BounceEmoji({required this.emoji, required this.size});
+  final String emoji;
+  final double size;
+
+  @override
+  State<_BounceEmoji> createState() => _BounceEmojiState();
+}
+
+class _BounceEmojiState extends State<_BounceEmoji> with SingleTickerProviderStateMixin {
+  static const _period = Duration(milliseconds: 2400);
+
+  /// The moving part of a period (the rest is still).
+  static const _move = 0.34;
+  late final AnimationController _c = AnimationController(vsync: this, duration: _period)..repeat();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.size;
+    final glyph = RepaintBoundary(
+      child: Text(widget.emoji, textAlign: TextAlign.center, style: TextStyle(fontSize: s * 0.8, height: 1.15)),
+    );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _c.forward(from: 0).whenComplete(() {
+        if (mounted) _c.repeat();
+      }),
+      child: SizedBox(
+        width: s,
+        height: s,
+        child: Center(
+          child: AnimatedBuilder(
+            animation: _c,
+            child: glyph,
+            builder: (context, child) {
+              final t = _c.value / _move;
+              if (t >= 1) return child!;
+              final env = math.sin(math.pi * t); // 0 → 1 → 0
+              final scale = 1 + 0.1 * env;
+              final turn = 0.09 * math.sin(4 * math.pi * t) * (1 - t);
+              return Transform.translate(
+                offset: Offset(0, -s * 0.06 * env),
+                child: Transform.rotate(angle: turn, child: Transform.scale(scale: scale, child: child)),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }
