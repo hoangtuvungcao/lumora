@@ -30,3 +30,10 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 2
+
+# Lumora patches (see the "Lumora patch" comments): call audio plays as a voice-communication
+# stream on Android, so the earpiece/speaker switch works (cpal has no option for it; ndk's
+# setter would need API 28 at link time, we support 26).
+[patch.crates-io]
+cpal = { path = "third_party/cpal" }
+ndk = { path = "third_party/ndk" }

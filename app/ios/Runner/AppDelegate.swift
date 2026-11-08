@@ -143,6 +143,10 @@ enum LumoraAudioSession {
             LumoraAudioSession.applyRoute()
           }
           result(nil)
+        case "setSpeaker":
+          let on = ((call.arguments as? [String: Any])?["on"] as? Bool) ?? false
+          try session.overrideOutputAudioPort(on ? .speaker : .none)
+          result(nil)
         case "endCall":
           // A CallKit call deactivates the session when it ends (callKitDeactivated).
           if !LumoraPush.shared.ownsAudioSession && !LumoraAudioSession.callKitActive {

@@ -1130,6 +1130,25 @@ fn player_for(node: &Arc<Node>, call: [u8; 16], peer: PeerId) -> Option<Arc<lumo
 
 // ------------------------------------------------------------------ calls
 
+/// Call `c` is over: close its participants' speakers — and, when no other call is going
+/// on, every speaker left (a peer that left before the end, a speaker that finished opening
+/// late). An open output stream plays silence forever otherwise (phones: battery, and the
+/// system shows the app as playing).
+fn release_speakers(node: &Arc<Node>, c: &Call) {
+    let other_call = node.remote.calls.lock().values().any(|x| x.id != c.id && *x.state.lock() == "active");
+    let peers = c.peers.lock().clone();
+    let gone: Vec<PlayerSlot> = {
+        let mut ps = node.remote.media.players.lock();
+        if other_call {
+            peers.iter().filter_map(|p| ps.remove(p)).collect()
+        } else {
+            // an `Opening` slot finds itself gone and closes what it opened
+            ps.drain().map(|(_, s)| s).collect()
+        }
+    };
+    drop(gone); // closing a speaker joins its thread: outside the lock
+}
+
 pub fn start_call_media(node: &Arc<Node>, c: &Arc<Call>) {
     if c.media_started.swap(true, Ordering::SeqCst) {
         return;
@@ -1150,6 +1169,11 @@ pub fn start_call_media(node: &Arc<Node>, c: &Arc<Call>) {
                 Ok(c) => c,
                 Err(e) => {
                     node.emit("error", json!({"message": crate::i18n::tr("err.mic_unavailable"), "code": "mic_unavailable", "detail": format!("{e:#}")}));
+                    // we still hear the others: release their speakers when the call ends
+                    while !c.stop.load(Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_millis(200));
+                    }
+                    release_speakers(&node, &c);
                     return;
                 }
             };
@@ -1198,11 +1222,7 @@ pub fn start_call_media(node: &Arc<Node>, c: &Arc<Call>) {
             }
             // call over: release speakers of its participants (closing joins their
             // threads: outside the lock)
-            let gone: Vec<PlayerSlot> = {
-                let mut ps = node.remote.media.players.lock();
-                c.peers.lock().iter().filter_map(|p| ps.remove(p)).collect()
-            };
-            drop(gone);
+            release_speakers(&node, &c);
         })
         .ok();
 }

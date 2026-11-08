@@ -11,6 +11,8 @@ import 'package:flutter/services.dart';
 /// play-and-record with Apple's voice processing (echo cancellation, earpiece
 /// for voice, speaker for video); afterwards we release the session so music
 /// from other apps can resume. Implemented in ios/Runner/AppDelegate.swift.
+/// Android (MainActivity / CallAudio.kt, same channel): communication mode for the
+/// call, earpiece for voice and loudspeaker for video, and the speaker button.
 /// No-op on every other platform.
 ///
 /// Pass the call's real `video` flag also when answering, so a video call
@@ -23,7 +25,7 @@ class AppleAudio {
   static const _channel = MethodChannel('vn.lumora/audio_session');
   static bool _active = false;
 
-  static bool get _enabled => !kIsWeb && Platform.isIOS;
+  static bool get _enabled => !kIsWeb && (Platform.isIOS || Platform.isAndroid);
 
   static Future<void> startCall({required bool video}) async {
     if (!_enabled) return;
@@ -43,6 +45,17 @@ class AppleAudio {
       await _channel.invokeMethod<void>('endCall');
     } catch (e) {
       debugPrint('audio session (end): $e');
+    }
+  }
+
+  /// The speaker button: loudspeaker on/off (off: earpiece, or the headset when one
+  /// is connected).
+  static Future<void> setSpeaker(bool on) async {
+    if (!_enabled) return;
+    try {
+      await _channel.invokeMethod<void>('setSpeaker', {'on': on});
+    } catch (e) {
+      debugPrint('audio session (speaker): $e');
     }
   }
 }

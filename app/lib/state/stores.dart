@@ -1608,6 +1608,8 @@ class CallStore extends ChangeNotifier {
     // a plain group call that doesn't ring me: only a "Join" banner (AvailableCalls)
     if (j['state'] == 'available') return;
     final c = CallState.fromJson(j);
+    // a new call starts where the platform puts it: loudspeaker for video, earpiece for voice
+    if (c.callId != call?.callId && !inCall) speaker = c.video;
     if (c.phase == CallPhase.incoming) {
       if (call?.callId != c.callId) answeredElsewhere = null;
       // The core sends "ended" when the caller gives up; this is only a
@@ -1931,6 +1933,7 @@ class CallStore extends ChangeNotifier {
 
   void toggleSpeaker() {
     speaker = !speaker;
+    AppleAudio.setSpeaker(speaker);
     notifyListeners();
   }
 }
