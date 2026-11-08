@@ -381,26 +381,40 @@ class _ChatViewState extends State<ChatView> {
         ),
       ],
     );
-    final content = Row(
-      children: [
-        Expanded(child: body),
-        AnimatedSize(
-          duration: Motion.normal,
-          curve: Motion.curve,
-          alignment: Alignment.centerLeft,
-          child: info
-              ? Container(
-                  width: 320,
-                  decoration: BoxDecoration(
-                    color: context.lc.surface,
-                    border: Border(left: BorderSide(color: context.lc.divider)),
-                  ),
-                  child: ChatInfoPanel(conv: widget.conv, embedded: true),
-                )
-              : const SizedBox(height: double.infinity),
-        ),
-      ],
+    final panel = Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: context.lc.surface,
+        border: Border(left: BorderSide(color: context.lc.divider)),
+      ),
+      child: ChatInfoPanel(conv: widget.conv, embedded: true),
     );
+    final content = LayoutBuilder(builder: (context, c) {
+      // a narrow window: next to the panel the chat would be squeezed (one word per line,
+      // a broken composer) — the panel floats over the chat's right side instead
+      if (info && c.maxWidth - 320 < 420) {
+        return Stack(children: [
+          Positioned.fill(child: body),
+          Positioned(
+            top: 0,
+            bottom: 0,
+            right: 0,
+            child: Material(elevation: 12, color: context.lc.surface, child: panel),
+          ),
+        ]);
+      }
+      return Row(
+        children: [
+          Expanded(child: body),
+          AnimatedSize(
+            duration: Motion.normal,
+            curve: Motion.curve,
+            alignment: Alignment.centerLeft,
+            child: info ? panel : const SizedBox(height: double.infinity),
+          ),
+        ],
+      );
+    });
     if (widget.embedded || widget.bare) return Material(color: context.lc.bg, child: content);
     return Scaffold(body: SafeArea(child: content));
   }
