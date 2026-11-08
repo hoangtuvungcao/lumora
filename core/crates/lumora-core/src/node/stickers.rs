@@ -108,6 +108,16 @@ impl Node {
         self.send_body(conv, Body::Sticker { pack: "custom".into(), id: String::new(), hash, mime, data, emoji, animated }, None, None).await
     }
 
+    /// Send an image file as a sticker without adding it to a pack (the bundled 3D pack).
+    pub async fn send_sticker_file(self: &Arc<Self>, conv: &str, path: &str, emoji: &str) -> Result<Value> {
+        let p = PathBuf::from(path);
+        let (mime, data, animated) = tokio::task::spawn_blocking(move || prepare(&p)).await??;
+        let hash = *blake3::hash(&data).as_bytes();
+        self.store.sticker_blob_put(&hash, &mime, &data)?; // "save to my pack" works on it
+        let emoji: String = emoji.chars().take(16).collect();
+        self.send_body(conv, Body::Sticker { pack: "custom".into(), id: String::new(), hash, mime, data, emoji, animated }, None, None).await
+    }
+
     /// Cache the bytes of a received custom sticker (verified against its hash).
     pub(super) fn cache_sticker(&self, body: &Body) {
         if let Body::Sticker { hash, mime, data, .. } = body {

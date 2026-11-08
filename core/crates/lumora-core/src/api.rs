@@ -403,9 +403,13 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             Value::Null
         }
         "send_sticker" => {
-            // custom sticker by hash, or a built-in one by {pack, sticker}
+            // custom sticker by hash, an image file (the app's bundled 3D pack: the image
+            // travels in the message, so every version shows it), or a built-in one by
+            // {pack, sticker}
             if let Some(h) = r.get("hash").and_then(|x| x.as_str()) {
                 node.send_sticker(s(r, "conv")?, h).await?
+            } else if let Some(p) = r.get("path").and_then(|x| x.as_str()) {
+                node.send_sticker_file(s(r, "conv")?, p, r.get("emoji").and_then(|x| x.as_str()).unwrap_or("")).await?
             } else {
                 node.send_body(s(r, "conv")?, crate::proto::Body::Sticker {
                     pack: s(r, "pack")?.into(), id: s(r, "sticker")?.into(), hash: [0; 32],

@@ -91,6 +91,7 @@ flutter:
     - assets/sounds/
     # Noto Animated Emoji (CC BY 4.0), ~120 gzipped Lottie files - tool/fetch_animated_emoji.py
     - assets/emoji_anim/
+    - assets/stickers3d/
 
   fonts:
     - family: BeVietnamPro

@@ -18,6 +18,7 @@ import '../../core/outgoing.dart';
 import '../../l10n/strings.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'builtin_sticker_pack.dart';
 
 /// In-memory cache of decoded sticker blobs (bounded).
 final Map<String, Future<Uint8List?>> _stickerCache = {};
@@ -167,8 +168,11 @@ Future<void> saveStickerToPack(BuildContext context, String hash) async {
 
 /// Sticker tab content: my packs + manage actions; tap sends.
 class StickerPanel extends StatefulWidget {
-  const StickerPanel({super.key, required this.onSend});
+  const StickerPanel({super.key, required this.onSend, this.onSendFile});
   final void Function(Sticker s) onSend;
+
+  /// The bundled 3D pack (a tab before my packs): sends an image file as a sticker.
+  final Future<void> Function(String path, String emoji)? onSendFile;
   @override
   State<StickerPanel> createState() => _StickerPanelState();
 }
@@ -176,6 +180,10 @@ class StickerPanel extends StatefulWidget {
 class _StickerPanelState extends State<StickerPanel> {
   List<StickerPack>? _packs;
   int _sel = 0;
+
+  /// The 3D pack's tab is shown (before my packs, index 0 of the chips).
+  bool get _has3d => widget.onSendFile != null;
+  bool _on3d = true;
 
   @override
   void initState() {
@@ -292,7 +300,7 @@ class _StickerPanelState extends State<StickerPanel> {
     final s = S.of(context);
     final packs = _packs;
     if (packs == null) return const Center(child: CircularProgressIndicator());
-    if (packs.isEmpty) {
+    if (packs.isEmpty && !_has3d) {
       // the picker is short on phones: scroll instead of overflowing under the row below
       return LayoutBuilder(
         builder: (context, box) => SingleChildScrollView(
@@ -313,17 +321,26 @@ class _StickerPanelState extends State<StickerPanel> {
         ),
       );
     }
-    final p = packs[_sel.clamp(0, packs.length - 1)];
+    final on3d = _has3d && (_on3d || packs.isEmpty);
+    final p = packs.isEmpty ? null : packs[_sel.clamp(0, packs.length - 1)];
     return Column(children: [
       SizedBox(
         height: 40,
         child: Row(children: [
           Expanded(
             child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 8), children: [
+              if (_has3d)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
+                  child: ChoiceChip(key: const ValueKey('pack_3d'), label: Text(s('stickers_3d')), selected: on3d, onSelected: (_) => setState(() => _on3d = true)),
+                ),
               for (var i = 0; i < packs.length; i++)
                 Padding(
                   padding: const EdgeInsets.only(right: 6, top: 4, bottom: 4),
-                  child: ChoiceChip(label: Text(packs[i].name), selected: i == _sel, onSelected: (_) => setState(() => _sel = i)),
+                  child: ChoiceChip(label: Text(packs[i].name), selected: !on3d && i == _sel, onSelected: (_) => setState(() {
+                    _sel = i;
+                    _on3d = false;
+                  })),
                 ),
             ]),
           ),
@@ -333,27 +350,31 @@ class _StickerPanelState extends State<StickerPanel> {
             onSelected: (v) {
               switch (v) {
                 case 'add':
-                  _add(p);
+                  if (p != null) _add(p);
                 case 'new':
-                  _create();
+                  _create().then((_) => setState(() => _on3d = false));
                 case 'import':
                   _import();
                 case 'export':
-                  _export(p);
+                  if (p != null) _export(p);
                 case 'delete':
-                  context.read<LumoraApi>().stickerPackDelete(p.id).then((_) => _reload());
+                  if (p != null) context.read<LumoraApi>().stickerPackDelete(p.id).then((_) => _reload());
               }
             },
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'add', child: Text(s('add_sticker'))),
+              // (the 3D pack is built in: nothing to add, export or delete there)
+              if (!on3d && p != null) PopupMenuItem(value: 'add', child: Text(s('add_sticker'))),
               PopupMenuItem(value: 'new', child: Text(s('new_pack'))),
               PopupMenuItem(value: 'import', child: Text(s('import_pack'))),
-              PopupMenuItem(value: 'export', child: Text(s('export_pack'))),
-              PopupMenuItem(value: 'delete', child: Text(s('delete_pack'), style: const TextStyle(color: LC.danger))),
+              if (!on3d && p != null) PopupMenuItem(value: 'export', child: Text(s('export_pack'))),
+              if (!on3d && p != null) PopupMenuItem(value: 'delete', child: Text(s('delete_pack'), style: const TextStyle(color: LC.danger))),
             ],
           ),
         ]),
       ),
+      if (on3d || p == null)
+        Expanded(child: BuiltinStickerGrid(onSend: widget.onSendFile!))
+      else
       Expanded(
         child: GridView.builder(
           padding: const EdgeInsets.all(8),

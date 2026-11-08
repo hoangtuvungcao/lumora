@@ -67,12 +67,16 @@ class EmojiPicker extends StatefulWidget {
     this.showStickers = true,
     this.onSticker,
     this.onCustomSticker,
+    this.onStickerFile,
     this.onGif,
     this.autofocusSearch = false,
   });
 
   /// Sends a sticker from my packs.
   final void Function(Sticker s)? onCustomSticker;
+
+  /// The bundled 3D pack: an image file sent as a sticker.
+  final Future<void> Function(String path, String emoji)? onStickerFile;
 
   /// Sends a GIF picked from files (plays inline).
   final VoidCallback? onGif;
@@ -648,7 +652,7 @@ class _EmojiPickerState extends State<EmojiPicker> {
     if (widget.onCustomSticker != null) {
       return Column(
         children: [
-          Expanded(child: ClipRect(child: StickerPanel(onSend: widget.onCustomSticker!))),
+          Expanded(child: ClipRect(child: StickerPanel(onSend: widget.onCustomSticker!, onSendFile: widget.onStickerFile))),
           Divider(height: 1, color: context.lc.divider),
           SizedBox(
             height: 52,

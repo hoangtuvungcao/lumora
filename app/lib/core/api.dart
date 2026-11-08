@@ -579,6 +579,10 @@ abstract class LumoraApi {
   }
 
   Future<Message> sendSticker(String conv, String hash) async => Message.fromJson(_map(await request('send_sticker', {'conv': conv, 'hash': hash})));
+
+  /// An image file sent as a sticker without a pack (the bundled 3D pack).
+  Future<Message> sendStickerFile(String conv, String path, {String emoji = ''}) async =>
+      Message.fromJson(_map(await request('send_sticker', {'conv': conv, 'path': path, 'emoji': emoji})));
   Future<void> stickerPackExport(String pack, String path) => request('sticker_pack_export', {'pack': pack, 'path': path});
   Future<void> stickerPackImport(String path) => request('sticker_pack_import', {'path': path});
 

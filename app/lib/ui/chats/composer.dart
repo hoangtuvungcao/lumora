@@ -706,6 +706,16 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
         toastError(context, e);
       }
     },
+    onStickerFile: (path, emoji) async {
+      try {
+        final m = await context.read<LumoraApi>().sendStickerFile(widget.conv, path, emoji: emoji);
+        _chat.thread(widget.conv).add(m);
+        widget.onSent();
+      } catch (e) {
+        if (!mounted) return;
+        toastError(context, e);
+      }
+    },
     onGif: () => _attach(type: FileType.custom, exts: const ['gif', 'webp']),
   );
 

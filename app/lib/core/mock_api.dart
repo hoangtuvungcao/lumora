@@ -2458,7 +2458,7 @@ class MockLumoraApi extends LumoraApi {
       case 'send_sticker':
         final conv = args['conv'] as String;
         final m = _mkMsg(conv, myPeer, '', _now, mine: true, status: 1, kind: 'sticker');
-        m['body'] = {'hash': args['hash'], 'emoji': '', 'mime': 'image/jpeg', 'pack': 'custom', 'animated': false};
+        m['body'] = {'hash': args['hash'] ?? 'st_3d', 'emoji': args['emoji'] ?? '', 'mime': args['path'] != null ? 'image/webp' : 'image/jpeg', 'pack': 'custom', 'animated': false};
         _msgs.putIfAbsent(conv, () => []).add(m);
         return Map.of(m);
       case 'sticker_pack_export':
