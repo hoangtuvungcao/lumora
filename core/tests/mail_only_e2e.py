@@ -13,7 +13,6 @@ checked); a voice-sized file; a 12 MB file is NOT pushed by mail (it waits for a
 import argparse
 import hashlib
 import os
-import random
 import shutil
 import socket
 import subprocess
@@ -26,6 +25,18 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 from e2e import Node, wait_until  # noqa: E402
+
+
+def write_noise_png(path, w, h):
+    """An RGB PNG of random pixels, no imaging library needed (CI has none)."""
+    import struct
+    import zlib
+
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    rows = b"".join(b"\x00" + os.urandom(w * 3) for _ in range(h))
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows, 1)) + chunk(b"IEND", b"")
+    open(path, "wb").write(png)
 
 
 def free_port():
@@ -90,14 +101,9 @@ def main():
 
         def photo_and_file(name, size, kind):
             src = os.path.join(tmp, name)
-            if kind == "jpg":
-                # a real photo-like JPEG (so the message carries a preview > 12 KB)
-                try:
-                    from PIL import Image
-                    img = Image.effect_noise((1600, 1200), 80).convert("RGB")
-                    img.save(src, "JPEG", quality=70)
-                except ImportError:
-                    shutil.copy(os.path.join(ROOT, "..", "branding", "screenshots", "chat.jpg"), src)
+            if kind == "png":
+                # a noisy picture (its preview is > 12 KB, so the photo message goes in pieces)
+                write_noise_png(src, 800, 600)
             else:
                 open(src, "wb").write(os.urandom(size))
             h = hashlib.sha256(open(src, "rb").read()).hexdigest()
@@ -110,7 +116,7 @@ def main():
             assert hashlib.sha256(open(done["path"], "rb").read()).hexdigest() == h, "content differs"
             return fid
 
-        step("photo (~300 KB): the message in pieces, the photo by mail chunks", lambda: photo_and_file("photo.jpg", 0, "jpg"))
+        step("photo (~1.4 MB): the message in pieces, the photo by mail chunks", lambda: photo_and_file("photo.png", 0, "png"))
         step("voice-sized file (40 KB) by mail", lambda: photo_and_file("voice.m4a", 40_000, "bin"))
 
         def big_waits():
