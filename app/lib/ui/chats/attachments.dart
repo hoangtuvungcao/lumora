@@ -475,9 +475,11 @@ class FileCard extends StatelessWidget {
             : btn(AppIcons.openExternal, s('open'), () => openFile(context, f.path)),
         // phones: the app's own folder can't be shown in a file manager — save a copy to
         // the public Download/Lumora folder instead
-        Platform.isAndroid || Platform.isIOS
-            ? btn(AppIcons.download, s('save'), () => saveCopy(context, f))
-            : btn(AppIcons.folder, s('open_folder'), () => openFile(context, f.path, folder: true)),
+        // (a received file has "Lưu" in its suggestions below)
+        if (!(Platform.isAndroid || Platform.isIOS))
+          btn(AppIcons.folder, s('open_folder'), () => openFile(context, f.path, folder: true))
+        else if (!f.incoming && !message.selfDestructs)
+          btn(AppIcons.download, s('save'), () => saveCopy(context, f)),
       ],
       if (f?.state == FileState.failed) btn(AppIcons.refresh, s('retry'), () => retryFile(context, message, f!), c: LC.warning),
     ];
@@ -517,7 +519,10 @@ class FileCard extends StatelessWidget {
         ]),
         if (f != null && f.state == FileState.done && f.incoming && f.path.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Wrap(spacing: 6, runSpacing: 6, children: [
+          // one line (a phone's bubble is narrow): compact chips, scrolling if they still don't fit
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(spacing: 6, children: [
             if (viewable) _Suggest(icon: AppIcons.show, label: s('fpv_view'), onTap: () => openFileViewer(context, path: f.path, name: ref.name, mime: ref.mime)),
             // in-app files: "Mở bằng ứng dụng khác" lives in the viewer
             if (!viewable) _Suggest(icon: AppIcons.openExternal, label: s('open'), onTap: () => openFile(context, f.path)),
@@ -529,7 +534,7 @@ class FileCard extends StatelessWidget {
                 final to = await pickForwardTarget(context, title: s('forward_to'));
                 if (to != null) await chat.forward(message, to.conv, hideSender: to.hideSender);
               }),
-          ]),
+          ])),
         ],
         if (transferring) ...[
           const SizedBox(height: 8),
@@ -939,9 +944,12 @@ class _Suggest extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ActionChip(
         avatar: Icon(icon, size: 15, color: LC.primary),
-        label: Text(label),
+        label: Text(label, maxLines: 1, softWrap: false, style: const TextStyle(fontSize: 13)),
         onPressed: onTap,
         visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        labelPadding: const EdgeInsets.only(left: 2, right: 6),
       );
 }
 
