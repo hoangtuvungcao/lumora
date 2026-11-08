@@ -158,6 +158,15 @@ impl Node {
             self.on_group_report_done(from, &body)?;
         } else if kind == ext::STORY_DELETE {
             self.on_story_delete(from, &body)?;
+        } else if kind == ext::MAIL_PART {
+            // a big mail in pieces (node/file_mail.rs)
+            self.on_mail_part(dev, &body).await?;
+        } else if kind == ext::FILE_MAIL_REQ {
+            self.on_file_mail_req(dev, from, &body).await?;
+        } else if kind == ext::FILE_MAIL_CHUNK {
+            self.on_file_mail_chunk(dev, from, &body).await?;
+        } else if kind == ext::CIRCUIT_INVITE {
+            self.on_circuit_invite(dev, &body)?;
         } else if kind == ext::LINK_PRE {
             // multi-device link pre-authentication (before any address is revealed)
             self.on_link_pre_mail(dev, &body).await?;

@@ -70,6 +70,7 @@ fn main() -> anyhow::Result<()> {
             "--bot-token" => cfg.bot_token = Some(args.next().unwrap_or_else(|| usage())),
             "--no-dht" => cfg.enable_dht = false,
             "--no-upnp" => cfg.enable_upnp = false,
+            "--help-network" => cfg.help_network = true,
             "--no-lan" => cfg.enable_lan = false,
             "--no-lan-multicast" => cfg.lan_multicast = false,
             "--no-mdns" => cfg.mdns = false,

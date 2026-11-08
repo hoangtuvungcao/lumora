@@ -31,9 +31,9 @@ import argparse, hashlib, json, os, queue, re, shlex, statistics, subprocess, sy
 from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PORTS = {"A": 40001, "B": 40002, "C": 40003}
+PORTS = {"A": 40001, "B": 40002, "C": 40003, "D": 40004}
 SEQ_BASE, SEQ_N = 20000, 1024
-SITE_IDX = {"A": 1, "B": 2, "C": 3}
+SITE_IDX = {"A": 1, "B": 2, "C": 3, "D": 4}
 FILE_MB = 5
 
 MODES = {
@@ -103,6 +103,7 @@ CASES = [
     dict(id="keepalive", kind="keepalive", a="portcone", b="portcone", expect="direct", modes=["full", "no-relay"], theory="30 s UDP timeout: 10 s QUIC keep-alives keep the hole open; after the external port changes the path must come back."),
     # 13 friend peer relay + two-sided birthday
     dict(id="peer-relay", kind="peerrelay", a="symrand", b="symrand", c="portcone", expect="peer-relay", modes=["full"], theory="Hard↔hard with a mutual friend on an easy NAT: the friend relays (E2E encrypted), no server."),
+    dict(id="circuit", kind="circuit", a="symrand", b="symrand", c="fullcone", d="fullcone", expect="circuit", modes=["no-relay", "no-stun-no-relay"], theory="Hard↔hard, no friend in common, no server relay: two volunteers (strangers to both) carry a blind two-hop circuit — neither sees both ends, E2E encrypted."),
     dict(id="peer-relay-live", kind="peerrelay", restart=False, a="symrand", b="symrand", c="portcone", expect="peer-relay", modes=["full"], theory="Same, but the friendships are made while already connected (no app restart): the friend must offer relaying as soon as it becomes a friend."),
     dict(id="bday-sr", a="symrand", b="symrand", expect="direct|none", modes=["no-stun-no-relay"], trials=10, nofile=True, theory="No STUN → both sides play both birthday roles; vs two random NATs success should be ~0."),
 ]
@@ -383,10 +384,10 @@ def build(world, case, tags=("A", "B")):
 
 # ───────────────────────────── lumorad driver ─────────────────────────────
 class Node:
-    def __init__(self, world, host, binary, data, name, mode, port, flags=()):
+    def __init__(self, world, host, binary, data, name, mode, port, flags=(), env=()):
         m = MODES[mode]
         os.makedirs(data, exist_ok=True)
-        args = ["ip", "netns", "exec", host.ns, binary, "--data", data, "--name", name, "--port", str(port),
+        args = ["ip", "netns", "exec", host.ns] + (["env", *env] if env else []) + [binary, "--data", data, "--name", name, "--port", str(port),
                 "--no-nostr", "--no-dht", "--no-upnp", "--stun", world.stun if m["stun"] else "",
                 "--relay-delay", str(m["relay_delay"]), "--stdio"]
         if m["relay"]:
@@ -461,6 +462,8 @@ def classify(path, remote):
     remote = remote or ""
     if path == "relay":
         m = re.match(r"\[fd4c:756d:([0-9a-f]+):", remote)
+        if m and int(m.group(1), 16) >= 0xC000:
+            return "circuit"  # blind two-hop circuit (net/circuit.rs)
         return "peer-relay" if m and int(m.group(1), 16) >= 1000 else "relay"
     if path == "lan":
         return "lan"
@@ -709,6 +712,53 @@ def scenario_peer_relay(world, case, mode, cfg):
             world.start_relays()
 
 
+def scenario_circuit(world, case, mode, cfg):
+    """A, B hard (symmetric random), friends; C, D volunteers on easy NATs, strangers to both.
+    No server relays data: A–B must come up over a blind two-hop circuit C/D."""
+    hosts, routers = build(world, case, tags=("A", "B", "C", "D"))
+    d = os.path.join(cfg.logdir, f"{case['id']}.{mode}")
+    relays = ",".join(f"{hosts[t].router.wan_ip}:{PORTS[t]}" for t in "CD")
+    N = {}
+    for t in "ABCD":
+        vol = t in "CD"
+        N[t] = Node(world, hosts[t], cfg.bin, os.path.join(d, t), t, mode, PORTS[t],
+                    flags=["--help-network"] if vol else [], env=[] if vol else [f"LUMORA_CIRCUIT_RELAYS={relays}"])
+    A, B = N["A"], N["B"]
+    out = dict(trial=1)
+    try:
+        P = {t: N[t].call("me")["peer"] for t in "ABCD"}
+        time.sleep(2.5)
+        out["natA"], out["natB"] = A.call("refresh_net")["nat"], B.call("refresh_net")["nat"]
+        friends_first(A, B, P["A"], P["B"], restart=True)
+        A.call("me"), B.call("me")
+        t1 = time.time()
+        r = None
+        end = time.time() + 90
+        while time.time() < end:
+            try:
+                r = B.call("connect", peer=P["A"], timeout=50)
+                break
+            except Exception:
+                r = None
+                time.sleep(1)
+        out["t_connect"] = out["t_final"] = time.time() - t1
+        out["path"] = classify(r["path"], r.get("remote_addr")) if r else "none"
+        if out["path"] == "none":
+            return out
+        out["chat_ms"] = chat_test(B, A, P["B"], P["A"], "qua mạch hai chặng")
+        out["chat_back_ms"] = chat_test(A, B, P["A"], P["B"], "nhận rồi")
+        out["file"] = file_test(B, A, P["A"], d)
+        st = B.peer_status(P["A"])
+        out["rtt"] = st and st["rtt_ms"]
+        # the volunteers relayed bytes, knowing neither account
+        out["relayed"] = [N[t].call("help_network").get("relayed_bytes", 0) for t in "CD"]
+        out["volunteers_know_them"] = any(c["peer"] in (P["A"], P["B"]) for t in "CD" for c in N[t].call("contacts"))
+        return out
+    finally:
+        for n in N.values():
+            n.stop()
+
+
 # ───────────────────────────── runner ─────────────────────────────
 def run_job(world, case, mode, cfg):
     kind = case.get("kind", "pair")
@@ -718,6 +768,8 @@ def run_job(world, case, mode, cfg):
             trials = [scenario_keepalive(world, case, mode, cfg)]
         elif kind == "peerrelay":
             trials = [scenario_peer_relay(world, case, mode, cfg)]
+        elif kind == "circuit":
+            trials = [scenario_circuit(world, case, mode, cfg)]
         else:
             n = 1 if exp == "none" else case.get("trials", cfg.trials)
             trials = []
@@ -858,7 +910,7 @@ def main():
     print(f"{len(jobs)} jobs, {cfg.jobs} parallel worlds, logs: {cfg.logdir}", flush=True)
     teardown_all()
     # long scenarios first so they overlap with the many short ones
-    jobs.sort(key=lambda j: 0 if j[0].get("kind") in ("keepalive", "peerrelay") or j[0].get("trials", 0) > 3 or j[0].get("impair") else 1)
+    jobs.sort(key=lambda j: 0 if j[0].get("kind") in ("keepalive", "peerrelay", "circuit") or j[0].get("trials", 0) > 3 or j[0].get("impair") else 1)
     order = {(c["id"], m): i for i, (c, m) in enumerate((c, m) for c in CASES for m in c.get("modes", STD))}
     q = queue.Queue()
     for j in jobs:

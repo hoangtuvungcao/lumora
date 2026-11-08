@@ -294,7 +294,7 @@ class _MessageTileState extends State<MessageTile> {
     );
   }
 
-  String _authorName(BuildContext context) => context.read<ContactsStore>().nameOf(m.author);
+  String _authorName(BuildContext context) => context.select<ContactsStore, String>((c) => c.nameOf(m.author));
 
   List<(String, IconData, String)> _items(S s) => [
         ('reply', AppIcons.reply, s('reply')),
@@ -634,7 +634,7 @@ class _Bubble extends StatelessWidget {
     if (jumbo != null) {
       return Column(crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         if (showName)
-          Text(context.read<ContactsStore>().nameOf(m.author), style: TextStyle(color: _authorColor(m.author), fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(context.select<ContactsStore, String>((c) => c.nameOf(m.author)), style: TextStyle(color: _authorColor(m.author), fontWeight: FontWeight.w600, fontSize: 13)),
         JumboEmoji(emojis: jumbo),
         Padding(padding: const EdgeInsets.only(top: 2), child: _GlassMeta(child: _whiteMeta(context, m, s, time))),
       ]);
@@ -643,7 +643,7 @@ class _Bubble extends StatelessWidget {
       // Stickers render without a bubble.
       return Column(crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         if (showName)
-          Text(context.read<ContactsStore>().nameOf(m.author), style: TextStyle(color: _authorColor(m.author), fontWeight: FontWeight.w600, fontSize: 13)),
+          Text(context.select<ContactsStore, String>((c) => c.nameOf(m.author)), style: TextStyle(color: _authorColor(m.author), fontWeight: FontWeight.w600, fontSize: 13)),
         StickerBubble(message: m, overlay: _GlassMeta(child: _whiteMeta(context, m, s, time))),
       ]);
     }
@@ -677,7 +677,7 @@ class _Bubble extends StatelessWidget {
               padding: EdgeInsets.only(bottom: 2, left: m.isFile ? 6 : 0),
               child: GestureDetector(
                 onTap: () => openProfile(context, m.author),
-                child: Text(context.read<ContactsStore>().nameOf(m.author),
+                child: Text(context.select<ContactsStore, String>((c) => c.nameOf(m.author)),
                   style: TextStyle(color: authorColor, fontWeight: FontWeight.w600, fontSize: 13)),)
             ),
           if (m.forwardedFrom != null)
@@ -688,7 +688,7 @@ class _Bubble extends StatelessWidget {
                 const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    s('forwarded_from', {'name': context.read<ContactsStore>().nameOf(m.forwardedFrom!)}),
+                    s('forwarded_from', {'name': context.select<ContactsStore, String>((c) => c.nameOf(m.forwardedFrom!))}),
                     style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: mine ? Colors.white70 : LC.accent),
                   ),
                 ),
@@ -756,7 +756,7 @@ class _ReplyQuote extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = S.of(context);
     final r = reply;
-    final name = r == null ? '' : (r.mine ? s('you') : context.read<ContactsStore>().nameOf(r.author));
+    final name = r == null ? '' : (r.mine ? s('you') : context.select<ContactsStore, String>((c) => c.nameOf(r.author)));
     final text = r == null
         ? s('original_unavailable')
         : (r.deleted

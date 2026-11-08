@@ -219,6 +219,8 @@ void main() {
     expect(rec.recording, isTrue);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     t.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    // (the stop is asynchronous: slower on a busy machine than any fixed wait)
+    await until(t, () => !rec.recording);
     await real(t, 60);
     expect(rec.recording, isFalse);
     expect(File(rec.path!).existsSync(), isFalse);

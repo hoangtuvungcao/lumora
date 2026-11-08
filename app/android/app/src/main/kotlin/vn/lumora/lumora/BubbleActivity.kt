@@ -1,5 +1,6 @@
 package vn.lumora.lumora
 
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import io.flutter.embedding.android.RenderMode
@@ -61,10 +62,13 @@ class BubbleActivity : MainActivity() {
         }
         main.removeCallbacks(checkShown)
         main.postDelayed(checkShown, SHOW_TIMEOUT_MS)
+        main.removeCallbacks(giveUp)
+        main.postDelayed(giveUp, GIVE_UP_MS)
     }
 
     override fun onPause() {
         main.removeCallbacks(checkShown)
+        main.removeCallbacks(giveUp)
         super.onPause()
     }
 
@@ -76,7 +80,24 @@ class BubbleActivity : MainActivity() {
 
     override fun onDestroy() {
         main.removeCallbacks(checkShown)
+        main.removeCallbacks(giveUp)
         super.onDestroy()
+    }
+
+    /**
+     * Last resort: still nothing of Lumora in the bubble (some OEM bubble containers never
+     * show Flutter's frames, a cold start that takes too long): never leave the user an
+     * empty grey box — open the chat in Lumora's main window instead.
+     */
+    private val giveUp = Runnable {
+        if (isFinishing || isDestroyed || uiShown && !isEvicted || mainHasFocus()) return@Runnable
+        android.util.Log.w("BubbleActivity", "bubble still not drawn after ${GIVE_UP_MS} ms: opening the chat in the app")
+        val open = Intent(this, MainActivity::class.java)
+            .setAction(Notifier.ACTION_OPEN_CONV)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        bubbleConv?.let { open.putExtra(Notifier.EXTRA_CONV, it) }
+        runCatching { startActivity(open) }
+        finish()
     }
 
     /**
@@ -98,6 +119,8 @@ class BubbleActivity : MainActivity() {
     private companion object {
         const val SHOW_TIMEOUT_MS = 1500L
         const val MAX_HEAL_TRIES = 2
+        /** After this long without a frame (heals included), the chat opens in the app. */
+        const val GIVE_UP_MS = 6000L
 
         /** Self-heal attempts since the bubble was last hidden (re-created instances share it). */
         var healTries = 0

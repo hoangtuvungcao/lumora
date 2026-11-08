@@ -259,8 +259,14 @@ class _WindowPainter extends CustomPainter {
 
 /// No camera permission / no usable camera: what to do, in plain words.
 class QrCameraIssue extends StatelessWidget {
-  const QrCameraIssue({super.key, required this.denied, this.backKey = 'qr_scan_type_code'});
+  const QrCameraIssue({super.key, required this.denied, this.backKey = 'qr_scan_type_code', this.backIcon = AppIcons.numpad, this.textPrefix = 'qr_cam'});
   final bool denied;
+
+  /// Icon of the "go back" button.
+  final IconData backIcon;
+
+  /// String keys `<prefix>_denied_title/_sub`, `<prefix>_failed_title/_sub`.
+  final String textPrefix;
 
   /// Label of the "go back and type it instead" button.
   final String backKey;
@@ -282,8 +288,8 @@ class QrCameraIssue extends StatelessWidget {
                 SecureHero(
                   icon: AppIcons.camera,
                   tone: denied ? LC.warning : LC.danger,
-                  title: s(denied ? 'qr_cam_denied_title' : 'qr_cam_failed_title'),
-                  subtitle: s(denied ? 'qr_cam_denied_sub' : 'qr_cam_failed_sub'),
+                  title: s(denied ? '${textPrefix}_denied_title' : '${textPrefix}_failed_title'),
+                  subtitle: s(denied ? '${textPrefix}_denied_sub' : '${textPrefix}_failed_sub'),
                   compact: true,
                 ),
                 const SizedBox(height: 26),
@@ -298,7 +304,7 @@ class QrCameraIssue extends StatelessWidget {
                 Center(
                   child: TextButton.icon(
                     onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(AppIcons.numpad, size: 18),
+                    icon: Icon(backIcon, size: 18),
                     label: Text(s(backKey)),
                   ),
                 ),

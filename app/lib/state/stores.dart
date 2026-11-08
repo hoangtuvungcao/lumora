@@ -309,7 +309,13 @@ class ContactsStore extends ChangeNotifier {
       ..clear()
       ..addEntries(list.map((c) => MapEntry(c.peer, c)));
     _changed();
+    onNamesChanged?.call(null);
   }
+
+  /// A shown name (nickname / name) changed: `peer`, or every contact (null).
+  /// AppServices retitles the direct chats, which the core keeps under the
+  /// friend's own name.
+  void Function(String? peer)? onNamesChanged;
 
   void _changed() {
     _sorted = null;
@@ -430,10 +436,12 @@ class ContactsStore extends ChangeNotifier {
   }
 
   Future<void> rename(String peer, String alias) async {
+    alias = alias.trim();
     await api.renameContact(peer, alias);
     final c = byPeer[peer];
     if (c != null) byPeer[peer] = c.copyWith(alias: alias);
     _changed();
+    onNamesChanged?.call(peer);
   }
 
   Future<void> setVerified(String peer, bool v) async {
@@ -796,7 +804,7 @@ class ChatStore extends ChangeNotifier {
     final before = _loaded ? convs.keys.toSet() : null;
     convs
       ..clear()
-      ..addEntries(list.map((c) => MapEntry(c.id, c)));
+      ..addEntries(list.map((c) => MapEntry(c.id, _titled(c))));
     // chats that appeared since the last read (found by a reload, not an event): the
     // default timer applies to them as to any new chat
     if (before != null) {
@@ -888,7 +896,20 @@ class ChatStore extends ChangeNotifier {
     }).toList();
   }
 
+  /// The shown name of a contact (their nickname when I set one), null when
+  /// unknown. Direct chats are titled with it: the core's row carries the
+  /// friend's own name.
+  String? Function(String peer)? directName;
+
+  /// [c] titled with [directName] when it is a direct chat.
+  Conversation _titled(Conversation c) {
+    if (!c.id.startsWith('d:')) return c;
+    final n = directName?.call(c.id.substring(2));
+    return n != null && n.isNotEmpty && n != c.title ? c.copyWith(title: n) : c;
+  }
+
   void _conv(Conversation c) {
+    c = _titled(c);
     convs[c.id] = c;
     _sorted = null;
     notifyListeners();
@@ -899,6 +920,21 @@ class ChatStore extends ChangeNotifier {
     final c = convs['d:$peer'];
     if (c == null || name.isEmpty || c.title == name) return;
     _conv(c.copyWith(title: name));
+  }
+
+  /// Every direct chat retitled from [directName] (contacts (re)loaded).
+  void retitleDirect() {
+    var changed = false;
+    for (final c in convs.values.toList()) {
+      if (!c.id.startsWith('d:')) continue;
+      final n = directName?.call(c.id.substring(2));
+      if (n == null || n.isEmpty || n == c.title) continue;
+      convs[c.id] = c.copyWith(title: n);
+      changed = true;
+    }
+    if (!changed) return;
+    _sorted = null;
+    notifyListeners();
   }
 
   void onConversation(Map<String, dynamic> j) {
@@ -970,7 +1006,7 @@ class ChatStore extends ChangeNotifier {
       try {
         final list = await api.conversations();
         for (final c in list) {
-          convs[c.id] = _merged(c, hasLastMine: false, hasMentions: false);
+          convs[c.id] = _titled(_merged(c, hasLastMine: false, hasMentions: false));
         }
         _sorted = null;
         notifyListeners();

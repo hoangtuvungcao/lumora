@@ -488,7 +488,8 @@ class _MobileShellState extends State<_MobileShell> {
 
     return Scaffold(
       body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: pages)),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: _NarrowNavLabels(
+        child: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) {
           setState(() => _tab = i);
@@ -503,6 +504,28 @@ class _MobileShellState extends State<_MobileShell> {
           dest(AppIcons.settings, AppIcons.settingsActive, s('settings')),
         ],
       ),
+      ),
+    );
+  }
+}
+
+/// Very narrow phones (< 360 px: 5 tabs of ~64 px): smaller tab labels, so "Trò chuyện" or
+/// "Communities" stay on one line instead of breaking in two.
+class _NarrowNavLabels extends StatelessWidget {
+  const _NarrowNavLabels({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width >= 360) return child;
+    final t = Theme.of(context);
+    final base = t.navigationBarTheme.labelTextStyle;
+    return Theme(
+      data: t.copyWith(
+        navigationBarTheme: t.navigationBarTheme.copyWith(
+          labelTextStyle: WidgetStateProperty.resolveWith((s) => (base?.resolve(s) ?? const TextStyle()).copyWith(fontSize: 9.5, letterSpacing: -0.2)),
+        ),
+      ),
+      child: child,
     );
   }
 }

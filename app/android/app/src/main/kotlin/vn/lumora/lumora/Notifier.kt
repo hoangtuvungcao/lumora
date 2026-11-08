@@ -412,7 +412,8 @@ object Notifier {
             .build()
         ctx.getSystemService(ShortcutManager::class.java)?.pushDynamicShortcut(shortcut)
         b.setShortcutId(id).setLocusId(LocusId(id))
-        if (c.bubble) {
+        // (Xiaomi: only once Lumora may show pop-ups — else the bubble is an empty grey box, see OemPopups)
+        if (c.bubble && !OemPopups.bubblesBlocked(ctx)) {
             // The bubble shows the chat in [BubbleActivity] (the same Lumora UI, opened on this chat).
             val bubbleIntent = PendingIntent.getActivity(
                 ctx, id.hashCode(),

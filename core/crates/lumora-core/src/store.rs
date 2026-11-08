@@ -590,6 +590,9 @@ impl Store {
     }
 
     // ---------- conversations ----------
+    pub fn conv_exists(&self, id: &str) -> bool {
+        self.conn.lock().query_row("SELECT 1 FROM convs WHERE id=?1", params![id], |_| Ok(())).optional().ok().flatten().is_some()
+    }
     pub fn ensure_conv(&self, id: &str, kind: i64, title: &str) -> Result<()> {
         let c = self.conn.lock();
         let exists = c.query_row("SELECT 1 FROM convs WHERE id=?1", params![id], |_| Ok(())).optional()?.is_some();

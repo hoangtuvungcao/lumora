@@ -88,6 +88,16 @@ class AppServices {
     // chat's timer is kept on this device (it survives a restart)
     chat.ttlByConv.addAll(settings.chatTtls);
     chat.defaultTtl = () => settings.defaultTtlMs;
+    // Nicknames: the direct chat is titled the way I named the friend, at once.
+    chat.directName = (peer) {
+      final c = contacts[peer];
+      return c == null || c.displayName.isEmpty ? null : c.displayName;
+    };
+    contacts.onNamesChanged = (peer) {
+      if (peer == null) return chat.retitleDirect();
+      final n = contacts[peer]?.displayName ?? '';
+      if (n.isNotEmpty) chat.onContactNamed(peer, n);
+    };
     chat.onTtlChanged = (conv, ms) {
       if ((settings.chatTtls[conv] ?? 0) == ms) return;
       settings.update((s) => s.chatTtls = {...s.chatTtls}..remove(conv)..addAll({if (ms > 0) conv: ms}));
@@ -742,6 +752,7 @@ class AppServices {
     'typing': settings.typingIndicators,
     'store_forward': settings.storeForward,
     'help_friends': settings.helpFriends,
+    'help_network': settings.helpNetwork,
     'lan': settings.lanDiscovery,
     'relays': List<String>.of(settings.relays),
     'echo_cancel': settings.echoCancel,
@@ -769,6 +780,7 @@ class AppServices {
         s.typingIndicators = b('typing') ?? s.typingIndicators;
         s.storeForward = b('store_forward') ?? s.storeForward;
         s.helpFriends = b('help_friends') ?? s.helpFriends;
+        s.helpNetwork = b('help_network') ?? s.helpNetwork;
         s.echoCancel = b('echo_cancel') ?? s.echoCancel;
         s.noiseSuppression = b('noise_suppression') ?? s.noiseSuppression;
         s.videoLowlight = b('video_lowlight') ?? s.videoLowlight;

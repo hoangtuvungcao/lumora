@@ -28,6 +28,10 @@ class Settings extends ChangeNotifier {
   /// Pass encrypted data along for two friends who can't connect directly
   /// (core `help_friends`, capped at 1 MB/s).
   bool helpFriends = true;
+
+  /// "Giúp mạng Lumora": relay blind two-hop circuits for anyone stuck behind hard NATs
+  /// (core `help_network`, net/circuit.rs). On by default on computers, off on phones.
+  bool helpNetwork = !(Platform.isAndroid || Platform.isIOS);
   bool notifications = true;
 
   /// Incoming calls ring (Lumora's own tone on computers, the phone's
@@ -51,6 +55,9 @@ class Settings extends ChangeNotifier {
   /// Android: the "keep Lumora running in the background" prompt was shown
   /// once (it is in Settings › Notifications afterwards).
   bool backgroundAsked = false;
+
+  /// Xiaomi / HyperOS: asked once to allow the pop-ups chat bubbles need (background sheet).
+  bool bubblesAsked = false;
 
   /// Muted chats that still alert for @mentions of me (mute sheet: "Mentions only").
   List<String> mentionsOnlyChats = [];
@@ -209,6 +216,7 @@ class Settings extends ChangeNotifier {
     lanDiscovery = j['lan'] as bool? ?? lanDiscovery;
     storeForward = j['store_forward'] as bool? ?? storeForward;
     helpFriends = j['help_friends'] as bool? ?? helpFriends;
+    helpNetwork = j['help_network'] as bool? ?? helpNetwork;
     notifications = j['notifications'] as bool? ?? notifications;
     callRingtone = j['call_ringtone'] as bool? ?? callRingtone;
     messageSound = j['message_sound'] as bool? ?? messageSound;
@@ -216,6 +224,7 @@ class Settings extends ChangeNotifier {
     reminderSound = j['reminder_sound'] as bool? ?? reminderSound;
     chatBubbles = j['chat_bubbles3'] as bool? ?? chatBubbles;
     backgroundAsked = j['background_asked'] as bool? ?? backgroundAsked;
+    bubblesAsked = j['bubbles_asked'] as bool? ?? bubblesAsked;
     mentionsOnlyChats = (j['mentions_only_chats'] as List?)?.cast<String>() ?? mentionsOnlyChats;
     snoozedReminders = (j['snoozed_reminders'] as List?)?.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList() ?? snoozedReminders;
     // (`link_previews` from older versions is ignored: there is no such feature)
@@ -272,6 +281,7 @@ class Settings extends ChangeNotifier {
         'lan': lanDiscovery,
         'store_forward': storeForward,
         'help_friends': helpFriends,
+        'help_network': helpNetwork,
         'notifications': notifications,
         'call_ringtone': callRingtone,
         'message_sound': messageSound,
@@ -279,6 +289,7 @@ class Settings extends ChangeNotifier {
         'reminder_sound': reminderSound,
         'chat_bubbles3': chatBubbles,
         'background_asked': backgroundAsked,
+        'bubbles_asked': bubblesAsked,
         'mentions_only_chats': mentionsOnlyChats,
         'snoozed_reminders': snoozedReminders,
         'relays': relays,

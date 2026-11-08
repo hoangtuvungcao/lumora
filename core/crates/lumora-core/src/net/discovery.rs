@@ -642,6 +642,12 @@ fn open_friend_record(p: &PeerId, key: &[u8; 32], ct: &[u8]) -> Option<DhtRecord
     crate::proto::from_slice_capped(&plain).ok()
 }
 
+/// Info-hash under which volunteer circuit relays announce themselves.
+fn circuit_info_hash() -> mainline::Id {
+    let h = blake3::derive_key("lumora circuit relays v1", b"");
+    mainline::Id::from_bytes(&h[..20]).expect("20 bytes")
+}
+
 pub struct Dht {
     dht: mainline::async_dht::AsyncDht,
 }
@@ -672,6 +678,33 @@ impl Dht {
             .await
             .ok()??;
         open_friend_record(p, key, item.value())
+    }
+
+    /// Volunteer circuit relays (net/circuit.rs): announce this node's relay port under
+    /// the well-known info-hash (an announce says only "a Lumora relay runs at IP:port").
+    pub async fn announce_circuit_relay(&self, port: u16) -> anyhow::Result<()> {
+        self.dht.announce_peer(circuit_info_hash(), Some(port)).await.map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        Ok(())
+    }
+
+    /// Volunteer circuit relays announced on the DHT (≤ 64, deduplicated).
+    pub async fn find_circuit_relays(&self) -> Vec<std::net::SocketAddr> {
+        use futures::StreamExt;
+        let mut out: Vec<std::net::SocketAddr> = Vec::new();
+        let mut s = self.dht.get_peers(circuit_info_hash());
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+        while let Ok(Some(batch)) = tokio::time::timeout_at(deadline, s.next()).await {
+            for a in batch {
+                let a = std::net::SocketAddr::V4(a);
+                if crate::util::is_global_ip(&a.ip()) && !out.contains(&a) {
+                    out.push(a);
+                }
+            }
+            if out.len() >= 64 {
+                break;
+            }
+        }
+        out
     }
 
     /// The account's devices, under the main device's friends-only key (`key`).

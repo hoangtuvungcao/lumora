@@ -37,8 +37,15 @@ class CallLayer extends StatelessWidget {
     // small desktop window, split screen or a foldable's cover screen keeps
     // the full call screen and its hang-up.
     return ValueListenableBuilder<bool>(
-      valueListenable: AndroidBridge.pip,
-      builder: (context, pip, _) => _layer(context, pip: pip),
+      valueListenable: AndroidBridge.inBubble,
+      // a chat bubble shows its own chat only: someone else's call (ringing, or one still
+      // on) belongs to the main window and its notification, never over this chat
+      builder: (context, bubble, _) => bubble
+          ? const SizedBox.shrink()
+          : ValueListenableBuilder<bool>(
+              valueListenable: AndroidBridge.pip,
+              builder: (context, pip, _) => _layer(context, pip: pip),
+            ),
     );
   }
 

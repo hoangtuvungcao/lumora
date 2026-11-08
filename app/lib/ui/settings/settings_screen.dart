@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -370,6 +372,7 @@ class _Privacy extends StatelessWidget {
         SwitchRow(icon: AppIcons.lan, title: s('lan_discovery'), subtitle: s('lan_discovery_hint'), value: st.lanDiscovery, onChanged: (v) => st.update((x) => x.lanDiscovery = v)),
         SwitchRow(icon: AppIcons.package, title: s('store_forward'), subtitle: s('store_forward_hint'), value: st.storeForward, onChanged: (v) => st.update((x) => x.storeForward = v)),
         SwitchRow(icon: AppIcons.peerToPeer, title: s('help_friends'), subtitle: s('help_friends_hint'), value: st.helpFriends, onChanged: (v) => st.update((x) => x.helpFriends = v)),
+        SwitchRow(icon: AppIcons.globe, title: s('help_network'), subtitle: s('help_network_hint'), value: st.helpNetwork, onChanged: (v) => st.update((x) => x.helpNetwork = v)),
         const HelpRestoreRow(),
       ]),
       _Group(title: s('calls'), children: [
@@ -427,6 +430,7 @@ class NotificationSettingsGroup extends StatelessWidget {
           value: st.notifications && st.chatBubbles,
           onChanged: !st.notifications ? null : (v) => st.update((x) => x.chatBubbles = v),
         ),
+        if (st.notifications && st.chatBubbles) const _BubblesPermissionHint(),
         InkWell(
           borderRadius: BorderRadius.circular(Radii.md),
           onTap: () => showBackgroundSheet(context),
@@ -1194,5 +1198,53 @@ class _CoreSwitchState extends State<_CoreSwitch> {
     if (on == null) return const SizedBox.shrink();
     final s = S.of(context);
     return SwitchRow(icon: widget.icon, title: s(widget.title), subtitle: s(widget.hint), value: on, onChanged: _set);
+  }
+}
+
+/// Xiaomi / HyperOS: chat bubbles stay off until Lumora may show pop-ups — say so under the
+/// switch, with the button that opens the right permission page. Re-checked when the user
+/// comes back from it.
+class _BubblesPermissionHint extends StatefulWidget {
+  const _BubblesPermissionHint();
+  @override
+  State<_BubblesPermissionHint> createState() => _BubblesPermissionHintState();
+}
+
+class _BubblesPermissionHintState extends State<_BubblesPermissionHint> {
+  bool _blocked = false;
+  AppLifecycleListener? _life;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_check());
+    try {
+      _life = AppLifecycleListener(onResume: _check);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _life?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    final b = await AndroidBridge.bubblesBlocked();
+    if (mounted && b != _blocked) setState(() => _blocked = b);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_blocked) return const SizedBox.shrink();
+    final s = S.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(44, 0, 4, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(s('chat_bubbles_blocked'), style: TextStyle(color: context.lc.muted, fontSize: 13, height: 1.4)),
+        const SizedBox(height: 8),
+        FilledButton.tonal(onPressed: AndroidBridge.openPopupPermissions, child: Text(s('bg_perm_allow'))),
+      ]),
+    );
   }
 }

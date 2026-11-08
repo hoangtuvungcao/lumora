@@ -1725,8 +1725,10 @@ class FileItem {
         size: _i(j, 'size'),
         hash: _s(j, 'hash'),
         path: _s(j, 'path'),
-        incoming: _i(j, 'direction') == 1,
-        state: FileState.values[_i(j, 'state').clamp(0, 5)],
+        // 6 = removed here by storage clean-up, 7 = kept on my other device: both can be
+        // fetched again, so they show the download button (accept_file re-downloads them)
+        incoming: _i(j, 'direction') == 1 || _i(j, 'state') == 7,
+        state: switch (_i(j, 'state')) { 6 || 7 => FileState.offered, final n => FileState.values[n.clamp(0, 5)] },
         progress: _i(j, 'progress'),
         created: _i(j, 'created'),
         speedBps: j['speed_bps'] == null ? null : _i(j, 'speed_bps'),

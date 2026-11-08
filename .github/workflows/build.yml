@@ -73,6 +73,10 @@ jobs:
         run: env -u WAYLAND_DISPLAY LUMORA_CAPTURE=x11 xvfb-run -a -s "-screen 0 1280x800x24" python3 core/tests/ip_privacy_e2e.py
       - name: history recovery from friends after a phrase restore
         run: python3 core/tests/recovery_e2e.py --bin core/target/debug/lumorad
+      - name: a bot moved to a fresh data folder keeps its users and groups
+        run: python3 sdk/tests/bot_moved_e2e.py --bin core/target/debug/lumorad
+      - name: no connection possible (symmetric NATs both sides) — photos and small files go by mail
+        run: python3 core/tests/mail_only_e2e.py --bin core/target/debug/lumorad --relay-bin core/target/debug/lumora-relay
       - name: video calls (VP8, H.264, H.264 → VP8 switch; first frame < 1.5 s after answering)
         run: python3 core/tests/video_e2e.py --h264-bin "$RUNNER_TEMP/lumorad-h264dev"
       - name: iPhone features on Linux (Bonjour/mDNS discovery, push wake-ups through lumora-push)

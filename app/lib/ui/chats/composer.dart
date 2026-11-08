@@ -16,6 +16,7 @@ import '../../state/stores.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'attachments.dart';
+import 'camera_capture.dart';
 import 'stickers.dart';
 import 'rich_bubbles.dart';
 import 'message_bubble.dart' show canEditMessage;
@@ -528,7 +529,7 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
       ('checklist', AppIcons.tasks, s('checklist'), const [Color(0xFF22C55E), Color(0xFF14B8A6)]),
       ('reminder', AppIcons.reminder, s('reminder'), const [Color(0xFFF59E0B), Color(0xFFF97316)]),
       ('voice', AppIcons.mic, s('att_voice'), const [Color(0xFFEF4444), Color(0xFFF97316)]),
-      ('camera', AppIcons.camera, s('att_camera'), const [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
+      if (chatCamera != null) ('camera', AppIcons.camera, s('att_camera'), const [Color(0xFF0EA5E9), Color(0xFF6366F1)]),
       ('meme', AppIcons.meme, s('att_meme'), const [Color(0xFFF43F5E), Color(0xFFF59E0B)]),
       ('scheduled', AppIcons.schedule, s('att_schedule'), const [Color(0xFF64748B), Color(0xFF94A3B8)]),
     ];
@@ -576,7 +577,7 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
       case 'media':
         _attach(type: FileType.media);
       case 'camera':
-        _attach(type: FileType.image);
+        _openCamera();
       case 'file':
         _attach();
       case 'poll':
@@ -596,6 +597,22 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
         if (path != null && mounted) await context.read<FilesStore>().send(widget.conv, path);
       case 'scheduled':
         showScheduled(context, conv: widget.conv);
+    }
+  }
+
+  /// In-app camera: a photo goes to the photo preview (caption / edit), a
+  /// video to the send sheet; the gallery button opens the library.
+  Future<void> _openCamera() async {
+    final open = chatCamera;
+    if (open == null) return;
+    final shot = await open(context);
+    if (!mounted) return;
+    switch (shot) {
+      case CapturedFile(:final path):
+        await showSendFiles(context, conv: widget.conv, paths: [path], onSent: widget.onSent);
+      case PickFromGallery():
+        await _attach(type: FileType.media);
+      case null:
     }
   }
 
@@ -930,6 +947,12 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
                                         ),
                                       ),
                                     ),
+                                    if (chatCamera != null && !_hasText && c.editing == null)
+                                      PermGate(
+                                        conv: widget.conv,
+                                        perm: Perm.sendMedia,
+                                        child: _InlineIcon(key: const ValueKey('composer_camera'), icon: AppIcons.camera, tooltip: s('cam_take_photo'), onTap: _openCamera),
+                                      ),
                                     _InlineIcon(
                                       icon: ttl > 0 ? AppIcons.timer : AppIcons.timer,
                                       color: ttl > 0 ? LC.warning : null,
@@ -1063,7 +1086,7 @@ class _RoundIcon extends StatelessWidget {
 }
 
 class _InlineIcon extends StatelessWidget {
-  const _InlineIcon({required this.icon, required this.tooltip, required this.onTap, this.color});
+  const _InlineIcon({super.key, required this.icon, required this.tooltip, required this.onTap, this.color});
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;

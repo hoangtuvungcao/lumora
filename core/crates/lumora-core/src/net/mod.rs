@@ -5,6 +5,7 @@
 //!  2. IPv6 global                    5. Port prediction / birthday spraying (symmetric NAT)
 //!  3. UPnP mapped port               6. Relay (peer → VPS → Cloudflare), upgraded later
 
+pub mod circuit;
 pub mod discovery;
 pub mod magicsock;
 pub mod nostr;
@@ -88,6 +89,9 @@ pub struct NetConfig {
     /// LAN discovery by Bonjour/DNS-SD (`_lumora._udp`), interoperable with iOS.
     #[serde(default = "default_true")]
     pub mdns: bool,
+    /// Relay blind circuits for others ("Giúp mạng Lumora", net/circuit.rs). Off by default.
+    #[serde(default)]
+    pub help_network: bool,
 }
 
 fn default_true() -> bool {
@@ -108,6 +112,7 @@ impl Default for NetConfig {
             relay_delay_ms: 3500,
             lan_multicast: true,
             mdns: true,
+            help_network: false,
         }
     }
 }
@@ -129,6 +134,8 @@ pub struct Transport {
     pub lan: Arc<discovery::LanTable>,
     pub lan_enabled: Arc<AtomicBool>,
     signal_tx: mpsc::Sender<IncomingSignal>,
+    /// Blind two-hop circuits through volunteer relays (net/circuit.rs).
+    pub circuits: circuit::Circuits,
 }
 
 impl Transport {
@@ -163,7 +170,13 @@ impl Transport {
             lan: Arc::new(discovery::LanTable::default()),
             lan_enabled: Arc::new(AtomicBool::new(cfg.enable_lan)),
             signal_tx: signal_tx.clone(),
+            circuits: Default::default(),
         });
+        t.circuits.help.store(cfg.help_network, std::sync::atomic::Ordering::Relaxed);
+        // fixed volunteer relays (tests, private networks): "ip:port,ip:port"
+        if let Ok(v) = std::env::var("LUMORA_CIRCUIT_RELAYS") {
+            *t.circuits.fixed.write() = v.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+        }
         t.clone().spawn_side_dispatcher(h.side_rx);
         for url in cfg.relays.iter() {
             t.add_relay(url.clone());
@@ -292,6 +305,8 @@ impl Transport {
                     if let Some(tx) = self.stun_pending.lock().remove(&txid) {
                         let _ = tx.send(crate::util::canon(mapped));
                     }
+                } else if circuit::is_circuit_packet(&d) {
+                    self.on_circuit_packet(src, &d).await;
                 } else if d.len() >= 5 && &d[..4] == PROBE_MAGIC && d[4] == 1 {
                     // Punch ping → pong from the same port (confirms the hole to the sender).
                     let mut pong = d.clone();

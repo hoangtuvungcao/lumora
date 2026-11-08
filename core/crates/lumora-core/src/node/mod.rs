@@ -9,6 +9,7 @@ pub mod devices;
 mod extras;
 pub use extras::{StoryAudience, STORY_CLOSE_KEY, STORY_HIDDEN_KEY};
 mod files;
+mod file_mail;
 mod groups;
 pub use groups::community::community_api;
 pub mod link;
@@ -60,6 +61,8 @@ pub struct NodeConfig {
     pub lan_multicast: bool,
     pub mdns: bool,
     pub enable_upnp: bool,
+    /// "Giúp mạng Lumora" from the command line (`--help-network`; also a saved setting).
+    pub help_network: bool,
     pub enable_dht: bool,
     pub enable_nostr: bool,
     pub relay_delay_ms: u64,
@@ -99,6 +102,7 @@ impl Default for NodeConfig {
             lan_multicast: d.lan_multicast,
             mdns: d.mdns,
             enable_upnp: d.enable_upnp,
+            help_network: false,
             enable_dht: d.enable_dht,
             enable_nostr: d.enable_nostr,
             relay_delay_ms: d.relay_delay_ms,
@@ -317,6 +321,8 @@ pub struct Node {
     pub(crate) relist_pending: Mutex<HashMap<PeerId, devices::RelistRequest>>,
     /// Acks owed to devices that reached us only by signaling mail (batched).
     pub(crate) mail_acks: Mutex<HashMap<PeerId, Vec<[u8; 16]>>>,
+    /// Big mail in pieces and files carried by mail (node/file_mail.rs).
+    pub(crate) fmail: file_mail::State,
 }
 
 pub fn direct_conv(p: &PeerId) -> String {
@@ -365,6 +371,57 @@ fn conn_tiebreak_id(c: &quinn::Connection) -> [u8; 16] {
 }
 
 static SPRAY_SEM: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+
+/// Two-sided spraying between two symmetric-random NATs rarely works and opens 256 sockets:
+/// at most once per peer every 10 minutes (a circuit carries the rest).
+fn both_hard_spray_due(peer: &PeerId) -> bool {
+    static LAST: parking_lot::Mutex<Option<HashMap<PeerId, Instant>>> = parking_lot::const_mutex(None);
+    let mut g = LAST.lock();
+    let m = g.get_or_insert_with(HashMap::new);
+    m.retain(|_, t| t.elapsed() < Duration::from_secs(600));
+    if m.contains_key(peer) {
+        return false;
+    }
+    m.insert(*peer, Instant::now());
+    true
+}
+
+/// "Meet me at relay R2 with circuit token T" (sealed mail, net/circuit.rs).
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CircuitInvite {
+    pub token: u64,
+    pub relay: String,
+}
+
+impl Node {
+    /// Blind circuits are used (setting `net.circuits`, on by default).
+    pub fn circuits_enabled(&self) -> bool {
+        self.store.kv_get("net.circuits").map(|v| v != b"0").unwrap_or(true)
+    }
+
+    /// "Giúp mạng Lumora": this device relays blind circuits for others (off by default).
+    pub fn set_help_network(&self, on: bool) -> Result<()> {
+        self.store.kv_set("net.help_network", if on { b"1" } else { b"0" })?;
+        self.net.circuits.help.store(on, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
+
+    pub fn help_network(&self) -> bool {
+        self.net.circuits.help.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// A circuit invitation from device `dev`: join it at the named relay. Only someone
+    /// allowed to learn my addresses (a friend, my own devices): the relay sees my address.
+    pub(super) fn on_circuit_invite(self: &Arc<Self>, dev: PeerId, body: &[u8]) -> Result<()> {
+        let m: CircuitInvite = proto::ext_body(body)?;
+        anyhow::ensure!(self.may_reveal_addrs(&dev) && self.circuits_enabled(), "circuit invite not allowed");
+        let relay: SocketAddr = m.relay.parse()?;
+        anyhow::ensure!(crate::util::is_global_ip(&relay.ip()) || cfg!(debug_assertions), "relay must be public");
+        tracing::info!("joining a blind circuit for {dev:?}");
+        self.net.circuit_join(dev, m.token, relay);
+        Ok(())
+    }
+}
 
 /// One running Lumora per data folder: an OS file lock held for the life of the process
 /// (in-process restarts of the same folder reuse it).
@@ -520,12 +577,13 @@ impl Node {
             // this device was signed out of its account last time: start as a fresh install
             revoke::apply_reset_marker(&dir);
         }
-        // a new keystore made from the recovery phrase: friends may help it get its history
-        // back (node/recovery.rs)
+        // a new keystore made from the recovery phrase — or a bot started from its Bot Studio
+        // token in a fresh data folder (moved to another server, folder lost): friends may help
+        // it get its contacts and groups back (node/recovery.rs)
+        let has_token = !cfg.bot_token.as_deref().unwrap_or("").trim().is_empty();
         let from_phrase = !crate::keystore::exists(&dir)
             && cfg.restore_backup.is_none()
-            && cfg.bot_token.as_deref().unwrap_or("").is_empty()
-            && cfg.recovery_phrase.as_deref().is_some_and(|p| !p.trim().is_empty());
+            && (has_token || cfg.recovery_phrase.as_deref().is_some_and(|p| !p.trim().is_empty()));
         let unlocked = Self::open_keystore(&cfg);
         // the password / recovery phrase / backup password are not needed any more: wipe
         // them now (also on failure) instead of keeping them in `node.cfg` for the app's life
@@ -667,6 +725,7 @@ impl Node {
             group_read_ids: Mutex::new(HashMap::new()),
             relist_pending: Mutex::new(HashMap::new()),
             mail_acks: Mutex::new(HashMap::new()),
+            fmail: Default::default(),
         });
         *node.self_ref.lock() = Some(Arc::downgrade(&node));
         if from_phrase && !secondary {
@@ -684,6 +743,13 @@ impl Node {
         if let Some(tok) = cfg.bot_token.as_deref().filter(|t| !t.is_empty()) {
             let t = botfather::BotToken::decode(tok)?;
             node.apply_bot_token(&t)?;
+        }
+        // "Giúp mạng Lumora": relay blind circuits for others (net/circuit.rs)
+        // default (owner's choice, 1.0.9): on for computers and Bot Runner, off on phones
+        // (battery, data); it only relays at all on an easy network (net/circuit.rs)
+        let help_default = cfg!(not(any(target_os = "android", target_os = "ios")));
+        if cfg.help_network || node.store.kv_get("net.help_network").map(|v| v == b"1").unwrap_or(help_default) {
+            node.net.circuits.help.store(true, std::sync::atomic::Ordering::Relaxed);
         }
         node.emit("ready", json!({"peer": me.to_base32(), "short_id": me.short_id_fmt(), "device": device.to_base32(), "primary": me == device}));
         Ok(node)
@@ -859,6 +925,11 @@ impl Node {
     pub async fn connect(self: &Arc<Self>, peer: PeerId) -> Result<Arc<PeerConn>> {
         if peer == self.device {
             bail!(crate::i18n::user_err("err.own_id"));
+        }
+        // test builds only: two devices that can't connect at all (both behind symmetric
+        // NATs) — everything must go by mail (core/tests/mail_only_e2e.py)
+        if cfg!(debug_assertions) && std::env::var_os("LUMORA_TEST_NO_CONNECT").is_some() {
+            bail!(crate::i18n::user_err("err.peer_offline"));
         }
         self.connect_inner(peer).await.map_err(|e| crate::i18n::or_user(e, "err.peer_offline"))
     }
@@ -1132,7 +1203,13 @@ impl Node {
             let unknown = matches!(mine_c.nat, NatKind::Unknown) || matches!(their_c.nat, NatKind::Unknown);
             let targets: Vec<SocketAddr> =
                 their_c.addrs.iter().copied().filter(|a| crate::util::is_global_ip(&a.ip()) && a.is_ipv4()).collect();
-            if unknown && !targets.is_empty() && their_c.nat != NatKind::UdpBlocked {
+            // both symmetric-random (two mobile networks): a long shot — the NATs must keep one
+            // mapping per destination IP — but it costs nobody else anything, so try it before
+            // a circuit (both sides play both roles: two-sided birthday)
+            let both_hard = matches!(mine_c.nat, NatKind::HardRandom)
+                && matches!(their_c.nat, NatKind::HardRandom)
+                && both_hard_spray_due(&peer);
+            if (unknown || both_hard) && !targets.is_empty() && their_c.nat != NatKind::UdpBlocked {
                 // No STUN → we can't tell who is "hard": play both roles at once (two-sided birthday).
                 let me2 = me.clone();
                 let tc = their_c.clone();
@@ -1205,9 +1282,37 @@ impl Node {
             Err(last)
         };
 
+        // Blind two-hop circuit through volunteer relays (net/circuit.rs): for friends and my
+        // own devices when no direct path can be made. The lower device id builds it (both
+        // ends race paths); the other one too if nothing came up a while later.
+        let me = self.clone();
+        let acc = self.account_of(&peer);
+        let circuit_ok = allow_relay && (acc == self.me || self.store.is_friend(&acc)) && self.circuits_enabled();
+        let first = self.device.0 < peer.0;
+        let circuit = async move {
+            if !circuit_ok {
+                return Err(anyhow!("circuit not used"));
+            }
+            let wait = if hopeless { 1500 } else { 7000 } + if first { 0 } else { 6000 };
+            tokio::time::sleep(Duration::from_millis(wait)).await;
+            if me.peer(&peer).is_some() {
+                return Err(anyhow!("connected meanwhile"));
+            }
+            let relays = me.net.circuit_relays().await;
+            let my_ip = me.net.info.read().public_ip;
+            let (r1, r2) = net::circuit::pick_two(&relays, my_ip).ok_or_else(|| anyhow!("no volunteer relays known"))?;
+            let token: u64 = rand::random();
+            let invite = proto::ext(proto::ext::CIRCUIT_INVITE, &CircuitInvite { token, relay: r2.to_string() });
+            me.send_sealed_signal(&peer, &invite).await;
+            let vaddr = me.net.circuit_open(peer, token, r1, r2).await?;
+            let c = me.net.dial_circuit(peer, vaddr).await?;
+            tracing::info!("connected {peer:?} through a blind circuit");
+            Ok((c, PathKind::Relay, None))
+        };
+
         // First success wins; failures of one path don't cancel others.
         let mut futs: Vec<std::pin::Pin<Box<dyn std::future::Future<Output = Result<_>> + Send>>> =
-            vec![Box::pin(direct), Box::pin(spray), Box::pin(relay)];
+            vec![Box::pin(direct), Box::pin(spray), Box::pin(relay), Box::pin(circuit)];
         let deadline = tokio::time::sleep(Duration::from_secs(25));
         tokio::pin!(deadline);
         let mut errors = Vec::new();

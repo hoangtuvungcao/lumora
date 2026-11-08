@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../l10n/strings.dart';
+import '../flows.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/core_events.dart';
@@ -317,7 +318,7 @@ class _BotFatherChatState extends State<BotFatherChat> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                  if (m.text.isNotEmpty) Text(m.text, style: TextStyle(color: m.mine ? Colors.white : lc.text, height: 1.4)),
+                  if (m.text.isNotEmpty) SelectableText(m.text, style: TextStyle(color: m.mine ? Colors.white : lc.text, height: 1.4)), // (select the @name to copy it)
                   if (child != null) ...[const SizedBox(height: 8), child],
                 ]),
               ),
@@ -510,18 +511,30 @@ class _BotCardState extends State<BotCard> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: context.lc.surface2.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(Radii.md)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          Avatar(name: b.name, seed: b.peer, size: 36),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [Flexible(child: Text(b.name, style: context.tt.titleSmall)), const BotBadge()]),
-              Text(b.handle.isEmpty ? '@${b.username}' : b.handle, style: context.tt.bodySmall),
-            ]),
-          ),
-        ]),
+        // tap the bot: its chat opens (nothing to accept — anyone can talk to a bot)
+        InkWell(
+          borderRadius: BorderRadius.circular(Radii.sm),
+          onTap: b.peer.isEmpty ? null : () => Flows.openBot(context, b.peer),
+          child: Row(children: [
+            Avatar(name: b.name, seed: b.peer, size: 36),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [Flexible(child: Text(b.name, style: context.tt.titleSmall)), const BotBadge()]),
+                // tap the @name: copied (to share the bot, or to add it somewhere)
+                _CopyHandle(handle: b.handle.isEmpty ? '@${b.username}' : b.handle),
+              ]),
+            ),
+            if (b.peer.isNotEmpty) Icon(AppIcons.chevronRight, size: 18, color: context.lc.muted),
+          ]),
+        ),
         const SizedBox(height: 8),
-        Wrap(spacing: 6, runSpacing: 6, children: [
+        // (a light outline: the chips stay visible on the card in the dark theme)
+        ChipTheme(
+          data: ChipTheme.of(context).copyWith(side: BorderSide(color: context.lc.divider)),
+          child: Wrap(spacing: 6, runSpacing: 2, children: [
+          if (b.peer.isNotEmpty)
+            ActionChip(avatar: const Icon(AppIcons.chat, size: 15), label: Text(s('message')), onPressed: () => Flows.openBot(context, b.peer)),
           ActionChip(avatar: const Icon(AppIcons.key, size: 15), label: Text(s('bf_token')), onPressed: _showToken),
           ActionChip(
             avatar: const Icon(AppIcons.refresh, size: 15),
@@ -557,6 +570,7 @@ class _BotCardState extends State<BotCard> {
             },
           ),
         ]),
+        ),
         if (_token != null) ...[const SizedBox(height: 8), TokenCard(token: _token!, hidden: true)],
       ]),
     );
@@ -617,5 +631,30 @@ class _MyBotsPageState extends State<MyBotsPage> {
       if (bots != null && bots.isEmpty) EmptyState(icon: AppIcons.bot, title: s('bf_no_bots')),
       if (bots != null) for (final b in bots) BotCard(key: ValueKey(b.username), bot: b, onChanged: _load),
     ]);
+  }
+}
+
+/// A bot's `@name·tag`, copied on tap.
+class _CopyHandle extends StatelessWidget {
+  const _CopyHandle({required this.handle});
+  final String handle;
+  @override
+  Widget build(BuildContext context) {
+    final s = S.of(context);
+    return Tooltip(
+      message: s('copy'),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.sm),
+        onTap: () => copyText(context, handle),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Flexible(child: Text(handle, style: context.tt.bodySmall, overflow: TextOverflow.ellipsis)),
+            const SizedBox(width: 4),
+            Icon(AppIcons.copy, size: 13, color: context.lc.muted),
+          ]),
+        ),
+      ),
+    );
   }
 }

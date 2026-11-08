@@ -228,11 +228,13 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 <!-- vi -->
 - **Cập nhật SDK:** cài lại gói mới (`pip install -U lumora-bot`, `npm install lumora-bot@latest`) rồi khởi động lại bot. Mã bot viết cho bản 1.0 vẫn chạy với 1.1. Xem [nhật ký thay đổi](https://getlumora.pages.dev/developers/reference/#changelog).
 - **Cập nhật Lumora Bot Runner:** dừng bot, thay tệp, chạy lại. Dữ liệu được giữ nguyên.
+- **Chuyển sang máy chủ khác:** tốt nhất là chép cả thư mục dữ liệu. Nếu chỉ chạy lại bằng token trên thư mục mới, người dùng và nhóm của bot tự quay lại khi họ kết nối (Lumora Bot Runner 1.0.9 trở lên; người dùng có ứng dụng 1.0.8 trở lên): không ai phải kết bạn hay thêm bot lại. Lịch sử và `bot-storage.json` thì không quay lại. Nhớ dừng bản cũ trước.
 - **Sao lưu:** dừng bot (hoặc chấp nhận bản sao "đang chạy") rồi sao chép cả thư mục dữ liệu. Bot tạo bằng token có thể chạy lại từ token, nhưng lịch sử và `bot-storage.json` chỉ có trong thư mục.
 - **Theo dõi:** đặt `LUMORA_BOT_LOG_FORMAT=json` và gom log bằng công cụ bạn quen dùng. Các sự kiện đáng cảnh báo: `runner_exit`, `restart_failed`, `restart_giveup`, `handler_error`. Log của Lumora Bot Runner ở `runner.log` trong thư mục dữ liệu (tự xoay vòng ở 10 MB).
 <!-- en -->
 - **Updating the SDK:** install the new package (`pip install -U lumora-bot`, `npm install lumora-bot@latest`) and restart the bot. Bots written for 1.0 run unchanged on 1.1. See the [changelog](https://getlumora.pages.dev/developers/reference/#changelog).
 - **Updating Lumora Bot Runner:** stop the bot, replace the file, start again. Data is kept.
+- **Moving to another server:** best is to copy the whole data folder. If you only start the token again in a new folder, the bot's users and groups come back by themselves as they connect (Lumora Bot Runner 1.0.9 or newer, users on app 1.0.8 or newer): nobody has to re-add it. History and `bot-storage.json` do not come back. Stop the old copy first.
 - **Backups:** stop the bot (or accept a "live" copy) and copy the whole data folder. A token bot can be started again from its token, but its history and `bot-storage.json` only live in the folder.
 - **Monitoring:** set `LUMORA_BOT_LOG_FORMAT=json` and collect the logs with the tool you already use. Events worth an alert: `runner_exit`, `restart_failed`, `restart_giveup`, `handler_error`. Lumora Bot Runner's own log is `runner.log` in the data folder (rotated at 10 MB).
 
@@ -255,6 +257,7 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 | Nhắc hẹn không báo | Bot phải đang chạy đúng giờ nhắc (nếu tắt, bot nhận nhắc khi bật lại với `late=True`, trong vòng 24 giờ). Giờ dùng múi giờ của máy chạy bot. |
 | Tệp không tải về | Tăng `timeout` của `ctx.download()`; kiểm tra dung lượng đĩa (`err.disk_full`) và quyền ghi thư mục `downloads`. |
 | Bot trả lời hai lần | Có hai tiến trình chạy cùng bot. Mỗi bot chỉ chạy một tiến trình. |
+| Bot lúc trả lời lúc không, tin hiện "đã giao" nhưng không có trả lời | Cùng một token đang chạy ở hai nơi (hai máy, hai thư mục): tin nhắn bị chia cho hai bản. Tắt một bản. |
 <!-- en -->
 | Symptom | What to do |
 |---|---|
@@ -271,6 +274,7 @@ NSSM sends Ctrl+C when stopping the service, so the bot still shuts down cleanly
 | Reminders don't fire | The bot must be running at the due time (if it was off, it gets the reminder on start with `late=True`, within 24 hours). Times use the bot computer's time zone. |
 | Files don't download | Raise the `timeout` of `ctx.download()`; check free disk space (`err.disk_full`) and that the `downloads` folder is writable. |
 | The bot answers twice | Two processes are running the same bot. Run exactly one per bot. |
+| The bot answers only sometimes; messages show "delivered" but get no reply | The same token runs in two places (two computers, two folders): messages are split between the copies. Stop one. |
 
 <!-- section: faq -->
 ## Câu hỏi thường gặp | FAQ

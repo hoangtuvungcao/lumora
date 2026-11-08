@@ -32,7 +32,7 @@ pub fn is_side_packet(d: &[u8]) -> bool {
     if d.is_empty() || (d[0] & 0xC0) != 0 {
         return false;
     }
-    d.starts_with(PROBE_MAGIC) || super::stun::is_stun(d)
+    d.starts_with(PROBE_MAGIC) || super::circuit::is_circuit_packet(d) || super::stun::is_stun(d)
 }
 
 pub fn is_relay_addr(a: &SocketAddr) -> bool {

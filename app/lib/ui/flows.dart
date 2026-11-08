@@ -45,6 +45,22 @@ abstract final class Flows {
     return conv;
   }
 
+  /// A bot's chat, at once: anyone can talk to a bot, so there is no friend request to wait
+  /// for (a bot accepts everyone; the add happens behind the scenes and the chat shows its
+  /// "Start" button as soon as the bot answers).
+  static Future<void> openBot(BuildContext context, String peer, {bool pop = false}) async {
+    final c = context.read<ContactsStore>()[peer];
+    if (c == null || c.status != ContactStatus.friend) {
+      try {
+        await context.read<LumoraApi>().addContact(peer);
+      } catch (e) {
+        // (already asked: the chat opens all the same)
+        debugPrint('openBot: $e');
+      }
+    }
+    if (context.mounted) openChat(context, peer, pop: pop);
+  }
+
   static void openConv(BuildContext context, String conv) {
     context.read<NavStore>().openConv(conv);
     if (!isDesktop(context)) Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChatView(conv: conv)));

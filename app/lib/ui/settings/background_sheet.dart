@@ -19,11 +19,21 @@ import '../widgets/common.dart';
 /// First run on Android: ask once, only when something is still restricted.
 Future<void> maybeAskBackground(BuildContext context) async {
   final st = context.read<Settings>();
-  if (!AndroidBridge.isAndroid || st.backgroundAsked) return;
+  if (!AndroidBridge.isAndroid) return;
+  // Xiaomi / HyperOS: chat bubbles stay off until Lumora may show pop-ups — asked once too
+  // (also by people who saw this sheet before bubbles needed it)
+  final perms = await AndroidBridge.permissionStatus();
+  final missing = !perms.fullScreen || !perms.popups;
+  final bubbles = !st.bubblesAsked && missing;
+  if (st.backgroundAsked && !bubbles) return;
   final status = await AndroidBridge.backgroundStatus();
   if (status == null || !context.mounted) return;
-  st.update((s) => s.backgroundAsked = true);
-  if (status.ignoringBattery && !status.autostart) return;
+  final first = !st.backgroundAsked;
+  st.update((s) {
+    s.backgroundAsked = true;
+    s.bubblesAsked = true;
+  });
+  if (!bubbles && (!first || (status.ignoringBattery && !status.autostart))) return;
   await showBackgroundSheet(context);
 }
 
@@ -35,10 +45,13 @@ Future<void> showBackgroundSheet(BuildContext context) => showModalBottomSheet<v
     );
 
 class BackgroundSheet extends StatefulWidget {
-  const BackgroundSheet({super.key, this.status});
+  const BackgroundSheet({super.key, this.status, this.bubblesBlocked});
 
   /// Tests / screenshots: a fixed status instead of asking Android.
   final BackgroundStatus? status;
+
+  /// Tests / screenshots: fixed permission states instead of asking Android.
+  final ({bool fullScreen, bool xiaomi, bool popups})? bubblesBlocked;
 
   @override
   State<BackgroundSheet> createState() => _BackgroundSheetState();
@@ -48,10 +61,20 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
   BackgroundStatus? _status;
   AppLifecycleListener? _life;
 
+  /// Calls over the lock screen (Android 14+) / Xiaomi pop-ups: missing now, and missing at
+  /// some point while the sheet was open (the step stays, ticked, once it is allowed).
+  ({bool fullScreen, bool xiaomi, bool popups}) _perms = (fullScreen: true, xiaomi: false, popups: true);
+  bool _fullScreenStep = false, _popupsStep = false;
+
   @override
   void initState() {
     super.initState();
     _status = widget.status;
+    if (widget.bubblesBlocked case final p?) {
+      _perms = p;
+      _fullScreenStep = !p.fullScreen;
+      _popupsStep = !p.popups;
+    }
     if (_status == null) unawaited(_refresh());
     // back from the system dialog / the maker's settings: show the new state
     try {
@@ -68,7 +91,16 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
   Future<void> _refresh() async {
     if (widget.status != null) return;
     final s = await AndroidBridge.backgroundStatus();
-    if (mounted) setState(() => _status = s);
+    final p = await AndroidBridge.permissionStatus();
+    if (!mounted) return;
+    final fixed = (!_perms.popups && p.popups) || (!_perms.fullScreen && p.fullScreen);
+    setState(() {
+      _status = s;
+      _perms = p;
+      _fullScreenStep |= !p.fullScreen;
+      _popupsStep |= !p.popups;
+    });
+    if (fixed) toast(context, S.read(context)('bg_perm_done'));
   }
 
   @override
@@ -108,10 +140,30 @@ class _BackgroundSheetState extends State<BackgroundSheet> {
               onAction: AndroidBridge.openAutostart,
             ),
           ],
+          if (_fullScreenStep) ...[
+            const SizedBox(height: 12),
+            _Step(
+              done: _perms.fullScreen,
+              title: s('bg_fullscreen'),
+              body: _perms.fullScreen ? s('bg_fullscreen_ok') : s('bg_fullscreen_hint'),
+              action: _perms.fullScreen ? null : s('bg_perm_allow'),
+              onAction: AndroidBridge.openFullScreenPermission,
+            ),
+          ],
+          if (_popupsStep) ...[
+            const SizedBox(height: 12),
+            _Step(
+              done: _perms.popups,
+              title: s('bg_popups'),
+              body: _perms.popups ? s('bg_popups_ok') : s('bg_popups_hint'),
+              action: _perms.popups ? null : s('bg_perm_allow'),
+              onAction: AndroidBridge.openPopupPermissions,
+            ),
+          ],
           const SizedBox(height: 16),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton(onPressed: () => Navigator.of(context).maybePop(), child: Text(ok ? s('done') : s('bg_later'))),
+            child: TextButton(onPressed: () => Navigator.of(context).maybePop(), child: Text(ok && _perms.fullScreen && _perms.popups ? s('done') : s('bg_later'))),
           ),
         ]),
       ),

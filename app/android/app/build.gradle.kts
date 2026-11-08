@@ -116,7 +116,8 @@ flutter {
 dependencies {
     // Video-call camera (CameraCapture.kt): ImageAnalysis hands YUV planes
     // straight to the Rust core over JNI; no preview surface, no Dart copies.
-    val camerax = "1.4.2"
+    // Same version as the `camera` plugin (in-chat camera) so one CameraX ships.
+    val camerax = "1.6.0"
     implementation("androidx.camera:camera-camera2:$camerax")
     implementation("androidx.camera:camera-lifecycle:$camerax")
     // ProcessCameraProvider.getInstance() returns a Guava ListenableFuture; the

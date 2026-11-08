@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <!-- no READ_MEDIA_IMAGES: photos come from the system picker (Play photo/video policy) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- Chat bubbles on Xiaomi / HyperOS: their bubble container needs "display over other apps" (OemPopups.kt) -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Foreground service types (see LumoraService.kt for when each is used
          and the Google Play declaration each one needs):

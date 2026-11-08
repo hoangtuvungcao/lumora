@@ -131,10 +131,14 @@ class ImageBubble extends StatelessWidget {
     final w = maxW;
     final h = height ?? (w / aspect);
     final dpr = MediaQuery.devicePixelRatioOf(context);
-    final done = f?.state == FileState.done || (f == null && (message.fileInfo?['path'] != null));
+    // my own photo: its original is right here — shown sharp while the other side hasn't
+    // fetched it yet (not as the blurred preview the recipient sees before downloading)
+    final mineLocal = f != null && !f.incoming && f.path.isNotEmpty && f.state != FileState.cancelled && f.state != FileState.failed;
+    final done = f?.state == FileState.done || mineLocal || (f == null && (message.fileInfo?['path'] != null));
     final full = done ? fileImage(f?.path ?? message.fileInfo?['path']?.toString(), cacheWidth: (w * dpr).round()) : null;
     final transferring = f != null && (f.state == FileState.transferring || f.state == FileState.paused);
     final offered = f != null && f.state == FileState.offered && f.incoming;
+    final waiting = f != null && !f.incoming && f.state == FileState.offered;
 
     return GestureDetector(
       onTap: done ? onOpen : null,
@@ -180,6 +184,18 @@ class ImageBubble extends StatelessWidget {
               child: _RoundProgress(value: 0, icon: AppIcons.refresh, onTap: () => retryFile(context, message, f!)),
             ),
           if (overlay != null) Positioned(right: 6, bottom: 6, child: _GlassChip(child: overlay!)),
+          if (waiting)
+            Positioned(
+              left: 6,
+              top: 6,
+              child: _GlassChip(
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(AppIcons.clock, size: 12),
+                  const SizedBox(width: 4),
+                  Text(s('file_waiting'), style: const TextStyle(fontSize: 11)),
+                ]),
+              ),
+            ),
         ]),
       ),
     );

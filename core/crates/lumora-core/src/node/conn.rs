@@ -1022,8 +1022,8 @@ impl Node {
         }
         for (_, id, payload) in self.store.outbox_page(&dev, 0, 16).unwrap_or_default() {
             let Ok(id) = <[u8; 16]>::try_from(id.as_slice()) else { continue };
-            if payload.len() > NOSTR_MAIL_MAX {
-                continue; // large items wait for a connection
+            if payload.len() > super::file_mail::MAX_PARTED_MAIL {
+                continue; // (over 256 KB: waits for a connection — chat items never are)
             }
             let Ok(m) = crate::proto::decode_peer_msg(&payload) else { continue };
             if matches!(&m, PeerMsg::Wrapped { inner, .. } if matches!(**inner, PeerMsg::Ext { .. })) && self.dev_known_pre_v3(&dev) {
@@ -1062,6 +1062,13 @@ impl Node {
             if let Some(p) = pool {
                 p.send_signal(&to, env);
             }
+        } else if env.is_some() && sealed.len() <= super::file_mail::MAX_PARTED_MAIL {
+            // too big for one signal (a photo message with its preview…): in pieces, which
+            // the recipient puts back together (node/file_mail.rs) — never "wait for a
+            // connection" that two NATed devices can't make
+            let me = self.clone();
+            let sealed2 = sealed.clone();
+            tokio::spawn(async move { me.send_mail_pieces(to, sealed2).await });
         }
         let enabled = self.store.kv_get("privacy.store_forward").map(|v| v != b"0").unwrap_or(true);
         if !enabled {
@@ -1307,6 +1314,11 @@ impl Node {
                 }
                 // friends' inbox tags rotate daily (and follow the privacy setting)
                 node.refresh_nostr_inboxes(false);
+                // blind circuits: unused ones go; a volunteer re-announces itself (~15 min)
+                node.net.circuit_sweep();
+                if tick.is_multiple_of(15) {
+                    node.net.circuit_announce().await;
+                }
                 if tick.is_multiple_of(10) {
                     if let Some(dht) = &node.net.dht {
                         // Only the friends-only record (no public one: it would map "ID → IP"
@@ -1549,9 +1561,15 @@ impl Node {
                     // silence.
                     let relay_idx = if pc.path == PathKind::Relay { net::magicsock::relay_idx_of(&pc.conn.remote_address()) } else { None };
                     let relay_down = relay_idx
-                        .map(|idx| match self.net.relays.read().iter().find(|r| r.idx == idx) {
-                            None => true,
-                            Some(r) => r.is_stopped() || r.down_for() > RELAY_DOWN_GRACE,
+                        .map(|idx| {
+                            // a blind circuit (net/circuit.rs) is no WebSocket relay: down when gone
+                            if idx >= net::circuit::IDX_BASE {
+                                return !self.net.circuit_alive(idx);
+                            }
+                            match self.net.relays.read().iter().find(|r| r.idx == idx) {
+                                None => true,
+                                Some(r) => r.is_stopped() || r.down_for() > RELAY_DOWN_GRACE,
+                            }
                         })
                         .unwrap_or(false);
                     let (ping, dead) = {
@@ -1803,6 +1821,13 @@ impl Node {
 
     pub(crate) fn on_dht_key(&self, pc: &Arc<PeerConn>, body: &[u8]) -> Result<()> {
         let m: DhtKeyMsg = proto::ext_body(body)?;
+        // a bot in a fresh data folder: whoever still holds it as a friend is one again
+        if !(pc.own || self.store.is_friend(&pc.account)) && self.bot_readopt(pc) {
+            self.recovery_on_hello(pc);
+        } else if self.is_bot() && self.recovering() && self.store.is_friend(&pc.account) {
+            // (re-adopted on another of its devices: this one may answer the hello)
+            self.recovery_on_hello(pc);
+        }
         if !(pc.own || self.store.is_friend(&pc.account)) {
             // only friends send it: an account restored from its phrase (no contacts yet)
             // asks these peers for its history — but only when they hand back a message

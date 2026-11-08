@@ -226,8 +226,31 @@ class LocationScreen extends StatefulWidget {
 }
 
 class _LocationScreenState extends State<LocationScreen> {
-  bool _showMap = false;
+  // Tile servers in order of preference. openstreetmap.org itself is DNS-blocked on some
+  // networks (owner's ISP), so it is not used; when one source keeps failing, the next one
+  // takes over, and only when all fail does the screen say so.
+  static const _sources = <({String url, String credit})>[
+    (url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png', credit: 'OpenStreetMap contributors'),
+    (url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', credit: 'Esri, HERE, Garmin, OpenStreetMap contributors'),
+    (url: 'https://a.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', credit: 'OpenStreetMap France, OpenStreetMap contributors'),
+  ];
+  int _source = 0;
+  int _errors = 0;
   bool _tileError = false;
+
+  void _onTileError() {
+    // every failed tile reports: count them, never rebuild after the screen closed
+    if (!mounted || _tileError) return;
+    if (++_errors < 3) return;
+    setState(() {
+      _errors = 0;
+      if (_source < _sources.length - 1) {
+        _source++;
+      } else {
+        _tileError = true;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -249,50 +272,30 @@ class _LocationScreenState extends State<LocationScreen> {
             subtitle: Text(loc.isLive(DateTime.now().millisecondsSinceEpoch) ? s('live_by', {'name': name}) : s('shared_by', {'name': name})),
           ),
           Expanded(
-            child: _showMap
-                ? FlutterMap(
-                    options: MapOptions(initialCenter: point, initialZoom: 16),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'vn.lumora.lumora',
-                        // tiles that can't load (offline, blocked) stay blank instead of erroring
-                        errorTileCallback: (tile, error, stack) {
-                          // every failed tile reports: rebuild once, never after the screen closed
-                          if (mounted && !_tileError) setState(() => _tileError = true);
-                        },
-                      ),
-                      MarkerLayer(markers: [
-                        Marker(point: point, width: 60, height: 60, child: const Icon(AppIcons.location, color: LC.danger, size: 44)),
-                      ]),
-                      const RichAttributionWidget(attributions: [TextSourceAttribution('OpenStreetMap contributors')]),
-                      if (_tileError)
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: Card(
-                            margin: const EdgeInsets.all(12),
-                            child: Padding(padding: const EdgeInsets.all(12), child: Text(s('map_tiles_failed'), textAlign: TextAlign.center)),
-                          ),
-                        ),
-                    ],
-                  )
-                : Stack(fit: StackFit.expand, children: [
-                    CustomPaint(painter: MapSketchPainter(seed: (loc.lat * 1000 + loc.lon * 1000).round(), dark: Theme.of(context).brightness == Brightness.dark)),
-                    const Center(child: Icon(AppIcons.location, color: LC.danger, size: 52)),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 140),
-                        child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          FilledButton.icon(onPressed: () => setState(() => _showMap = true), icon: const Icon(AppIcons.map), label: Text(s('view_map'))),
-                          const SizedBox(height: 8),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 360),
-                            child: Text(s('map_privacy'), textAlign: TextAlign.center, style: context.tt.bodySmall),
-                          ),
-                        ]),
-                      ),
+            child: FlutterMap(
+              options: MapOptions(initialCenter: point, initialZoom: 16, maxZoom: 19),
+              children: [
+                TileLayer(
+                  key: ValueKey(_source),
+                  urlTemplate: _sources[_source].url,
+                  userAgentPackageName: 'vn.lumora.lumora',
+                  maxNativeZoom: 19,
+                  errorTileCallback: (tile, error, stack) => _onTileError(),
+                ),
+                MarkerLayer(markers: [
+                  Marker(point: point, width: 60, height: 60, alignment: Alignment.topCenter, child: const Icon(AppIcons.location, color: LC.danger, size: 44)),
+                ]),
+                RichAttributionWidget(attributions: [TextSourceAttribution(_sources[_source].credit)]),
+                if (_tileError)
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: Card(
+                      margin: const EdgeInsets.all(12),
+                      child: Padding(padding: const EdgeInsets.all(12), child: Text(s('map_tiles_failed'), textAlign: TextAlign.center)),
                     ),
-                  ]),
+                  ),
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(16),

@@ -455,6 +455,16 @@ pub mod ext {
     pub const GROUP_REPORT_DONE: u16 = 0x33;
     /// The author took a story down: `{id}`; friends and the author's own devices drop it.
     pub const STORY_DELETE: u16 = 0x34;
+    /// One piece of a sealed mail too big for signaling (node/file_mail.rs): `{id, idx,
+    /// total, data}`; the pieces put together are the sealed mail, opened as usual.
+    pub const MAIL_PART: u16 = 0x37;
+    /// A file asked for by sealed mail, the two devices can't connect (node/file_mail.rs):
+    /// `{file_id, chunks}` (chunk numbers still missing; empty = all).
+    pub const FILE_MAIL_REQ: u16 = 0x38;
+    /// One chunk of a file sent by sealed mail: `{file_id, idx, total, data}`.
+    pub const FILE_MAIL_CHUNK: u16 = 0x39;
+    /// "Meet me at this volunteer relay with circuit token T" (net/circuit.rs): `{token, relay}`.
+    pub const CIRCUIT_INVITE: u16 = 0x3A;
     /// A link's inviter turned an invite-link join down: `{gid, reason}` (revoked |
     /// removed | denied), node/community.rs.
     pub const GROUP_JOIN_DENIED: u16 = 0x35;

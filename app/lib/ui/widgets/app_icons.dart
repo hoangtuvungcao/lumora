@@ -151,6 +151,9 @@ abstract final class AppIcons {
   static const IconData pause = PhosphorIconsRegular.pause; // lucide: pause
   static const IconData stop = PhosphorIconsRegular.stop; // lucide: square
   static const IconData camera = PhosphorIconsRegular.camera; // lucide: camera
+  static const IconData flashOn = PhosphorIconsRegular.lightning; // lucide: zap
+  static const IconData flashOff = PhosphorIconsRegular.lightningSlash; // lucide: zapOff
+  static const IconData flashAuto = PhosphorIconsRegular.lightningA; // lucide: zap
   static const IconData image = PhosphorIconsRegular.image; // lucide: image
   static const IconData gallery = PhosphorIconsRegular.images; // lucide: images
   static const IconData addImage = PhosphorIconsRegular.imageSquare; // lucide: imagePlus

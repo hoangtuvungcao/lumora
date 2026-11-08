@@ -74,7 +74,7 @@ class MockLumoraApi extends LumoraApi {
     'read_receipts': true, 'typing': true, 'store_forward': true, 'echo_cancel': true, 'noise_suppression': true, 'lan': true,
     'video_beauty': 0, 'video_lowlight': true, 'video_mirror_send': false,
     'relays': <String>[], 'relay_delay_ms': 3500, 'p2p_only': false, 'downloads_dir': '/home/lan/Downloads/Lumora',
-    'discoverable_by_id': true, 'help_friends': true, 'wake_for_friends': true, 'help_restore': true,
+    'discoverable_by_id': true, 'help_friends': true, 'help_network': false, 'wake_for_friends': true, 'help_restore': true,
     'story_hidden': <String>[], 'story_close': <String>[], 'metered': false,
     // privacy choices (synced across my devices; `settings` keys privacy.calls / group_add / online / mentions_only)
     'who_can_call': 'friends', 'who_can_add': 'friends', 'who_sees_online': 'friends', 'mentions_only': null, // null: never set (like the core)

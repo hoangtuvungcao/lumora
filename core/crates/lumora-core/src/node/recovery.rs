@@ -380,6 +380,15 @@ impl Node {
         });
         self.save_offers(&all);
         self.emit("recovery", json!({"offers": all}));
+        // a bot has nobody to review offers: a proven friend's is taken (its contacts and
+        // groups come back; a bot accepts everyone anyway)
+        if verified && self.is_bot() {
+            if let Err(e) = self.recovery_accept(peer) {
+                tracing::warn!("bot: recovery offer of {peer:?}: {e:#}");
+            } else {
+                tracing::info!("bot: recovering contacts and groups from {peer:?}");
+            }
+        }
     }
 
     /// Check one handed-back message; `None` = drop it.

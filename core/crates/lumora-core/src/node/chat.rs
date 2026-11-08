@@ -255,6 +255,81 @@ impl Node {
         Ok(())
     }
 
+    /// My nickname for a contact (empty: their own name again). Everything that shows them
+    /// follows at once: the contact itself (event), and the title of our 1-1 chat — which
+    /// the chat list, search and notifications use.
+    pub fn rename_contact(&self, p: &PeerId, alias: &str) -> Result<()> {
+        let alias: String = alias.trim().chars().take(64).collect();
+        self.store.set_contact_field(p, "alias", if alias.is_empty() { rusqlite::types::Value::Null } else { rusqlite::types::Value::Text(alias.clone()) })?;
+        let conv = direct_conv(p);
+        if self.store.conv_exists(&conv) {
+            let shown = if alias.is_empty() { self.store.contact(p).map(|c| c.name).unwrap_or_default() } else { alias };
+            if !shown.is_empty() {
+                self.store.ensure_conv(&conv, 0, &shown)?;
+            }
+            self.emit_conv(&conv);
+        }
+        self.emit_contact(p);
+        Ok(())
+    }
+
+    /// A bot that accepts everyone who contacts it (set from its Bot Studio token).
+    pub(super) fn bot_auto_accepts(&self) -> bool {
+        self.store.kv_get("bot.auto_accept").map(|v| v == b"1").unwrap_or(false)
+    }
+
+    /// Bot: `from` is a friend now (it asked — or, see [`Self::bot_readopt`], it already is
+    /// one on its side).
+    fn bot_accept(&self, from: PeerId, name: &str) -> Result<()> {
+        self.store.upsert_contact(&from, Some(name), Some(3))?;
+        self.store.ensure_conv(&direct_conv(&from), 0, name)?;
+        self.send_now(&from, PeerMsg::FriendAccept { name: self.name() });
+        if let Some(me) = self.self_ref.lock().as_ref().and_then(|w| w.upgrade()) {
+            let n = self.name();
+            tokio::spawn(async move {
+                let id: [u8; 16] = crate::crypto::random_bytes();
+                me.deliver(from, id, PeerMsg::FriendAccept { name: n }, true).await;
+            });
+        }
+        self.push_profile_to(from);
+        self.on_became_friends(&from);
+        self.emit_contact(&from);
+        self.emit("bot_user", json!({"peer": from.to_base32(), "name": name}));
+        Ok(())
+    }
+
+    /// A bot run from a fresh data folder (moved to another server, folder lost) has its
+    /// identity back from its token but none of its contacts. Someone who still treats it
+    /// as a friend — it sends what only friends send: the key to its friends-only record —
+    /// is a friend again: a bot accepts everyone anyway, so this gives nobody more than a
+    /// friend request would (same stranger budget). Its ratchet messages sealed for the old
+    /// folder's sessions are repaired at once (fresh one-time key: the friend re-sends them),
+    /// and the caller asks it for the groups we share (node/recovery.rs).
+    pub(super) fn bot_readopt(&self, pc: &Arc<PeerConn>) -> bool {
+        let from = pc.account;
+        if pc.own || from == self.me || !self.bot_auto_accepts() || self.store.is_blocked(&from) || self.store.is_friend(&from) {
+            return false;
+        }
+        if !self.inbound_allowed(&from, &PeerMsg::FriendRequest { name: String::new(), note: String::new() }) {
+            return false;
+        }
+        let name: String = pc.name.read().chars().take(48).collect();
+        if let Err(e) = self.bot_accept(from, &name) {
+            tracing::warn!("bot: re-adding {from:?} failed: {e:#}");
+            return false;
+        }
+        tracing::info!("bot: {from:?} still has us as a friend: friends again");
+        self.recovery_note_proven(&from);
+        // every connected device of it (its other devices' messages are stuck the same way)
+        for c in self.peers_of(&from) {
+            self.olm_repair(&c);
+        }
+        if !self.peers_of(&from).iter().any(|c| Arc::ptr_eq(c, pc)) {
+            self.olm_repair(pc);
+        }
+        true
+    }
+
     pub(super) fn on_friend_request(&self, from: PeerId, name: String, note: String) -> Result<()> {
         let name: String = name.chars().take(48).collect();
         let cur = self.store.contact(&from).map(|c| c.status).unwrap_or(0);
@@ -270,23 +345,8 @@ impl Node {
                 self.emit_contact(&from);
                 self.emit_conv(&direct_conv(&from));
             }
-            _ if self.store.kv_get("bot.auto_accept").map(|v| v == b"1").unwrap_or(false) => {
-                // bots accept everyone (like Telegram bots: anyone can start a chat)
-                self.store.upsert_contact(&from, Some(&name), Some(3))?;
-                self.store.ensure_conv(&direct_conv(&from), 0, &name)?;
-                self.send_now(&from, PeerMsg::FriendAccept { name: self.name() });
-                if let Some(me) = self.self_ref.lock().as_ref().and_then(|w| w.upgrade()) {
-                    let n = self.name();
-                    tokio::spawn(async move {
-                        let id: [u8; 16] = crate::crypto::random_bytes();
-                        me.deliver(from, id, PeerMsg::FriendAccept { name: n }, true).await;
-                    });
-                }
-                self.push_profile_to(from);
-                self.on_became_friends(&from);
-                self.emit_contact(&from);
-                self.emit("bot_user", json!({"peer": from.to_base32(), "name": name}));
-            }
+            // bots accept everyone (anyone can start a chat with a bot)
+            _ if self.bot_auto_accepts() => self.bot_accept(from, &name)?,
             _ => {
                 // anti-spam: identities are free, so bound what strangers can make us store
                 // and notify — a repeat from a pending requester is not a new request, and the
@@ -586,6 +646,13 @@ impl Node {
             }
             self.check_mention(&conv, &msg);
             self.apply_pending_actions(&msg.id);
+            // they just wrote (also when it came the long way, by mail): "last seen" follows
+            // the message's own time — never "an hour ago" in the middle of a conversation
+            let sent = (crate::util::hlc_to_ms(msg.hlc) as i64).min(now_ms() as i64);
+            if contact.as_ref().is_some_and(|c| c.status == 3 && c.last_seen < sent) {
+                let _ = self.store.set_contact_field(&from, "last_seen", rusqlite::types::Value::Integer(sent));
+                self.emit_contact(&from);
+            }
             // (conv_touch clamps a future date: a stranger can't pin the chat to the top)
             self.store.conv_touch(&conv, crate::util::hlc_to_ms(msg.hlc) as i64, &msg.body.preview(), true)?;
             self.emit_message(&msg.id);
@@ -1280,6 +1347,31 @@ mod message_rule_tests {
         // saved messages follow the same window
         let saved = put_text(&n, SAVED_CONV, &me, hours_ago(49), "note", None);
         assert!(n.message_action(SAVED_CONV, saved, MsgAction::Edit { target: saved, text: "x".into() }).await.is_err());
+        n.shutdown();
+    }
+
+    /// Regression (1.0.9): a nickname I set shows at once everywhere the chat is listed —
+    /// the 1-1 chat's title follows it, and clearing it brings their own name back.
+    #[tokio::test]
+    async fn nickname_retitles_the_direct_chat() {
+        let tmp = tempfile::tempdir().unwrap();
+        let n = node(tmp.path()).await;
+        let b = Identity::generate().peer_id();
+        n.store.upsert_contact(&b, Some("Bob Public"), Some(3)).unwrap();
+        let conv = direct_conv(&b);
+        n.store.ensure_conv(&conv, 0, "Bob Public").unwrap();
+        let title = |n: &Node| n.store.conversations().unwrap().into_iter().find(|c| c.id == conv).map(|c| c.title).unwrap();
+        n.rename_contact(&b, "  Anh Ba  ").unwrap();
+        assert_eq!(n.store.contact(&b).unwrap().alias.as_deref(), Some("Anh Ba"));
+        assert_eq!(title(&n), "Anh Ba");
+        n.rename_contact(&b, "").unwrap();
+        assert_eq!(n.store.contact(&b).unwrap().alias, None);
+        assert_eq!(title(&n), "Bob Public");
+        // no chat yet: renaming creates none
+        let c = Identity::generate().peer_id();
+        n.store.upsert_contact(&c, Some("Carol"), Some(3)).unwrap();
+        n.rename_contact(&c, "Chị Ca").unwrap();
+        assert!(!n.store.conv_exists(&direct_conv(&c)));
         n.shutdown();
     }
 

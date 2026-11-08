@@ -243,13 +243,7 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             Value::Null
         }
         "rename_contact" => {
-            let p = peer(r, "peer")?;
-            let alias = s(r, "alias")?.trim().to_string();
-            node.store.set_contact_field(
-                &p,
-                "alias",
-                if alias.is_empty() { rusqlite::types::Value::Null } else { rusqlite::types::Value::Text(alias) },
-            )?;
+            node.rename_contact(&peer(r, "peer")?, s(r, "alias")?)?;
             Value::Null
         }
         "security_status" => {
@@ -943,6 +937,8 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
                 "discoverable_by_id": g("privacy.discoverable", "1") != "0",
                 // "Help friends connect": relay for friends stuck behind hard NATs
                 "help_friends": node.peer_relay_enabled(),
+                // "Giúp mạng Lumora": relay blind circuits for anyone (net/circuit.rs, off by default)
+                "help_network": node.help_network(),
                 // "Giúp bạn bè khôi phục lịch sử": hand our 1-1 history back to a friend who
                 // restored the account from the recovery phrase (synced across my devices)
                 "help_restore": node.help_restore_enabled(),
@@ -999,6 +995,9 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             setb("help_restore", "privacy.help_restore")?;
             if let Some(v) = b(r, "help_friends") {
                 node.set_help_friends(v)?;
+            }
+            if let Some(v) = b(r, "help_network") {
+                node.set_help_network(v)?;
             }
             if let Some(v) = b(r, "discoverable_by_id") {
                 node.store.kv_set("privacy.discoverable", if v { b"1" } else { b"0" })?;
@@ -1066,6 +1065,15 @@ async fn dispatch_cmd(node: &Arc<Node>, r: &Value) -> Result<Value> {
             v
         }
         "storage_policy" => serde_json::to_value(node.storage_policy())?,
+        // "Giúp mạng Lumora" (net/circuit.rs) and whether blind circuits are used
+        "help_network" => json!({"on": node.help_network(), "circuits": node.circuits_enabled(), "relayed_bytes": node.net.circuits.relayed_bytes.load(std::sync::atomic::Ordering::Relaxed)}),
+        "set_help_network" => {
+            node.set_help_network(b(r, "on").unwrap_or(false))?;
+            if let Some(c) = b(r, "circuits") {
+                node.store.kv_set("net.circuits", if c { b"1" } else { b"0" })?;
+            }
+            Value::Null
+        }
         "set_storage_policy" => {
             let mut p = node.storage_policy();
             let g = |k: &str| r.get(k).and_then(|x| x.as_u64());

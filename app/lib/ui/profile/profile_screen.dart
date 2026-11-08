@@ -55,7 +55,11 @@ class ProfileScreen extends StatelessWidget {
     const avatar = 112.0;
 
     final conv = 'd:$peer';
-    final actions = mine
+    final bot = !mine && (contact?.isBot ?? false);
+    final actions = bot
+        // a bot: just its chat (calls, remote control and files to a bot make no sense)
+        ? [_Action(icon: AppIcons.chat, label: s('message'), primary: true, onTap: () => Flows.openBot(context, peer, pop: true))]
+        : mine
         ? [
             _Action(icon: AppIcons.edit, label: s('edit_profile'), primary: true, onTap: () => showProfileEditor(context)),
             _Action(icon: AppIcons.share, label: s('share_profile'), onTap: () => showShareProfile(context, peer, shortId, name)),

@@ -27,7 +27,7 @@
 	<true/>
 	<!-- Privacy strings (English base; Vietnamese in vi.lproj/InfoPlist.strings). -->
 	<key>NSCameraUsageDescription</key>
-	<string>Lumora uses the camera so the other person can see you during video calls, and to scan the QR code when you link a device.</string>
+	<string>Lumora uses the camera to take photos and videos you send in chats, so the other person can see you during video calls, and to scan the QR code when you link a device.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Lumora uses the microphone for calls and voice messages.</string>
 	<key>NSLocalNetworkUsageDescription</key>

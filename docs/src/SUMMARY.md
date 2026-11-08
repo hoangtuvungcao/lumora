@@ -23,6 +23,7 @@
 - [Overview](dev/architecture.md)
 - [Security model](dev/security.md)
 - [NAT traversal](dev/nat-traversal.md)
+- [Hard networks: mail delivery and blind circuits](dev/hard-networks.md)
 - [Performance & resource budget](dev/performance.md)
 - [Video codecs (VP8/VP9, OS H.264)](dev/video-codecs.md)
 - [Video effects (beauty, low light)](dev/video-effects.md)

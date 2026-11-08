@@ -48,6 +48,8 @@ class AndroidBridge with WidgetsBindingObserver {
   static const _service = MethodChannel('lumora/service');
   static const _screen = MethodChannel('lumora/screen');
   static const _input = MethodChannel('lumora/input');
+  static const _popups = MethodChannel('lumora/popups');
+  static const _window = MethodChannel('lumora/window');
 
   StreamSubscription<Map<String, dynamic>>? _sub;
   LumoraApi? _api;
@@ -112,6 +114,11 @@ class AndroidBridge with WidgetsBindingObserver {
   /// The call layer shows the video only while it is true. Always false off
   /// Android.
   static final ValueNotifier<bool> pip = ValueNotifier<bool>(false);
+
+  /// The UI is shown in a chat bubble right now (one engine, the main window and bubbles
+  /// take turns showing it): the bubble shows only its chat — calls stay in the main
+  /// window and their notification. Always false off Android.
+  static final ValueNotifier<bool> inBubble = ValueNotifier<bool>(false);
 
   /// A notification, bubble or launcher shortcut asks to open this chat
   /// (wired by AppServices).
@@ -353,6 +360,13 @@ class AndroidBridge with WidgetsBindingObserver {
     _sub = api.events.listen(_onEvent);
     _screen.setMethodCallHandler(_onScreenCall);
     _service.setMethodCallHandler(_onServiceCall);
+    _window.setMethodCallHandler((c) async {
+      if (c.method == 'bubble') inBubble.value = c.arguments == true;
+      return null;
+    });
+    try {
+      inBubble.value = await _popups.invokeMethod<bool>('inBubble') ?? false;
+    } catch (_) {}
     if (!_observing) {
       _observing = true;
       WidgetsBinding.instance.addObserver(this);
@@ -408,6 +422,48 @@ class AndroidBridge with WidgetsBindingObserver {
     }
   }
 
+  /// Xiaomi / HyperOS: chat bubbles can't open until Lumora may show pop-ups (over other
+  /// apps, and while running in the background) — until then chats are not offered as
+  /// bubbles (they would be empty grey boxes). Always false elsewhere.
+  static Future<bool> bubblesBlocked() async {
+    if (!isAndroid) return false;
+    try {
+      return await _popups.invokeMethod<bool>('bubblesBlocked') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// What still keeps calls and bubbles from working (Settings › background sheet):
+  /// `fullScreen` = an incoming call may fill the locked screen (Android 14+);
+  /// `xiaomi` / `popups` = Xiaomi's pop-up, over-other-apps and lock-screen permissions.
+  static Future<({bool fullScreen, bool xiaomi, bool popups})> permissionStatus() async {
+    const ok = (fullScreen: true, xiaomi: false, popups: true);
+    if (!isAndroid) return ok;
+    try {
+      final m = await _popups.invokeMapMethod<String, bool>('status') ?? const {};
+      return (fullScreen: m['fullScreen'] ?? true, xiaomi: m['xiaomi'] ?? false, popups: m['popups'] ?? true);
+    } catch (_) {
+      return ok;
+    }
+  }
+
+  /// Lumora's "full-screen notifications" switch (Android 14+: calls over the lock screen).
+  static Future<void> openFullScreenPermission() async {
+    if (!isAndroid) return;
+    try {
+      await _popups.invokeMethod<void>('openFullScreen');
+    } catch (_) {}
+  }
+
+  /// Lumora's permission page on the phone (Xiaomi's own one when there is one).
+  static Future<void> openPopupPermissions() async {
+    if (!isAndroid) return;
+    try {
+      await _popups.invokeMethod<void>('open');
+    } catch (_) {}
+  }
+
   /// The phone maker's autostart screen (Xiaomi & co.), else the app's details.
   static Future<bool> openAutostart() async {
     if (!isAndroid) return false;
@@ -432,6 +488,7 @@ class AndroidBridge with WidgetsBindingObserver {
     if (!isAndroid) return;
     _screen.setMethodCallHandler(null);
     _service.setMethodCallHandler(null);
+    _window.setMethodCallHandler(null);
     try {
       await _screen.invokeMethod('stop');
       await _service.invokeMethod('setCall', {'active': false});

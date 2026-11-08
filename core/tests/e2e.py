@@ -283,6 +283,15 @@ def main():
             assert got == h, "hash mismatch"
             print(f"     {12 / dt:.1f} MB/s → {r['path']}")
             wait_until(lambda: [x for x in B.call("files") if x["id"] == fid][0]["state"] == 2, 10, "sender done")
+            # storage clean-up removes it here: the app is told (state 6) and downloading it
+            # again brings back the same bytes
+            cleaned = A.call("clear_media", conv=f"d:{pb}")
+            assert cleaned["removed_files"] >= 1, cleaned
+            A.wait_event(lambda e: e["event"] == "file" and e.get("id") == fid and e.get("state") == 6, what="cleaned file event")
+            assert not os.path.exists(r["path"]), "file still on disk after clean-up"
+            A.call("accept_file", file_id=fid)
+            r2 = wait_until(done, 60, "file downloaded again after clean-up")
+            assert hashlib.sha256(open(r2["path"], "rb").read()).hexdigest() == h, "re-download hash mismatch"
         _()
 
         @step("forward a text and a received file to another chat (no re-download)")

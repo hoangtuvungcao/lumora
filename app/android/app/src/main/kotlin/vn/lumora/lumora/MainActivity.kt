@@ -185,7 +185,7 @@ open class MainActivity : FlutterActivity() {
     private var evicted = false
 
     /** A chat bubble's window (false: Lumora's main window). */
-    protected open val isBubbleWindow: Boolean get() = false
+    internal open val isBubbleWindow: Boolean get() = false
 
     override fun detachFromFlutterEngine() {
         evicted = true
@@ -357,6 +357,21 @@ open class MainActivity : FlutterActivity() {
 
         // `lumora/service` lives with the engine (LumoraEngine): it works without an Activity.
         attached = this
+        // Dart: which window shows the UI now — a chat bubble shows only its chat (no call
+        // screen of someone else over it)
+        MethodChannel(messenger, "lumora/window").invokeMethod("bubble", isBubbleWindow)
+
+        // Xiaomi / HyperOS chat bubbles need Lumora's pop-ups allowed (OemPopups)
+        MethodChannel(messenger, "lumora/popups").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "bubblesBlocked" -> result.success(OemPopups.bubblesBlocked(this))
+                "inBubble" -> result.success(current()?.isBubbleWindow == true)
+                "status" -> result.success(OemPopups.status(this))
+                "open" -> { OemPopups.open(this); result.success(null) }
+                "openFullScreen" -> { OemPopups.openFullScreen(this); result.success(null) }
+                else -> result.notImplemented()
+            }
+        }
 
         val screen = MethodChannel(messenger, "lumora/screen")
         ScreenCapture.onStoppedExternally = { screen.invokeMethod("stopped", null) }

@@ -12,7 +12,7 @@ const CHUNK: usize = 256 * 1024;
 
 #[derive(Default)]
 pub struct Transfers {
-    active: Mutex<HashMap<[u8; 16], Arc<Active>>>,
+    pub(super) active: Mutex<HashMap<[u8; 16], Arc<Active>>>,
     /// Outgoing streams, one per (file, requester): in a group several members fetch the
     /// same file, and one slow/malicious member must not block (or cancel) the others.
     sending: Mutex<HashMap<SendKey, Arc<Active>>>,
@@ -125,7 +125,7 @@ fn sanitize(name: &str) -> String {
 /// Move a verified download to `dir/name` (or "name (1)"…) without ever replacing an
 /// existing file: an exists()-then-rename could overwrite a file created meanwhile (two
 /// downloads with the same name, or a file/symlink planted in the folder).
-fn place_final(part: &std::path::Path, dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
+pub(super) fn place_final(part: &std::path::Path, dir: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
     let (stem, ext) = match name.rfind('.') {
         Some(i) if i > 0 => (&name[..i], &name[i..]),
         _ => (name, ""),
@@ -163,7 +163,7 @@ fn check_stream_offset(offset: u64, size: u64, have: u64) -> Result<()> {
     Ok(())
 }
 
-fn hash_file(path: &std::path::Path) -> Result<[u8; 32]> {
+pub(super) fn hash_file(path: &std::path::Path) -> Result<[u8; 32]> {
     let mut h = blake3::Hasher::new();
     let f = std::fs::File::open(path)?;
     h.update_reader(std::io::BufReader::with_capacity(1 << 20, f))?;
@@ -584,7 +584,7 @@ impl Node {
         v
     }
 
-    fn emit_file(&self, id: &[u8; 16]) {
+    pub(super) fn emit_file(&self, id: &[u8; 16]) {
         if let Some(f) = self.store.file_get(id) {
             self.emit("file", self.file_json(&f));
         }
@@ -786,6 +786,8 @@ impl Node {
         let peer = PeerId::from_str_any(&row.peer)?;
         let id: [u8; 16] = crate::crypto::random_bytes();
         self.deliver(peer, id, PeerMsg::FileRequest { file_id: wire, offset }, false).await;
+        // no connection to stream it over (two NATed devices): by mail (node/file_mail.rs)
+        self.file_mail_watch(*file_id);
         Ok(())
     }
 
@@ -825,7 +827,7 @@ impl Node {
     }
 
     /// May `peer` fetch our outgoing file `row`? (It must be part of the conversation.)
-    fn peer_may_fetch(&self, row: &FileRow, peer: &PeerId) -> bool {
+    pub(super) fn peer_may_fetch(&self, row: &FileRow, peer: &PeerId) -> bool {
         match parse_conv(&row.conv) {
             Ok(ConvRef::Direct(p)) => p == *peer,
             Ok(ConvRef::Group(gid, _)) => self.group_members(&gid).contains(peer),
@@ -1057,6 +1059,12 @@ impl Node {
             self.emit_file(&file_id);
             return Ok(()); // paused/interrupted: resumable
         }
+        // (finished by mail meanwhile: node/file_mail.rs)
+        if self.store.file_get(&file_id).is_some_and(|r| r.state == 2) {
+            let _ = tokio::fs::remove_file(&part).await;
+            self.emit_file(&file_id);
+            return Ok(());
+        }
         let part2 = part.clone();
         let hash = tokio::task::spawn_blocking(move || hash_file(&part2)).await??;
         let ok = hex::encode(hash) == row.hash;
@@ -1119,6 +1127,11 @@ impl Node {
             }
             if let Ok(id) = hex::decode(&r.id) {
                 let _ = self.store.file_update(&id, 6, 0);
+                // the app shows it as downloadable again at once (not as a stale "done" whose
+                // file is gone)
+                if let Ok(arr) = <[u8; 16]>::try_from(id.as_slice()) {
+                    self.emit_file(&arr);
+                }
             }
             total = total.saturating_sub(r.size as u64);
             freed += r.size as u64;
