@@ -24,6 +24,7 @@ import '../media_editor/photo_fallback.dart';
 import '../../core/file_safety.dart';
 import '../viewers/file_viewer.dart' show canViewInApp, openFileViewer;
 import '../viewers/preview_card.dart';
+import 'stickers.dart' show stickersChanged;
 
 /// Progress line for a running transfer: "1,2 MB / 10,4 MB · 5,7 MB/s"
 /// once bytes flow, "10,4 MB · Waiting…" before the first byte (a speed
@@ -523,6 +524,17 @@ class FileCard extends StatelessWidget {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(spacing: 6, children: [
+            // a sticker pack someone sent: into my packs in one tap
+            if (ref.name.toLowerCase().endsWith('.lumora-stickers'))
+              _Suggest(icon: AppIcons.sticker, label: s('add_pack'), onTap: () async {
+                try {
+                  await context.read<LumoraApi>().stickerPackImport(f.path);
+                  stickersChanged();
+                  if (context.mounted) toast(context, s('pack_added'));
+                } catch (e) {
+                  if (context.mounted) toastError(context, e);
+                }
+              }),
             if (viewable) _Suggest(icon: AppIcons.show, label: s('fpv_view'), onTap: () => openFileViewer(context, path: f.path, name: ref.name, mime: ref.mime)),
             // in-app files: "Mở bằng ứng dụng khác" lives in the viewer
             if (!viewable) _Suggest(icon: AppIcons.openExternal, label: s('open'), onTap: () => openFile(context, f.path)),

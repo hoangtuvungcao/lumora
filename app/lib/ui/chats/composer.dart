@@ -716,6 +716,10 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
         toastError(context, e);
       }
     },
+    onSharePack: (path) async {
+      await context.read<FilesStore>().send(widget.conv, path);
+      widget.onSent();
+    },
     onGif: () => _attach(type: FileType.custom, exts: const ['gif', 'webp']),
   );
 

@@ -79,4 +79,41 @@ void main() {
     expect(File(sent.single.$1).lengthSync(), greaterThan(500));
     expect(sent.single.$2, first.emoji);
   });
+
+  testWidgets('my pack: "send this pack to the chat" exports it and hands the file over', (t) async {
+    final api = MockLumoraApi();
+    final shared = <String>[];
+    await t.runAsync(() async {
+      final id = await api.stickerPackCreate('Mèo nhà');
+      await api.stickerAdd(id, '/tmp/cat.png');
+    });
+    await t.pumpWidget(MultiProvider(
+      providers: [Provider<LumoraApi>.value(value: api), ChangeNotifierProvider(create: (_) => Settings())],
+      child: MaterialApp(
+        theme: buildTheme(Brightness.dark),
+        home: Scaffold(
+          body: SizedBox(
+            height: 420,
+            child: StickerPanel(onSend: (_) {}, onSendFile: (_, _) async {}, onSharePack: (path) async => shared.add(path)),
+          ),
+        ),
+      ),
+    ));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Mèo nhà'));
+    await t.pump(const Duration(milliseconds: 300)); // (its sticker keeps loading: no settle)
+    await t.tap(find.byType(PopupMenuButton<String>));
+    for (var i = 0; i < 10; i++) {
+      await t.pump(const Duration(milliseconds: 100)); // the menu's opening animation
+    }
+    await t.tap(find.text('Gửi bộ này vào cuộc trò chuyện'));
+    await t.pump(const Duration(milliseconds: 100));
+    await t.runAsync(() async {
+      for (var i = 0; i < 50 && shared.isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    expect(shared, hasLength(1));
+    expect(shared.single, endsWith('Mèo nhà.lumora-stickers'));
+  });
 }

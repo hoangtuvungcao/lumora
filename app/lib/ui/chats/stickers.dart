@@ -168,11 +168,15 @@ Future<void> saveStickerToPack(BuildContext context, String hash) async {
 
 /// Sticker tab content: my packs + manage actions; tap sends.
 class StickerPanel extends StatefulWidget {
-  const StickerPanel({super.key, required this.onSend, this.onSendFile});
+  const StickerPanel({super.key, required this.onSend, this.onSendFile, this.onSharePack});
   final void Function(Sticker s) onSend;
 
   /// The bundled 3D pack (a tab before my packs): sends an image file as a sticker.
   final Future<void> Function(String path, String emoji)? onSendFile;
+
+  /// "Send this pack to the chat": the exported pack file is sent as a file; the other
+  /// side adds it in one tap (attachments.dart).
+  final Future<void> Function(String packFile)? onSharePack;
   @override
   State<StickerPanel> createState() => _StickerPanelState();
 }
@@ -260,6 +264,19 @@ class _StickerPanelState extends State<StickerPanel> {
       final path = '${dir.path}${Platform.pathSeparator}${p.name}.lumora-stickers';
       await api.stickerPackExport(p.id, path);
       if (mounted) toast(context, s('saved_to', {'path': path}));
+    } catch (e) {
+      if (mounted) toastError(context, e);
+    }
+  }
+
+  Future<void> _share(StickerPack p) async {
+    final api = context.read<LumoraApi>();
+    try {
+      final dir = await getTemporaryDirectory();
+      final safe = p.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+      final path = '${dir.path}${Platform.pathSeparator}${safe.isEmpty ? 'stickers' : safe}.lumora-stickers';
+      await api.stickerPackExport(p.id, path);
+      await widget.onSharePack!(path);
     } catch (e) {
       if (mounted) toastError(context, e);
     }
@@ -357,6 +374,8 @@ class _StickerPanelState extends State<StickerPanel> {
                   _import();
                 case 'export':
                   if (p != null) _export(p);
+                case 'share':
+                  if (p != null) _share(p);
                 case 'delete':
                   if (p != null) context.read<LumoraApi>().stickerPackDelete(p.id).then((_) => _reload());
               }
@@ -366,6 +385,7 @@ class _StickerPanelState extends State<StickerPanel> {
               if (!on3d && p != null) PopupMenuItem(value: 'add', child: Text(s('add_sticker'))),
               PopupMenuItem(value: 'new', child: Text(s('new_pack'))),
               PopupMenuItem(value: 'import', child: Text(s('import_pack'))),
+              if (!on3d && p != null && widget.onSharePack != null && p.stickers.isNotEmpty) PopupMenuItem(value: 'share', child: Text(s('share_pack'))),
               if (!on3d && p != null) PopupMenuItem(value: 'export', child: Text(s('export_pack'))),
               if (!on3d && p != null) PopupMenuItem(value: 'delete', child: Text(s('delete_pack'), style: const TextStyle(color: LC.danger))),
             ],
