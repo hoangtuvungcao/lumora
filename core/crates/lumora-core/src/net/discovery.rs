@@ -400,8 +400,28 @@ fn temporary_v6_netlink() -> std::io::Result<Vec<std::net::Ipv6Addr>> {
     }
 }
 
+/// The source address an unbound UDP socket would use towards the public IPv6 internet
+/// (`connect` on UDP picks a route and sends nothing). `None`: no IPv6 route.
+fn default_v6_source() -> Option<IpAddr> {
+    let s = std::net::UdpSocket::bind("[::]:0").ok()?;
+    s.connect("[2001:4860:4860::8888]:53").ok()?;
+    let ip = s.local_addr().ok()?.ip();
+    crate::util::is_global_ip(&ip).then_some(ip)
+}
+
+/// Drop global IPv6 candidates that aren't on `via` (the default route's interface).
+fn routable_v6_only(addrs: Vec<SocketAddr>, names: &[String], via: Option<&str>) -> Vec<SocketAddr> {
+    addrs
+        .into_iter()
+        .zip(names)
+        .filter(|(a, n)| !(a.is_ipv6() && crate::util::is_global_ip(&a.ip())) || via == Some(n.as_str()))
+        .map(|(a, _)| a)
+        .collect()
+}
+
 pub fn local_addrs(port: u16) -> Vec<SocketAddr> {
     let mut out = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     let temp = temporary_v6();
     if let Ok(ifs) = if_addrs::get_if_addrs() {
         for i in ifs {
@@ -423,7 +443,17 @@ pub fn local_addrs(port: u16) -> Vec<SocketAddr> {
                 continue;
             }
             out.push(SocketAddr::new(ip, port));
+            names.push(i.name.clone());
         }
+    }
+    // Phones keep mobile data up next to Wi-Fi (HyperOS, iOS…): the cellular interface has a
+    // global IPv6 address, but our unbound socket sends through the default network only. An
+    // IPv6 Wi-Fi-less phone handing out its cellular IPv6 gets connections it can't answer
+    // (ENETUNREACH, or replies that work for a moment and then go silent). Keep global IPv6
+    // only on the interface the default route uses — none when it has no IPv6 route.
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        let via = default_v6_source().and_then(|src| out.iter().position(|a| a.ip() == src).map(|i| names[i].clone()));
+        out = routable_v6_only(out, &names, via.as_deref());
     }
     // prefer temporary (privacy) IPv6 addresses: when there are some, stable global ones
     // go last (only a few global IPv6 candidates are used)
@@ -804,6 +834,19 @@ mod privacy_tests {
         assert_ne!(t, friend_signing_key(&[8u8; 32]).verifying_key().to_bytes());
         let id = crate::identity::Identity::generate();
         assert_ne!(friend_signing_key(&key).verifying_key().to_bytes(), id.peer_id().0);
+    }
+
+    /// A phone on IPv4-only Wi-Fi with mobile data still up: its cellular IPv6 isn't handed
+    /// out (the socket can't answer from it); LAN IPv4 and the cellular IPv4 stay.
+    #[test]
+    fn cellular_ipv6_is_not_offered_while_on_wifi() {
+        let a = |s: &str| s.parse::<SocketAddr>().unwrap();
+        let addrs = vec![a("192.168.89.140:9"), a("10.140.233.24:9"), a("[2001:ee0:1b5:2c9c:8874:fca:dd82:be13]:9")];
+        let names: Vec<String> = ["wlan0", "ccmni0", "ccmni0"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(routable_v6_only(addrs.clone(), &names, None), addrs[..2].to_vec());
+        assert_eq!(routable_v6_only(addrs.clone(), &names, Some("wlan0")), addrs[..2].to_vec());
+        // on mobile data (or Wi-Fi with IPv6 on that interface) it is offered
+        assert_eq!(routable_v6_only(addrs.clone(), &names, Some("ccmni0")), addrs);
     }
 
     /// P14: the LAN announcement doesn't carry the public key; P19: no EUI-64 addresses.
