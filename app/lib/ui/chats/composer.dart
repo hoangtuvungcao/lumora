@@ -939,6 +939,9 @@ class _ComposerState extends State<Composer> with WidgetsBindingObserver {
                                         style: const TextStyle(fontSize: 14.5, height: 1.35),
                                         decoration: InputDecoration(
                                           hintText: s('message_hint'),
+                                          // narrow phones: with the inline icons the hint would wrap
+                                          // and make the empty composer two lines tall
+                                          hintMaxLines: 1,
                                           filled: false,
                                           border: InputBorder.none,
                                           enabledBorder: InputBorder.none,
