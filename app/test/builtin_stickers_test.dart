@@ -31,7 +31,19 @@ void main() {
     for (final s in all) {
       expect(File(s.asset).existsSync(), isTrue, reason: s.asset);
     }
-    expect(all.first.emoji, '😀', reason: 'emoji picker order: smileys first');
+    // the most-used ones move (animated WebP, ≤ ~5 MB in all), shown first
+    final anim = all.where((s) => s.animated).toList();
+    expect(anim.length, inInclusiveRange(30, 120));
+    expect(all.take(anim.length).every((s) => s.animated), isTrue);
+    expect(anim.first.emoji, '😀', reason: 'emoji picker order among them: smileys first');
+    var animBytes = 0;
+    for (final s in anim) {
+      final b = File(s.asset).readAsBytesSync();
+      expect(String.fromCharCodes(b.sublist(0, 4)), 'RIFF', reason: s.asset);
+      expect(String.fromCharCodes(b.sublist(0, 256)).contains('ANIM'), isTrue, reason: '${s.asset} is animated');
+      animBytes += b.length;
+    }
+    expect(animBytes, lessThan(5500000));
     expect(all.map((s) => s.key).toSet().length, all.length);
   });
 

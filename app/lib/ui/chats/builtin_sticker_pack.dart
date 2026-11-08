@@ -27,12 +27,14 @@ class BuiltinSticker {
   final List<String> words;
 
   String get asset => 'assets/stickers3d/$key.webp';
+
+  bool get animated => kBuiltinStickerAnimated.contains(key);
 }
 
 abstract final class BuiltinStickers {
   static List<BuiltinSticker>? _all;
 
-  /// Every sticker, in the emoji picker's order (smileys first).
+  /// Every sticker: the animated ones first, then the emoji picker's order (smileys first).
   static List<BuiltinSticker> get all => _all ??= () {
     final cat = EmojiCatalog.instance;
     final out = <BuiltinSticker>[];
@@ -41,7 +43,7 @@ abstract final class BuiltinStickers {
       if (p.length < 4) continue;
       out.add(BuiltinSticker(p[1], p[2], int.tryParse(p[0]) ?? 0, [for (final w in p[3].split(',')) EmojiCatalog.fold(w)]));
     }
-    int order(BuiltinSticker s) => cat.lookup(s.emoji)?.index ?? 1 << 20;
+    int order(BuiltinSticker s) => (s.animated ? 0 : 1 << 21) + (cat.lookup(s.emoji)?.index ?? 1 << 20);
     out.sort((a, b) => order(a).compareTo(order(b)));
     return out;
   }();

@@ -66,9 +66,12 @@ https://creativecommons.org/licenses/by/4.0/legalcode
 
 Changes: the animations re-encoded (numbers rounded to 3 decimals, minified, gzip-compressed).''');
     yield const LicenseEntryWithLineBreaks(['Fluent Emoji (3D stickers)'], '''
-The built-in 3D sticker pack: Fluent Emoji, 3D style, by Microsoft Corporation.
+The built-in 3D sticker pack: Fluent Emoji, 3D style, and Fluent Emoji Animated, by
+Microsoft Corporation.
 https://github.com/microsoft/fluentui-emoji
-Changes: a selection resized to 160 px and re-encoded as WebP.
+https://github.com/microsoft/fluentui-emoji-animated
+Changes: a selection resized (160 px; animated ones 128 px at a third of the frames) and
+re-encoded as WebP. Both are under the MIT License below.
 
 MIT License
 
