@@ -183,6 +183,12 @@ tag do not replace that tag or its published binaries. Use the tagged source to 
 release. Checksums and Sigstore signatures authenticate the release set; they do not by
 themselves mean every installer is code-signed or notarized.
 
+Use the current guarded workflow on `main` for supported public CI. Do not re-run historical
+private-repository Actions runs or build old tags in Actions; reproduce older releases locally
+instead. Symbol maps belong in private storage and must never be uploaded to a public workflow
+run. Historical nonexpired `symbols-*` artifacts must be privately backed up, verified and
+removed before changing the source repository from private to public.
+
 ## Conventions
 
 - **Bilingual**: every user-facing string exists in Vietnamese and English (`app/lib/l10n`,
