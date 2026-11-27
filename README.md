@@ -1,16 +1,17 @@
 # Lumora — source repository
 
-> **Private repository.** Source of the Lumora app, its Rust core, the Bot SDK, the website and
+> Source of the Lumora app, its Rust core, the Bot SDK, the website and
 > the test labs. Release binaries are published to the public
 > [get_lumora](https://github.com/hoangtuvungcao/get_lumora) repository; the website is
 > [getlumora.pages.dev](https://getlumora.pages.dev).
 >
-> *Kho mã nguồn riêng của Lumora: ứng dụng, lõi Rust, SDK bot, website và các bộ kiểm thử. Bản
+> *Kho mã nguồn Lumora: ứng dụng, lõi Rust, SDK bot, website và các bộ kiểm thử. Bản
 > cài đặt được phát hành ở kho công khai `get_lumora`. Tài liệu kỹ thuật chi tiết nằm trong `docs/`.*
 
 Lumora is a peer-to-peer messenger: chat, groups and communities, voice/video calls, file
-transfer, remote desktop, multi-device and bots — end-to-end encrypted, no central server, no
-phone number. Devices connect over LAN, IPv6, IPv4 hole punching, friends' peer relays and
+transfer, remote desktop, multi-device and bots, with encrypted peer connections and no
+phone number requirement. Optional relay, mailbox, push and third-party signaling services
+support some connection paths. Devices connect over LAN, IPv6, IPv4 hole punching, friends' peer relays and
 blind two-hop circuits through volunteers; signaling and offline delivery use sealed mail.
 
 ## Contents
@@ -24,6 +25,7 @@ blind two-hop circuits through volunteers; signaling and offline delivery use se
 - [Releasing](#releasing)
 - [Conventions](#conventions)
 - [Documentation](#documentation)
+- [Community and support](#community-and-support)
 - [License](#license)
 
 ## Repository layout
@@ -64,11 +66,14 @@ blind two-hop circuits through volunteers; signaling and offline delivery use se
 - **Identity**: Ed25519 account key from a BIP39 24-word phrase; each device has its own key and a
   certificate signed by the account. 9-digit short IDs and `@name·tag` handles resolve to keys.
 - **Transport**: QUIC with TLS pinned to device keys; every path (direct, LAN, relay, circuit) carries
-  the same end-to-end connection. Strangers never receive our addresses (IP privacy).
+  the same end-to-end connection. Address exposure depends on the path and peer relationship;
+  see the [security model and known limits](docs/src/dev/security.md).
 - **Content**: 1-1 messages under Double Ratchet (vodozemac), groups under rotating group keys with a
   signed operation log that converges on every member; files stream over QUIC (BLAKE3-checked) or,
   without any connection, by sealed mail in chunks.
-- **Storage**: SQLCipher database, keys in the OS keystore; nothing in plaintext on disk.
+- **Storage**: SQLCipher-backed database and platform-specific key storage, including a local-key-file
+  fallback when the OS keychain is unavailable. Downloaded/exported files and screenshots are
+  ordinary files outside database encryption; protect them separately.
 - **Multi-device**: an account's devices sync messages, settings and state through a CRDT-style log.
 
 Design documents: `docs/src/dev/` — [architecture](docs/src/dev/architecture.md),
@@ -157,8 +162,8 @@ Remote-control and screen tests capture a real X display: run the e2e suites und
 `env -u WAYLAND_DISPLAY DISPLAY=:77 LUMORA_CAPTURE=x11` with a `Xephyr :77` (or `xvfb-run`).
 Details and the latest results: [docs/src/dev/testing.md](docs/src/dev/testing.md).
 
-**Release gate:** nothing is published unless the whole matrix above is green on the final commit
-(CI runs everything except the NAT lab and Wine, which run locally).
+**Release review:** check CI on the final commit and record local NAT-lab and Wine results
+separately. Passing CI does not establish that every physical device or network was tested.
 
 ## Releasing
 
@@ -173,11 +178,17 @@ Details and the latest results: [docs/src/dev/testing.md](docs/src/dev/testing.m
 
 Bot SDK releases (PyPI / npm) are separate: `sdk/tools/package.py`, see `sdk/CHANGELOG.md`.
 
+The current source version is `1.0.10`; source changes made after the existing `v1.0.10`
+tag do not replace that tag or its published binaries. Use the tagged source to reproduce a
+release. Checksums and Sigstore signatures authenticate the release set; they do not by
+themselves mean every installer is code-signed or notarized.
+
 ## Conventions
 
 - **Bilingual**: every user-facing string exists in Vietnamese and English (`app/lib/l10n`,
   `core/crates/lumora-core/src/i18n.rs`); a test fails on a missing translation.
-- **Privacy first**: strangers never learn addresses, nothing is stored in plaintext, no telemetry.
+- **Privacy first**: never publish keys, recovery phrases, personal conversations or unredacted
+  diagnostics. Verify public security claims against the implementation and its documented limits.
 - **Wire compatibility**: new protocol features use new `Ext` kinds that older peers ignore; mixed
   versions are tested (`core/tests/mixed_version_e2e.py`).
 - **Tests with every fix**: a regression test that fails before the fix and passes after it.
@@ -188,6 +199,17 @@ Bot SDK releases (PyPI / npm) are separate: `sdk/tools/package.py`, see `sdk/CHA
 - User guides and bot developer docs: `docs/src/` (mdBook) — also on the website under
   [/developers](https://getlumora.pages.dev/developers/).
 - Design docs: `docs/src/dev/`. Operations (relay, push gateway, releases): `docs/src/ops/`.
+
+## Community and support
+
+- Downloads and user documentation: [getlumora.pages.dev](https://getlumora.pages.dev/).
+- Reproducible bugs: [GitHub Issues](https://github.com/hoangtuvungcao/lumora/issues).
+- Questions and ideas: [GitHub Discussions](https://github.com/hoangtuvungcao/lumora/discussions).
+- Development and safe diagnostic sharing: [CONTRIBUTING.md](CONTRIBUTING.md).
+- Sensitive vulnerability reports: [SECURITY.md](SECURITY.md).
+
+Vietnamese and English reports are welcome. Public source access does not change the
+existing proprietary app/core license or the SDK's separate MIT license.
 
 ## License
 

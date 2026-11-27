@@ -20,7 +20,7 @@ This document has two versions: Vietnamese (first) and English (second), with eq
 
 1.4. Khi cài đặt hoặc sử dụng Lumora, bạn đồng ý với các điều khoản này. Nếu không đồng ý, vui lòng không cài đặt hoặc sử dụng Lumora.
 
-1.5. Lumora là phần mềm **độc quyền, miễn phí** (freeware): bạn được dùng miễn phí, nhưng mã nguồn không được công bố và Nhà phát triển giữ mọi quyền không được trao rõ ràng trong văn bản này. Lumora được cấp phép cho bạn sử dụng, không phải bán cho bạn.
+1.5. Lumora là phần mềm **độc quyền, miễn phí** (freeware): bạn được dùng miễn phí; việc công bố mã nguồn không mở rộng các quyền được cấp trong văn bản này và Nhà phát triển giữ mọi quyền không được trao rõ ràng trong văn bản này. Lumora được cấp phép cho bạn sử dụng, không phải bán cho bạn.
 
 1.6. Bộ công cụ phát triển bot (Lumora Bot SDK, thư viện Python/JavaScript và ví dụ) được cấp phép riêng theo giấy phép MIT; văn bản này không áp dụng cho SDK.
 
@@ -169,7 +169,7 @@ Văn bản này chịu sự điều chỉnh của pháp luật **Việt Nam**. C
 
 1.4. By installing or using Lumora you agree to these terms. If you do not agree, do not install or use Lumora.
 
-1.5. Lumora is **proprietary freeware**: you may use it free of charge, but its source code is not published and the Developer reserves all rights not expressly granted here. Lumora is licensed to you, not sold.
+1.5. Lumora is **proprietary freeware**: you may use it free of charge; publication of the source code does not expand the rights granted here, and the Developer reserves all rights not expressly granted here. Lumora is licensed to you, not sold.
 
 1.6. The bot development kit (Lumora Bot SDK: the Python/JavaScript libraries and examples) is licensed separately under the MIT License; this agreement does not apply to the SDK.
 

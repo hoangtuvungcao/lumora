@@ -2,7 +2,7 @@
 
 | Asset | Protection |
 |---|---|
-| Identity key | Generated on device; stored only wrapped (XChaCha20-Poly1305) by a key from Argon2id(passphrase, 64 MiB) or the OS keychain. Never transmitted. |
+| Identity key | Generated on device; stored wrapped (XChaCha20-Poly1305) by a key from Argon2id(passphrase, 64 MiB) or platform auto-key storage. Auto-key storage can fall back to a local key file when the OS keychain is unavailable; use a passphrase and protect the data directory. Never transmitted. |
 | Messages in transit | QUIC + TLS 1.3 with certificate = identity key, pinned by the dialer (no CA, no MITM by signaling/relays). Signed by author (Ed25519) so they can be relayed/gossiped safely. |
 | Offline mail | Sealed to the recipient (ephemeral X25519 + XChaCha20-Poly1305) and signed inside; mailboxes (friends / relays) see random bytes. |
 | Group content | Epoch key per group, rotated on member removal/leave; new keys sealed per member and checked against the signed `Rekey` commitment. Concurrent rotations resolve the same on every member (lowest `(hlc, author, id, sig)` wins the epoch; losers' keys are kept only to read what was sent under them); a removal is covered only by a later winning rotation of its remover (or of the owner when the remover can't), so a key a concurrent rotation handed to the removed member is replaced. Keys arriving before their `Rekey` are kept (bounded per sender) until it comes; a member at an epoch without its key asks members (`Ext GROUP_KEY_REQUEST`, answered only to current key holders for epochs since they joined). Remote clocks move ours by ≤ 2 min; ops dated > 10 min ahead are refused on publish and receive. |
@@ -26,6 +26,7 @@
 * **Floods** → signals are handled by ≤ 64 tasks at once (more are dropped, senders retry), Nostr query results are capped (count and bytes, 256 KB messages), relayed virtual addresses live in a bounded LRU.
 
 ## Known limits (honest)
+* Database encryption does not cover ordinary downloaded/exported files, screenshots or diagnostics. Protect those files separately. A local auto-key fallback is not equivalent to keeping the key outside the data directory in an OS keychain.
 * With "Let strangers find me by ID" on (default), the Nostr operators carrying my public inbox (2 random relays) can link my ID to my IP; a configured Lumora relay server always can. Turning it off keeps friends working (friends' inbox, DHT friends-only record) but strangers can reach you only through a relay mailbox.
 * Friends' Nostr tags and the DHT record rotate only when someone leaves your friends (tags also daily): a former friend who kept the old key can still post to the previous key's inbox for a week (sealed signaling only — never answered with addresses).
 * Ordinary members of public groups don't connect directly: their traffic is relayed / mailed (slower), by design.
